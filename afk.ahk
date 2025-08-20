@@ -20,8 +20,7 @@ F8:: {
     }
 }
 
-; ESC로 완전 종료
-Esc:: {
+F9:: {
     SetTimer(SendWKey, 0)
     ExitApp()
 }

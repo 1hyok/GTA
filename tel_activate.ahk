@@ -1,44 +1,42 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
+#Include PressKey.ahk
 
 macroRunning := false
+keyPressed := ""  ; 어떤 키가 눌렸는지 저장
 
 F4:: {
-    global macroRunning
+    global macroRunning, keyPressed
     
     macroRunning := !macroRunning
+    keyPressed := "F4"
     
     if (macroRunning) {
         WinActivate("Grand Theft Auto V")
-        Sleep(1000)
         RunMacro()
     }
 }
 
-Esc:: {
+F5:: {
+    global macroRunning, keyPressed
+    
+    macroRunning := !macroRunning
+    keyPressed := "F5"
+    
+    if (macroRunning) {
+        WinActivate("Grand Theft Auto V")
+        RunMacro()
+    }
+}
+
+F9:: {
     global macroRunning
     macroRunning := false
     ExitApp()
 }
 
-; 키 누르기 함수
-PressKey(key, count := 1) {
-    ; 딜레이 설정 (ms)
-    keyHoldTime := 25    ; 키 누르고 있는 시간
-    betweenDelay := 100   ; 키 사이 간격
-    
-    Loop count {
-        Send("{" key " down}")
-        Sleep(keyHoldTime)
-        Send("{" key " up}")
-        if (A_Index < count) ; 마지막이 아니면 딜레이
-            Sleep(betweenDelay)
-    }
-    Sleep(betweenDelay)
-}
-
 RunMacro() {
-    global macroRunning
+    global macroRunning, keyPressed
     
     if (!macroRunning)
         return
@@ -58,9 +56,16 @@ RunMacro() {
     PressKey("Enter", 3)
     
     ;모사 설립
-    Sleep(500)
+    Sleep(1000)
     PressKey("m")
-    PressKey("Down", 2)
+    
+    ; F4면 Down 1번, F5면 Down 2번
+    if (keyPressed = "F4") {
+        PressKey("Down", 1)
+    } else if (keyPressed = "F5") {
+        PressKey("Down", 2)
+    }
+    
     PressKey("Enter")
     PressKey("Down")
     PressKey("Enter", 2)

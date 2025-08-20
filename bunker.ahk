@@ -16,7 +16,7 @@ F9::{
     }
 }
 
-Esc::{
+F9::{
     global bunkerRunning
     bunkerRunning := false
     SetTimer(BunkerCycle, 0)
