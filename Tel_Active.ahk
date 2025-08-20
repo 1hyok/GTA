@@ -29,7 +29,7 @@ F5:: {
     }
 }
 
-F9:: {
+F12:: {
     global macroRunning
     macroRunning := false
     ExitApp()

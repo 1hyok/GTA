@@ -44,8 +44,8 @@ F6::
     }
 }
 
-; F9: 종료
-F9::
+; F12: 종료
+F12::
 {
     global isRunning
     isRunning := false
