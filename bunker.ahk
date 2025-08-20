@@ -3,7 +3,7 @@
 
 bunkerRunning := false
 
-F6::{
+F9::{
     global bunkerRunning
     
     if (bunkerRunning) {

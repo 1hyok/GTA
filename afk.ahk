@@ -5,8 +5,8 @@ SendWKey() {
     Send("w")  ; 그냥 이거
 }
 
-; F9로 시작/일시정지 토글
-F5:: {
+; F8로 시작/일시정지 토글
+F8:: {
     global running
     running := !running
     
