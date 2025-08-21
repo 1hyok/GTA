@@ -3,8 +3,8 @@
 ; 키 누르기 함수
 PressKey(key, count := 1) {
     ; 딜레이 설정 (ms)
-    keyHoldTime := 100    ; 키 누르고 있는 시간
-    betweenDelay := 100   ; 키 사이 간격
+    keyHoldTime := 30    ; 키 누르고 있는 시간
+    betweenDelay := 200   ; 키 사이 간격
     
     Loop count {
         Send("{" key " down}")

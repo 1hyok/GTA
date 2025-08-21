@@ -33,18 +33,22 @@ keyPressed := ""
 clickRunning := false
 CLICK_DELAY := 1
 
-; === 키 홀드 ===
+; === 키 홀드 (수정) ===
 F8:: {
-   global wRunning
-   
-   if (!wRunning) {
-       wRunning := true
-       WinActivate("Grand Theft Auto V")
-       Send("{w down}")
-   } else {
-       wRunning := false
-       Send("{w up}")
-   }
+    global wRunning
+    
+    if (!wRunning) {
+        wRunning := true
+        WinActivate("Grand Theft Auto V")
+        Send("{w down}")
+        ToolTip("걷기 시작", 0, 0)
+        SetTimer(HideToolTip, 1000)
+    } else {
+        wRunning := false
+        Send("{w up}")
+        ToolTip("걷기 중지", 0, 0)
+        SetTimer(HideToolTip, 1000)
+    }
 }
 
 F9:: {
@@ -53,12 +57,20 @@ F9:: {
    if (!shiftWRunning) {
        shiftWRunning := true
        WinActivate("Grand Theft Auto V")
-       Send("{Shift down}")
-       Send("{w down}")
-   } else {
+       Send("{Shift down}{w down}")
+       ToolTip("뛰기 시작", 0, 0)
+       SetTimer(HideToolTip, 1000)
+   }
+}
+
++F9:: {
+   global shiftWRunning
+   
+   if (shiftWRunning) {
        shiftWRunning := false
-       Send("{w up}")
-       Send("{Shift up}")
+       Send("{w up}{Shift up}")
+       ToolTip("뛰기 중지", 0, 0)
+       SetTimer(HideToolTip, 1000)
    }
 }
 
