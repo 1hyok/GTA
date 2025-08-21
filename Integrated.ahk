@@ -33,13 +33,20 @@ keyPressed := ""
 clickRunning := false
 CLICK_DELAY := 1
 
+; === GTA 창 활성화 확인 함수 ===
+IsGTAActive() {
+    return WinActive("Grand Theft Auto V")
+}
+
 ; === 키 홀드 (수정) ===
 F8:: {
     global wRunning
     
+    if (!IsGTAActive())
+        return
+    
     if (!wRunning) {
         wRunning := true
-        WinActivate("Grand Theft Auto V")
         Send("{w down}")
         ToolTip("걷기 시작", 0, 0)
         SetTimer(HideToolTip, 1000)
@@ -54,9 +61,11 @@ F8:: {
 F9:: {
    global shiftWRunning
    
+   if (!IsGTAActive())
+       return
+   
    if (!shiftWRunning) {
        shiftWRunning := true
-       WinActivate("Grand Theft Auto V")
        Send("{Shift down}{w down}")
        ToolTip("뛰기 시작", 0, 0)
        SetTimer(HideToolTip, 1000)
@@ -65,6 +74,9 @@ F9:: {
 
 +F9:: {
    global shiftWRunning
+   
+   if (!IsGTAActive())
+       return
    
    if (shiftWRunning) {
        shiftWRunning := false
@@ -78,9 +90,11 @@ F9:: {
 F6:: {
    global teleportRunning, teleportPaused, teleportStep, waitCounter
    
+   if (!IsGTAActive())
+       return
+   
    if (!teleportRunning) {
        ; 텔레포트 시작
-       WinActivate("Grand Theft Auto V")
        teleportRunning := true
        teleportPaused := false
        teleportStep := 1
@@ -94,7 +108,6 @@ F6:: {
    }
    else {
        ; 재개 (처음부터)
-       WinActivate("Grand Theft Auto V")
        teleportPaused := false
        teleportStep := 1
        waitCounter := 0
@@ -106,11 +119,13 @@ F6:: {
 F4:: {
    global mocaRunning, keyPressed
    
+   if (!IsGTAActive())
+       return
+   
    mocaRunning := !mocaRunning
    keyPressed := "F4"
    
    if (mocaRunning) {
-       WinActivate("Grand Theft Auto V")
        MocaTeleport()
    }
 }
@@ -118,11 +133,13 @@ F4:: {
 F5:: {
    global mocaRunning, keyPressed
    
+   if (!IsGTAActive())
+       return
+   
    mocaRunning := !mocaRunning
    keyPressed := "F5"
    
    if (mocaRunning) {
-       WinActivate("Grand Theft Auto V")
        MocaTeleport()
    }
 }
@@ -130,7 +147,9 @@ F5:: {
 ; === 자동 클릭 ===
 F7:: {
    global clickRunning, CLICK_DELAY
-   WinActivate("Grand Theft Auto V")
+   
+   if (!IsGTAActive())
+       return
    
    if (!clickRunning) {
        clickRunning := true
@@ -179,7 +198,7 @@ F12:: {
 TeleportScript() {
    global teleportRunning, teleportPaused, teleportStep, waitCounter
    
-   if (!teleportRunning) {
+   if (!teleportRunning || !IsGTAActive()) {
        SetTimer(TeleportScript, 0)
        ToolTip("")
        return
@@ -233,7 +252,7 @@ TeleportScript() {
 MocaTeleport() {
    global mocaRunning, keyPressed
    
-   if (!mocaRunning)
+   if (!mocaRunning || !IsGTAActive())
        return
    
    ; 모사 해체
@@ -268,7 +287,9 @@ MocaTeleport() {
 }
 
 DoClick() {
-   ClickMouse("Left", 1)
+   if (IsGTAActive()) {
+       ClickMouse("Left", 1)
+   }
 }
 
 HideToolTip() {
