@@ -1,7 +1,7 @@
 ; === 이동 관련 변수 ===
 global wRunning := false
 global shiftWRunning := false
-global wNumpadRunning := false
+global wCtrlRunning := false  ; 변수명 변경
 
 ToggleWalk() {
     global wRunning
@@ -50,30 +50,32 @@ StopRun() {
     }
 }
 
-ToggleWalkWithNumpad() {
-    global wNumpadRunning
+ToggleWalkWithCtrl() {
+    global wCtrlRunning, config
     
     if (!IsGTAActive())
         return
     
-    if (!wNumpadRunning) {
-        wNumpadRunning := true
+    ctrlInterval := config["Settings"]["CtrlInterval"]  ; 설정값 가져오기
+    
+    if (!wCtrlRunning) {
+        wCtrlRunning := true
         Send("{w down}")
-        SetTimer(PressNumpad5, 4000)
-        ShowTooltip("W키 + Numpad5 시작")
+        SetTimer(PressLCtrl, ctrlInterval)  ; 설정값 사용
+        ShowTooltip("W키 + LCtrl 시작 (간격: " ctrlInterval "ms)")
     } else {
-        wNumpadRunning := false
+        wCtrlRunning := false
         Send("{w up}")
-        SetTimer(PressNumpad5, 0)
-        ShowTooltip("W키 + Numpad5 중지")
+        SetTimer(PressLCtrl, 0)
+        ShowTooltip("W키 + LCtrl 중지")
     }
 }
 
-PressNumpad5() {
-    global wNumpadRunning
+PressLCtrl() {  ; 함수명 변경
+    global wCtrlRunning
     
-    if (!wNumpadRunning || !IsGTAActive())
+    if (!wCtrlRunning || !IsGTAActive())
         return
     
-    PressKey("Numpad5")
+    PressKey("LCtrl")  ; Numpad5 → LCtrl로 변경
 }

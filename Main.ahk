@@ -25,14 +25,14 @@ config["Hotkeys"]["TeleportAltF4"] := IniRead("Config.ini", "Hotkeys", "Teleport
 config["Hotkeys"]["AutoClick"] := IniRead("Config.ini", "Hotkeys", "AutoClick", "F7")
 config["Hotkeys"]["Walk"] := IniRead("Config.ini", "Hotkeys", "Walk", "F8")
 config["Hotkeys"]["Run"] := IniRead("Config.ini", "Hotkeys", "Run", "F9")
-config["Hotkeys"]["WalkNumpad"] := IniRead("Config.ini", "Hotkeys", "WalkNumpad", "F10")
+config["Hotkeys"]["WalkCtrl"] := IniRead("Config.ini", "Hotkeys", "WalkCtrl", "F10")
 config["Hotkeys"]["Timer48"] := IniRead("Config.ini", "Hotkeys", "Timer48", "F11")
 config["Hotkeys"]["Exit"] := IniRead("Config.ini", "Hotkeys", "Exit", "F12")
 
 ; Settings 섹션
 config["Settings"]["ClickDelay"] := IniRead("Config.ini", "Settings", "ClickDelay", 1)
 config["Settings"]["Timer48Minutes"] := IniRead("Config.ini", "Settings", "Timer48Minutes", 48)
-config["Settings"]["NumpadInterval"] := IniRead("Config.ini", "Settings", "NumpadInterval", 4000)
+config["Settings"]["CtrlInterval"] := IniRead("Config.ini", "Settings", "CtrlInterval", 4000)
 
 ; === 기능 모듈 로드 ===
 #Include Features\Teleport.ahk
@@ -55,7 +55,7 @@ SetupHotkeys() {
     if (config["Features"]["Movement"]) {
         Hotkey(config["Hotkeys"]["Walk"], (*) => ToggleWalk())
         Hotkey(config["Hotkeys"]["Run"], (*) => ToggleRun())
-        Hotkey(config["Hotkeys"]["WalkNumpad"], (*) => ToggleWalkWithNumpad())
+        Hotkey(config["Hotkeys"]["WalkCtrl"], (*) => ToggleWalkWithCtrl())  ; 변경된 함수명
     }
     
     if (config["Features"]["AutoClick"]) {
