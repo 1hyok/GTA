@@ -30,6 +30,10 @@ ToggleRun() {
         shiftWRunning := true
         Send("{Shift down}{w down}")
         ShowTooltip("뛰기 시작")
+    } else {
+        shiftWRunning := false
+        Send("{w up}{Shift up}")
+        ShowTooltip("뛰기 중지")
     }
 }
 
@@ -55,21 +59,21 @@ ToggleWalkWithNumpad() {
     if (!wNumpadRunning) {
         wNumpadRunning := true
         Send("{w down}")
-        SetTimer(PressNumpad2, 4000)
-        ShowTooltip("W키 + Numpad2 시작")
+        SetTimer(PressNumpad5, 4000)
+        ShowTooltip("W키 + Numpad5 시작")
     } else {
         wNumpadRunning := false
         Send("{w up}")
-        SetTimer(PressNumpad2, 0)
-        ShowTooltip("W키 + Numpad2 중지")
+        SetTimer(PressNumpad5, 0)
+        ShowTooltip("W키 + Numpad5 중지")
     }
 }
 
-PressNumpad2() {
+PressNumpad5() {
     global wNumpadRunning
     
     if (!wNumpadRunning || !IsGTAActive())
         return
     
-    PressKey("Numpad2")
+    PressKey("Numpad5")
 }
