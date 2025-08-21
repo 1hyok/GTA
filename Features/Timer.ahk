@@ -1,27 +1,41 @@
 ; === 타이머 변수 ===
 global timer48Running := false
 global timer48StartTime := 0
+global timer48AlertActive := false
 
 Toggle48MinTimer() {
-    global timer48Running, timer48StartTime, config
+    global timer48Running, timer48StartTime, timer48AlertActive, config
     
     timerMinutes := config["Settings"]["Timer48Minutes"]
+    
+    ; 알림 활성 상태면 알림만 끄기
+    if (timer48AlertActive) {
+        timer48AlertActive := false
+        SetTimer(ShowTimerAlert, 0)
+        ToolTip("")
+        ShowTooltip("알림 중지")
+        return
+    }
     
     if (!timer48Running) {
         timer48Running := true
         timer48StartTime := A_TickCount
+        timer48AlertActive := false
         ShowTooltip(timerMinutes "분 타이머 시작")
         SetTimer(Check48Minutes, 60000)  ; 1분마다 체크
     } else {
         timer48Running := false
+        timer48AlertActive := false
         SetTimer(Check48Minutes, 0)
+        SetTimer(ShowTimerAlert, 0)
         elapsed := Round((A_TickCount - timer48StartTime) / 60000, 1)
         ShowTooltip("타이머 중지 (경과: " elapsed "분)", 2000)
+        ToolTip("")
     }
 }
 
 Check48Minutes() {
-    global timer48Running, timer48StartTime, config
+    global timer48Running, timer48StartTime, timer48AlertActive, config
     
     if (!timer48Running)
         return
@@ -31,18 +45,37 @@ Check48Minutes() {
     
     if (elapsed >= timerMinutes) {
         timer48Running := false
+        timer48AlertActive := true
         SetTimer(Check48Minutes, 0)
         
-        ; 알림
-        MsgBox(timerMinutes "분이 지났습니다!", "타이머 알림", "OK Icon!")
+        ; 설정된 키 가져오기
+        timerKey := config["Hotkeys"]["Timer48"]
         
-        ; 사운드
-        SoundBeep(1000, 500)
-        Sleep(100)
-        SoundBeep(1000, 500)
+        ; 트레이 알림
+        TrayTip(timerMinutes "분 타이머 완료!", timerKey " 눌러 확인하세요", "Iconi")
         
-        ; 툴팁
-        ToolTip("⏰ " timerMinutes "분 완료! ⏰", A_ScreenWidth//2 - 50, A_ScreenHeight//2)
-        SetTimer(HideToolTip, 5000)
+        ; 반복 알림 시작
+        SetTimer(ShowTimerAlert, 1000)
+    }
+}
+
+ShowTimerAlert() {
+    global timer48AlertActive, config
+    
+    if (!timer48AlertActive) {
+        SetTimer(ShowTimerAlert, 0)
+        ToolTip("")
+        return
+    }
+    
+    static toggle := false
+    toggle := !toggle
+    
+    if (toggle) {
+        timerKey := config["Hotkeys"]["Timer48"]
+        ToolTip("⏰⏰⏰ " config["Settings"]["Timer48Minutes"] "분 완료! " timerKey "로 확인 ⏰⏰⏰", 10, 10)
+        SoundBeep(1500, 200)
+    } else {
+        ToolTip("")
     }
 }
