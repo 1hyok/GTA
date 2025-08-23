@@ -41,6 +41,7 @@ config["Settings"]["ClickHoldTime"] := IniRead("Config.ini", "Settings", "ClickH
 config["Settings"]["KeyHoldTime"] := IniRead("Config.ini", "Settings", "KeyHoldTime")
 config["Settings"]["PhoneOpenDelay"] := IniRead("Config.ini", "Settings", "PhoneOpenDelay")
 config["Settings"]["PhoneNavigationDelay"] := IniRead("Config.ini", "Settings", "PhoneNavigationDelay")
+config["Settings"]["InteractionMenuOpenDelay"] := IniRead("Config.ini", "Settings", "InteractionMenuOpenDelay")  ; 추가
 config["Settings"]["InteractionMenuDelay"] := IniRead("Config.ini", "Settings", "InteractionMenuDelay")
 config["Settings"]["PhoneToMenuDelay"] := IniRead("Config.ini", "Settings", "PhoneToMenuDelay")
 config["Settings"]["TeleportWaitTime"] := IniRead("Config.ini", "Settings", "TeleportWaitTime")

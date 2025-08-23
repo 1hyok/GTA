@@ -1,6 +1,6 @@
 ; === 텔레포트 관련 변수 ===
 global mocaRunning := false
-global keyPressed := ""  ; 변수 선언 추가
+global keyPressed := ""
 
 ; 함수명 수정 및 매개변수 추가
 TeleportMoca(key) {
@@ -10,15 +10,16 @@ TeleportMoca(key) {
         return
     
     mocaRunning := true
-    keyPressed := key  ; 매개변수 값 할당
+    keyPressed := key
     
     phoneOpenDelay := config["Settings"]["PhoneOpenDelay"]
     phoneNavDelay := config["Settings"]["PhoneNavigationDelay"]
-    menuDelay := config["Settings"]["InteractionMenuDelay"]
+    interactionMenuOpenDelay := config["Settings"]["InteractionMenuOpenDelay"]  ; 상호작용 메뉴 열기 딜레이
+    menuDelay := config["Settings"]["InteractionMenuDelay"]  ; 상호작용 메뉴 내 탐색 딜레이
     phoneToMenuDelay := config["Settings"]["PhoneToMenuDelay"]
     
-    PressKey("m") ;상호 작용 메뉴 열기
-    Sleep(menuDelay)
+    PressKey("m") ; 상호작용 메뉴 열기
+    Sleep(interactionMenuOpenDelay)  ; 상호작용 메뉴가 열릴 때까지 대기
     PressKey("Enter") ; 모터사이클 클럽 두목 선택
     Sleep(menuDelay)
     PressKey("Up") ; 해체 포커스
@@ -26,7 +27,7 @@ TeleportMoca(key) {
     PressKey("Enter") ; 해체 선택
     Sleep(menuDelay)
 
-    PressKey("Up") ;휴대폰 열기
+    PressKey("Up") ; 휴대폰 열기
     Sleep(phoneOpenDelay)
     PressKey("Right", 2, phoneNavDelay) ; 빠른 참가로 포커스
     Sleep(phoneNavDelay)
@@ -39,9 +40,9 @@ TeleportMoca(key) {
     
     Sleep(phoneToMenuDelay)
     PressKey("m")
-    Sleep(menuDelay)
+    Sleep(interactionMenuOpenDelay)  ; 상호작용 메뉴가 열릴 때까지 대기
     
-    ;보스 등록 포커스
+    ; 보스 등록 포커스
     if (keyPressed = "F4") {
         PressKey("Down", 1, menuDelay)
         Sleep(menuDelay)
