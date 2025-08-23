@@ -7,13 +7,13 @@ ToggleAutoClick() {
     if (!IsGTAActive())
         return
     
-    clickDelay := config["Settings"]["ClickDelay"]
+    clickInterval := config["Settings"]["ClickInterval"]
     
     if (!clickRunning) {
         clickRunning := true
-        ShowTooltip("자동 클릭 시작 (간격: " clickDelay "ms)")
+        ShowTooltip("자동 클릭 시작 (간격: " clickInterval "ms)")
         DoClick()
-        SetTimer(DoClick, clickDelay)
+        SetTimer(DoClick, clickInterval)
     } else {
         clickRunning := false
         ShowTooltip("자동 클릭 중지")

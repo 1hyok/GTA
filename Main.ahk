@@ -12,27 +12,36 @@ config["Features"] := Map()
 config["Hotkeys"] := Map()
 config["Settings"] := Map()
 
+; Config.ini 파일 존재 확인
+if (!FileExist("Config.ini")) {
+    MsgBox("Config.ini 파일을 찾을 수 없습니다!")
+    ExitApp()
+}
+
 ; Features 섹션
-config["Features"]["Teleport"] := IniRead("Config.ini", "Features", "Teleport", 1)
-config["Features"]["Movement"] := IniRead("Config.ini", "Features", "Movement", 1)
-config["Features"]["AutoClick"] := IniRead("Config.ini", "Features", "AutoClick", 1)
-config["Features"]["Timer"] := IniRead("Config.ini", "Features", "Timer", 1)
+config["Features"]["Teleport"] := IniRead("Config.ini", "Features", "Teleport")
+config["Features"]["Movement"] := IniRead("Config.ini", "Features", "Movement")
+config["Features"]["AutoClick"] := IniRead("Config.ini", "Features", "AutoClick")
+config["Features"]["Timer"] := IniRead("Config.ini", "Features", "Timer")
 
 ; Hotkeys 섹션
-config["Hotkeys"]["TeleportMoca1"] := IniRead("Config.ini", "Hotkeys", "TeleportMoca1", "F4")
-config["Hotkeys"]["TeleportMoca2"] := IniRead("Config.ini", "Hotkeys", "TeleportMoca2", "F5")
-config["Hotkeys"]["TeleportAltF4"] := IniRead("Config.ini", "Hotkeys", "TeleportAltF4", "F6")
-config["Hotkeys"]["AutoClick"] := IniRead("Config.ini", "Hotkeys", "AutoClick", "F7")
-config["Hotkeys"]["Walk"] := IniRead("Config.ini", "Hotkeys", "Walk", "F8")
-config["Hotkeys"]["Run"] := IniRead("Config.ini", "Hotkeys", "Run", "F9")
-config["Hotkeys"]["WalkCtrl"] := IniRead("Config.ini", "Hotkeys", "WalkCtrl", "F10")
-config["Hotkeys"]["Timer48"] := IniRead("Config.ini", "Hotkeys", "Timer48", "F11")
-config["Hotkeys"]["Exit"] := IniRead("Config.ini", "Hotkeys", "Exit", "F12")
+config["Hotkeys"]["TeleportMoca1"] := IniRead("Config.ini", "Hotkeys", "TeleportMoca1")
+config["Hotkeys"]["TeleportMoca2"] := IniRead("Config.ini", "Hotkeys", "TeleportMoca2")
+config["Hotkeys"]["TeleportAltF4"] := IniRead("Config.ini", "Hotkeys", "TeleportAltF4")
+config["Hotkeys"]["AutoClick"] := IniRead("Config.ini", "Hotkeys", "AutoClick")
+config["Hotkeys"]["Walk"] := IniRead("Config.ini", "Hotkeys", "Walk")
+config["Hotkeys"]["Run"] := IniRead("Config.ini", "Hotkeys", "Run")
+config["Hotkeys"]["WalkCtrl"] := IniRead("Config.ini", "Hotkeys", "WalkCtrl")
+config["Hotkeys"]["Timer48"] := IniRead("Config.ini", "Hotkeys", "Timer48")
+config["Hotkeys"]["Exit"] := IniRead("Config.ini", "Hotkeys", "Exit")
 
 ; Settings 섹션
-config["Settings"]["ClickDelay"] := IniRead("Config.ini", "Settings", "ClickDelay", 1)
-config["Settings"]["Timer48Minutes"] := IniRead("Config.ini", "Settings", "Timer48Minutes", 48)
-config["Settings"]["CtrlInterval"] := IniRead("Config.ini", "Settings", "CtrlInterval", 4000)
+config["Settings"]["ClickInterval"] := IniRead("Config.ini", "Settings", "ClickInterval")
+config["Settings"]["ClickHoldTime"] := IniRead("Config.ini", "Settings", "ClickHoldTime")
+config["Settings"]["KeyHoldTime"] := IniRead("Config.ini", "Settings", "KeyHoldTime")
+config["Settings"]["KeyInterval"] := IniRead("Config.ini", "Settings", "KeyInterval")
+config["Settings"]["Timer48Minutes"] := IniRead("Config.ini", "Settings", "Timer48Minutes")
+config["Settings"]["CtrlInterval"] := IniRead("Config.ini", "Settings", "CtrlInterval")
 
 ; === 기능 모듈 로드 ===
 #Include Features\Teleport.ahk
@@ -55,7 +64,7 @@ SetupHotkeys() {
     if (config["Features"]["Movement"]) {
         Hotkey(config["Hotkeys"]["Walk"], (*) => ToggleWalk())
         Hotkey(config["Hotkeys"]["Run"], (*) => ToggleRun())
-        Hotkey(config["Hotkeys"]["WalkCtrl"], (*) => ToggleWalkWithCtrl())  ; 변경된 함수명
+        Hotkey(config["Hotkeys"]["WalkCtrl"], (*) => ToggleWalkWithCtrl())
     }
     
     if (config["Features"]["AutoClick"]) {
