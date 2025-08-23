@@ -62,8 +62,9 @@ SetupHotkeys() {
     global config
     
     if (config["Features"]["Teleport"]) {
-        Hotkey(config["Hotkeys"]["TeleportMoca1"], (*) => TeleportMoca("F4"))
-        Hotkey(config["Hotkeys"]["TeleportMoca2"], (*) => TeleportMoca("F5"))
+        ; 각 단축키를 해당 키 값으로 전달
+        Hotkey(config["Hotkeys"]["TeleportMoca1"], (*) => TeleportMoca(config["Hotkeys"]["TeleportMoca1"]))
+        Hotkey(config["Hotkeys"]["TeleportMoca2"], (*) => TeleportMoca(config["Hotkeys"]["TeleportMoca2"]))
         Hotkey(config["Hotkeys"]["TeleportAltF4"], (*) => TeleportAltF4())
     }
     
