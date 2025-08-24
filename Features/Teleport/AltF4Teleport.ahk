@@ -28,7 +28,6 @@ ExecuteAltF4StartSequence(keyHoldTime) {
     
     ShowAltF4Message("⏎ Enter 키 입력...", 300)
     PressKey("Enter")
-    Sleep(100)
     
     ShowAltF4Message("🔄 Alt+F4 조합키 실행...", 500)
     Send("{Alt down}{F4 down}")
