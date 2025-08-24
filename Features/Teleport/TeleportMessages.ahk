@@ -1,5 +1,5 @@
-; 모카 텔레포트 메시지 표시
-ShowMocaMessage(text, duration := 1000) {
+; MC 텔레포트 메시지 표시
+ShowMCMessage(text, duration := 1000) {
     ToolTip(text, 0, 0)
     SetTimer(() => ToolTip(), duration)
 }

@@ -11,7 +11,7 @@
 ; === 기능 모듈 로드 ===
 #Include Features\Teleport\TeleportBase.ahk
 #Include Features\Teleport\TeleportMessages.ahk
-#Include Features\Teleport\MocaTeleport.ahk
+#Include Features\Teleport\MCTeleport.ahk  ; 파일명 변경
 #Include Features\Teleport\AltF4Teleport.ahk
 #Include Features\Movement.ahk
 #Include Features\AutoClick.ahk
