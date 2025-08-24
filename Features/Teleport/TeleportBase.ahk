@@ -10,13 +10,11 @@ IsTeleportRunning() {
     return mocaRunning || altF4Running
 }
 
-; 메인 텔레포트 함수들 (다른 파일에서 호출)
+; 메인 텔레포트 함수들
 TeleportMoca(key) {
-    #Include MocaTeleport.ahk
     return ExecuteMocaTeleport(key)
 }
 
 TeleportAltF4() {
-    #Include AltF4Teleport.ahk
     return ExecuteAltF4Teleport()
 }
