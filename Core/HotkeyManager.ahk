@@ -5,8 +5,8 @@ SetupHotkeys() {
     global config
     
     if (config["Features"]["Teleport"]) {
-        Hotkey(config["Hotkeys"]["TeleportMoca1"], (*) => TeleportMoca(config["Hotkeys"]["TeleportMoca1"]))
-        Hotkey(config["Hotkeys"]["TeleportMoca2"], (*) => TeleportMoca(config["Hotkeys"]["TeleportMoca2"]))
+        Hotkey(config["Hotkeys"]["TeleportMC1"], (*) => TeleportMC(config["Hotkeys"]["TeleportMC1"]))
+        Hotkey(config["Hotkeys"]["TeleportMC2"], (*) => TeleportMC(config["Hotkeys"]["TeleportMC2"]))
         Hotkey(config["Hotkeys"]["TeleportAltF4"], (*) => TeleportAltF4())
     }
     
