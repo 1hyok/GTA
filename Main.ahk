@@ -41,8 +41,9 @@ config["Settings"]["ClickHoldTime"] := IniRead("Config.ini", "Settings", "ClickH
 config["Settings"]["KeyHoldTime"] := IniRead("Config.ini", "Settings", "KeyHoldTime")
 config["Settings"]["PhoneOpenDelay"] := IniRead("Config.ini", "Settings", "PhoneOpenDelay")
 config["Settings"]["PhoneNavigationDelay"] := IniRead("Config.ini", "Settings", "PhoneNavigationDelay")
-config["Settings"]["InteractionMenuOpenDelay"] := IniRead("Config.ini", "Settings", "InteractionMenuOpenDelay")  ; 추가
+config["Settings"]["InteractionMenuOpenDelay"] := IniRead("Config.ini", "Settings", "InteractionMenuOpenDelay")
 config["Settings"]["InteractionMenuDelay"] := IniRead("Config.ini", "Settings", "InteractionMenuDelay")
+config["Settings"]["DisbandToPhoneDelay"] := IniRead("Config.ini", "Settings", "DisbandToPhoneDelay")  ; 새로 추가
 config["Settings"]["PhoneToMenuDelay"] := IniRead("Config.ini", "Settings", "PhoneToMenuDelay")
 config["Settings"]["TeleportWaitTime"] := IniRead("Config.ini", "Settings", "TeleportWaitTime")
 config["Settings"]["TeleportTimerInterval"] := IniRead("Config.ini", "Settings", "TeleportTimerInterval")
@@ -50,7 +51,8 @@ config["Settings"]["Timer48Minutes"] := IniRead("Config.ini", "Settings", "Timer
 config["Settings"]["CtrlInterval"] := IniRead("Config.ini", "Settings", "CtrlInterval")
 
 ; === 기능 모듈 로드 ===
-#Include Features\Teleport.ahk
+#Include Features\Teleport\TeleportBase.ahk
+#Include Features\Teleport\TeleportMessages.ahk
 #Include Features\Movement.ahk
 #Include Features\AutoClick.ahk
 #Include Features\Timer.ahk
