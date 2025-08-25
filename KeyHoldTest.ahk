@@ -1,28 +1,43 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 
-; Config.ini에서 키홀드타임 읽기
-keyHoldTime := IniRead("Config.ini", "Settings", "KeyHoldTime", 50)
+; === 코어 모듈 로드 ===
+#Include Core\PressKey.ahk
+#Include Core\Common.ahk
+#Include Core\ConfigLoader.ahk
 
-; F10 누르면 Up키 한 번 누르기
-F10::{
-    if (!WinActive("Grand Theft Auto V")) {
-        ToolTip("GTA V가 활성화되지 않음")
-        SetTimer(() => ToolTip(), 1000)
-        return
-    }
-    
-    Send("{Up down}")
-    Sleep(keyHoldTime)
-    Send("{Up up}")
-    
-    ToolTip("Up키 누름 (" keyHoldTime "ms)")
-    SetTimer(() => ToolTip(), 1000)
+; === 초기화 ===
+LoadConfig()
+
+; === 테스트용 단축키 ===
+Hotkey("F10", (*) => TestMCMenuOpen())
+
+TestMCMenuOpen() {
+   global config
+   
+   if (!IsGTAActive())
+       return
+   
+   ; 설정값 로드
+   menuOpenDelay := config["Settings"]["MenuOpenDelay"]
+   menuControlDelay := config["Settings"]["MenuControlDelay"]
+   
+   ShowTooltip("🧪 MC 메뉴 테스트 시작", 1000)
+   
+   ShowTooltip("📋 상호작용 메뉴 열기...", 800)
+   PressKey("m")
+;    Sleep(menuOpenDelay)
+
+   
+   ShowTooltip("🏍️ 모터사이클 클럽 두목 선택 시도...", 1000)
+   PressKey("Enter")
+   Sleep(menuControlDelay)
+   
+   ShowTooltip("✅ 테스트 완료 - 메뉴가 열렸는지 확인하세요", 3000)
 }
 
-; 종료
-Esc::ExitApp()
+; === 시작 메시지 ===
+ShowTooltip("🧪 MC 메뉴 테스트 준비완료`nF10: 테스트 실행 | F12: 종료", 3000)
 
-; 시작 메시지
-ToolTip("F10: Up키 누르기 | ESC: 종료`nKeyHoldTime: " keyHoldTime "ms")
-SetTimer(() => ToolTip(), 3000)
+; === 종료 단축키 ===
+Hotkey("F12", (*) => ExitApp())
