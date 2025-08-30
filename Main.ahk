@@ -16,6 +16,7 @@
 #Include Features\Movement.ahk
 #Include Features\AutoClick.ahk
 #Include Features\Timer.ahk
+#Include Features\Hacks\CasinoFingerprint.ahk
 
 ; === 초기화 ===
 LoadConfig()
