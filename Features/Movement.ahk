@@ -1,7 +1,7 @@
 ; === 이동 관련 변수 ===
 global wRunning := false
 global shiftWRunning := false
-global wCtrlRunning := false  ; 변수명 변경
+global vellumDrivingRunning := false  ; 변수명도 변경
 
 ToggleWalk() {
     global wRunning
@@ -50,32 +50,32 @@ StopRun() {
     }
 }
 
-ToggleWalkWithCtrl() {
-    global wCtrlRunning, config
+ToggleVellumDriving() {  ; 함수명 변경
+    global vellumDrivingRunning, config  ; 변수명도 변경
     
     if (!IsGTAActive())
         return
     
-    ctrlInterval := config["Settings"]["CtrlInterval"]  ; 설정값 가져오기
+    vellumCtrlInterval := config["Settings"]["VellumDrivingCtrlInterval"]
     
-    if (!wCtrlRunning) {
-        wCtrlRunning := true
+    if (!vellumDrivingRunning) {
+        vellumDrivingRunning := true
         Send("{w down}")
-        SetTimer(PressLCtrl, ctrlInterval)  ; 설정값 사용
-        ShowTooltip("W키 + LCtrl 시작 (간격: " ctrlInterval "ms)")
+        SetTimer(PressLCtrlForVellum, vellumCtrlInterval)  ; 함수명도 변경
+        ShowTooltip("🛩️ 벨럼 운전 모드 시작 (LCtrl 간격: " vellumCtrlInterval "ms)")
     } else {
-        wCtrlRunning := false
+        vellumDrivingRunning := false
         Send("{w up}")
-        SetTimer(PressLCtrl, 0)
-        ShowTooltip("W키 + LCtrl 중지")
+        SetTimer(PressLCtrlForVellum, 0)
+        ShowTooltip("🛩️ 벨럼 운전 모드 중지")
     }
 }
 
-PressLCtrl() {  ; 함수명 변경
-    global wCtrlRunning
+PressLCtrlForVellum() {  ; 함수명 변경
+    global vellumDrivingRunning
     
-    if (!wCtrlRunning || !IsGTAActive())
+    if (!vellumDrivingRunning || !IsGTAActive())
         return
     
-    PressKey("LCtrl")  ; Numpad5 → LCtrl로 변경
+    PressKey("LCtrl")
 }

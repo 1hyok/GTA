@@ -18,6 +18,7 @@ LoadConfig() {
     config["Features"]["Movement"] := IniRead("Config.ini", "Features", "Movement")
     config["Features"]["AutoClick"] := IniRead("Config.ini", "Features", "AutoClick")
     config["Features"]["Timer"] := IniRead("Config.ini", "Features", "Timer")
+    config["Features"]["CasinoFingerprint"] := IniRead("Config.ini", "Features", "CasinoFingerprint")
     
     ; Hotkeys 섹션
     config["Hotkeys"]["TeleportMC1"] := IniRead("Config.ini", "Hotkeys", "TeleportMC1")
@@ -27,7 +28,8 @@ LoadConfig() {
     config["Hotkeys"]["Walk"] := IniRead("Config.ini", "Hotkeys", "Walk")
     config["Hotkeys"]["Run"] := IniRead("Config.ini", "Hotkeys", "Run")
     config["Hotkeys"]["WalkCtrl"] := IniRead("Config.ini", "Hotkeys", "WalkCtrl")
-    config["Hotkeys"]["Timer48"] := IniRead("Config.ini", "Hotkeys", "Timer48")
+    config["Hotkeys"]["CayoPericoTimer"] := IniRead("Config.ini", "Hotkeys", "CayoPericoTimer")
+    config["Hotkeys"]["CasinoFingerprint"] := IniRead("Config.ini", "Hotkeys", "CasinoFingerprint")
     config["Hotkeys"]["Exit"] := IniRead("Config.ini", "Hotkeys", "Exit")
     config["Hotkeys"]["PauseToggle"] := IniRead("Config.ini", "Hotkeys", "PauseToggle")
     
@@ -43,11 +45,10 @@ LoadConfig() {
     config["Settings"]["PhoneCloseDelay"] := IniRead("Config.ini", "Settings", "PhoneCloseDelay")
     config["Settings"]["TeleportWaitTime"] := IniRead("Config.ini", "Settings", "TeleportWaitTime")
     config["Settings"]["TeleportTimerInterval"] := IniRead("Config.ini", "Settings", "TeleportTimerInterval")
-    config["Settings"]["Timer48Minutes"] := IniRead("Config.ini", "Settings", "Timer48Minutes")
-    config["Settings"]["CtrlInterval"] := IniRead("Config.ini", "Settings", "CtrlInterval")
+    config["Settings"]["CayoCooldownMinutes"] := IniRead("Config.ini", "Settings", "CayoCooldownMinutes")
+config["Settings"]["VellumDrivingCtrlInterval"] := IniRead("Config.ini", "Settings", "VellumDrivingCtrlInterval")
     
     config["Settings"]["TeleportClickToEnterDelay"] := IniRead("Config.ini", "Settings", "TeleportClickToEnterDelay")
-    ; 하드코딩으로 바뀐 설정들 제거
     config["Settings"]["TeleportEnterDuration"] := IniRead("Config.ini", "Settings", "TeleportEnterDuration")
     config["Settings"]["TeleportEnterInterval"] := IniRead("Config.ini", "Settings", "TeleportEnterInterval")
 }
