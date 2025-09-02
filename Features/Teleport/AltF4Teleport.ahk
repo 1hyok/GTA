@@ -13,6 +13,7 @@ ExecuteAltF4Teleport() {
    mouseX := 1600  ; 하드코딩된 X 좌표
    mouseY := 250   ; 첫 번째 Y 좌표
    mouseY2 := 350  ; 두 번째 Y 좌표
+   clickToEnterDelay := config["Settings"]["TeleportClickToEnterDelay"]  ; 클릭 후 엔터 연타 전 딜레이
    enterDuration := config["Settings"]["TeleportEnterDuration"]  ; 엔터 연타 지속시간 (ms)
    enterInterval := config["Settings"]["TeleportEnterInterval"]  ; 엔터 간격 (ms)
    
@@ -34,9 +35,12 @@ ExecuteAltF4Teleport() {
    
    ShowAltF4Message("🖱️ 두 번째 위치 클릭...", 300)
    Click(mouseX, mouseY2)
-   Sleep(100)
    
-   ; 4. Enter 연타
+   ; 4. 클릭 후 대기
+   ShowAltF4Message("⏳ 로딩 대기 중...", clickToEnterDelay)
+   Sleep(clickToEnterDelay)
+   
+   ; 5. Enter 연타
    ShowAltF4Message("🔁 Enter 연타 시작...", 1000)
    startTime := A_TickCount
    while ((A_TickCount - startTime) < enterDuration) {
