@@ -10,8 +10,14 @@ ShowTooltip(text, duration := 1000) {
 
 ; 모든 기능 종료
 ExitAll() {
-    ; 모든 타이머 중지 (함수로 존재하는 것만)
+    ; 모든 타이머 중지
     SetTimer(() => ToolTip(), 0)
+    SetTimer(CheckCayoCooldown, 0)
+    SetTimer(ShowCayoTimerAlert, 0)
+    SetTimer(ShowCayoProgress, 0)
+    SetTimer(DoClick, 0)
+    SetTimer(PressLCtrlForVellum, 0)
+    SetTimer(ShowAltF4Progress, 0)
     
     ; 키 해제
     try {

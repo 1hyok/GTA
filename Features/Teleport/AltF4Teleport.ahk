@@ -26,7 +26,7 @@ ExecuteAltF4Teleport() {
     ; 2. Home 키 입력
     ShowAltF4Message("🏠 Home 키 입력...", 300)
     PressKey("Home")
-    Sleep(6000)
+    Sleep(6500)
     
     ; 3. 두 좌표 모두 클릭
     ShowAltF4Message("🖱️ 첫 번째 위치 클릭...", 300)

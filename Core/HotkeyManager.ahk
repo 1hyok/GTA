@@ -13,7 +13,7 @@ SetupHotkeys() {
     if (config["Features"]["Movement"]) {
         Hotkey(config["Hotkeys"]["Walk"], (*) => ToggleWalk())
         Hotkey(config["Hotkeys"]["Run"], (*) => ToggleRun())
-        Hotkey(config["Hotkeys"]["WalkCtrl"], (*) => ToggleWalkWithCtrl())
+        Hotkey(config["Hotkeys"]["WalkCtrl"], (*) => ToggleVellumDriving())  ; 함수명 변경
     }
     
     if (config["Features"]["AutoClick"]) {
@@ -21,7 +21,11 @@ SetupHotkeys() {
     }
     
     if (config["Features"]["Timer"]) {
-        Hotkey(config["Hotkeys"]["Timer48"], (*) => Toggle48MinTimer())
+        Hotkey(config["Hotkeys"]["CayoPericoTimer"], (*) => ToggleCayoPericoTimer())
+    }
+    
+    if (config["Features"]["CasinoFingerprint"]) {
+        Hotkey(config["Hotkeys"]["CasinoFingerprint"], (*) => ExecuteCasinoFingerprint())
     }
     
     ; 일시정지/재개 단축키
