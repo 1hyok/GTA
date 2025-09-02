@@ -45,4 +45,8 @@ LoadConfig() {
     config["Settings"]["TeleportTimerInterval"] := IniRead("Config.ini", "Settings", "TeleportTimerInterval")
     config["Settings"]["Timer48Minutes"] := IniRead("Config.ini", "Settings", "Timer48Minutes")
     config["Settings"]["CtrlInterval"] := IniRead("Config.ini", "Settings", "CtrlInterval")
+    
+    ; 하드코딩으로 바뀐 설정들 제거
+    config["Settings"]["TeleportEnterDuration"] := IniRead("Config.ini", "Settings", "TeleportEnterDuration")
+    config["Settings"]["TeleportEnterInterval"] := IniRead("Config.ini", "Settings", "TeleportEnterInterval")
 }
