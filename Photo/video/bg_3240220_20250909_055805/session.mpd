@@ -8,7 +8,7 @@
 	minimumUpdatePeriod="PT500S"
 	suggestedPresentationDelay="PT3.0S"
 	availabilityStartTime="2025-09-09T05:58:05Z"
-	publishTime="2025-09-09T08:31:44Z"
+	publishTime="2025-09-09T08:32:32Z"
 	timeShiftBufferDepth="PT10M0.0S"
 	maxSegmentDuration="PT3.0S"
 	minBufferTime="PT6.0S">
