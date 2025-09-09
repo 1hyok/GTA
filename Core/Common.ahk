@@ -14,7 +14,7 @@ ExitAll() {
     SetTimer(() => ToolTip(), 0)
     SetTimer(CheckCayoCooldown, 0)
     SetTimer(ShowCayoTimerAlert, 0)
-    SetTimer(ShowCayoProgress, 0)
+    SetTimer(ShowCayoEndTime, 0)  ; 새로 추가된 타이머
     SetTimer(DoClick, 0)
     SetTimer(PressLCtrlForVellum, 0)
     SetTimer(ShowAltF4Progress, 0)

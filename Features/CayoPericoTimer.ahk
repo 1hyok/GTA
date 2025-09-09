@@ -1,10 +1,11 @@
 ; === 카요 페리코 쿨타임 타이머 변수 ===
 global cayoTimerRunning := false
 global cayoTimerStartTime := 0
+global cayoEndTime := ""
 global cayoAlertActive := false
 
 ToggleCayoPericoTimer() {
-    global cayoTimerRunning, cayoTimerStartTime, cayoAlertActive, config
+    global cayoTimerRunning, cayoTimerStartTime, cayoEndTime, cayoAlertActive, config
     
     cayoCooldownMinutes := config["Settings"]["CayoCooldownMinutes"]
     
@@ -21,15 +22,21 @@ ToggleCayoPericoTimer() {
         cayoTimerRunning := true
         cayoTimerStartTime := A_TickCount
         cayoAlertActive := false
-        ShowTooltip("🏝️ 카요 페리코 쿨타임 시작 (" cayoCooldownMinutes "분)")
-        SetTimer(CheckCayoCooldown, 1000)  ; 1초마다 체크로 변경
-        SetTimer(ShowCayoProgress, 1000)   ; 진행 상황 표시 타이머 추가
+        
+        ; 종료 시각 계산
+        endDateTime := DateAdd(A_Now, cayoCooldownMinutes, "Minutes")
+        cayoEndTime := FormatTime(endDateTime, "HH:mm")
+        
+        ShowTooltip("🏝️ 카요 페리코 쿨타임 시작`n완료 예정: " cayoEndTime, 2000)
+        SetTimer(CheckCayoCooldown, 300000)  ; 5초마다 체크
+        SetTimer(ShowCayoEndTime, 0)       ; 즉시 한 번 실행
+        SetTimer(ShowCayoEndTime, 300000)    ; 5초마다 갱신
     } else {
         cayoTimerRunning := false
         cayoAlertActive := false
         SetTimer(CheckCayoCooldown, 0)
         SetTimer(ShowCayoTimerAlert, 0)
-        SetTimer(ShowCayoProgress, 0)     ; 진행 상황 타이머도 중지
+        SetTimer(ShowCayoEndTime, 0)
         elapsed := Round((A_TickCount - cayoTimerStartTime) / 60000, 1)
         ShowTooltip("🏝️ 카요 페리코 타이머 중지 (경과: " elapsed "분)", 2000)
         ToolTip("")
@@ -49,9 +56,9 @@ CheckCayoCooldown() {
         cayoTimerRunning := false
         cayoAlertActive := true
         SetTimer(CheckCayoCooldown, 0)
-        SetTimer(ShowCayoProgress, 0)  ; 진행 상황 타이머 중지
+        SetTimer(ShowCayoEndTime, 0)
         
-        ; 설정된 키 가져오기
+        ; 설정된 키 가져기
         cayoTimerKey := config["Hotkeys"]["CayoPericoTimer"]
         
         ; 트레이 알림
@@ -62,67 +69,17 @@ CheckCayoCooldown() {
     }
 }
 
-ShowCayoProgress() {
-    global cayoTimerRunning, cayoTimerStartTime, config
+ShowCayoEndTime() {
+    global cayoTimerRunning, cayoEndTime
     
     if (!cayoTimerRunning) {
-        SetTimer(ShowCayoProgress, 0)
+        SetTimer(ShowCayoEndTime, 0)
         ToolTip("")
         return
     }
     
-    cayoCooldownMinutes := config["Settings"]["CayoCooldownMinutes"]
-    elapsed := (A_TickCount - cayoTimerStartTime) / 60000
-    remaining := cayoCooldownMinutes - elapsed
-    
-    if (remaining <= 0) {
-        SetTimer(ShowCayoProgress, 0)
-        return
-    }
-    
-    ; 진행률 계산
-    progressPercent := (elapsed / cayoCooldownMinutes) * 100
-    
-    ; 진행 바 생성
-    barLength := 20
-    filledLength := Round(progressPercent / 100 * barLength)
-    progressBar := ""
-    
-    Loop filledLength
-        progressBar .= "█"
-    Loop (barLength - filledLength)
-        progressBar .= "░"
-    
-    ; 남은 시간 형식화
-    remainingHours := Floor(remaining / 60)
-    remainingMins := Round(Mod(remaining, 60), 1)
-    
-    timeDisplay := ""
-    if (remainingHours > 0)
-        timeDisplay := remainingHours "시간 " remainingMins "분"
-    else
-        timeDisplay := remainingMins "분"
-    
-    ; 단계별 메시지
-    stageMessage := GetCayoStageMessage(remaining)
-    
-    ToolTip("🏝️ 카요 페리코 쿨타임`n" 
-          . stageMessage . "`n"
-          . progressBar . " " . Round(progressPercent, 1) . "%`n"
-          . "⏱️ 남은 시간: " . timeDisplay, 10, 50)
-}
-
-GetCayoStageMessage(remaining) {
-    if (remaining > 40)
-        return "😴 긴 휴식 시간..."
-    else if (remaining > 20)
-        return "⏳ 중간 대기 중..."
-    else if (remaining > 10)
-        return "🔥 곧 준비 완료!"
-    else if (remaining > 5)
-        return "🚀 거의 다 왔어!"
-    else
-        return "🎯 마지막 카운트다운!"
+    currentTime := FormatTime(A_Now, "HH:mm")
+    ToolTip("🏝️ 카요 페리코 쿨타임`n완료 예정: " cayoEndTime "`n현재 시각: " currentTime, 10, 50)
 }
 
 ShowCayoTimerAlert() {
