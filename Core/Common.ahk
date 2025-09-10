@@ -8,13 +8,40 @@ ShowTooltip(text, duration := 1000) {
     SetTimer(() => ToolTip(), duration)
 }
 
+; 아무 키가 눌렸는지 체크하는 함수 (특정 키 제외)
+IsAnyKeyPressed(excludeKeys := []) {
+    ; 주요 키들 체크
+    keys := ["Space", "Escape", "Tab", "Shift", "Ctrl", "Alt", 
+             "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
+             "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
+             "1", "2", "3", "4", "5", "6", "7", "8", "9", "0",
+             "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
+             "Enter", "BackSpace", "Delete", "Home", "End", "PgUp", "PgDn",
+             "Up", "Down", "Left", "Right"]
+    
+    for key in keys {
+        ; 제외할 키 목록에 있는지 체크
+        skip := false
+        for excludeKey in excludeKeys {
+            if (key = excludeKey) {
+                skip := true
+                break
+            }
+        }
+        
+        if (!skip && GetKeyState(key, "P"))
+            return true
+    }
+    return false
+}
+
 ; 모든 기능 종료
 ExitAll() {
     ; 모든 타이머 중지
     SetTimer(() => ToolTip(), 0)
     SetTimer(CheckCayoCooldown, 0)
     SetTimer(ShowCayoTimerAlert, 0)
-    SetTimer(ShowCayoEndTime, 0)  ; 새로 추가된 타이머
+    SetTimer(ShowCayoEndTime, 0)
     SetTimer(DoClick, 0)
     SetTimer(PressLCtrlForVellum, 0)
     SetTimer(ShowAltF4Progress, 0)
