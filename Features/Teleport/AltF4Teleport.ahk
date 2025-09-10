@@ -60,19 +60,3 @@ ExecuteAltF4Teleport() {
     ShowAltF4Message("⏰ 시간 초과로 중지됨!", 2000)
     altF4Running := false
 }
-
-; 아무 키가 눌렸는지 체크하는 함수 (Enter 제외)
-IsAnyKeyPressed() {
-    ; 주요 키들 체크 (Enter 제외)
-    keys := ["Space", "Escape", "Tab", "Shift", "Ctrl", "Alt", 
-             "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
-             "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
-             "1", "2", "3", "4", "5", "6", "7", "8", "9", "0",
-             "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12"]
-    
-    for key in keys {
-        if (GetKeyState(key, "P"))
-            return true
-    }
-    return false
-}
