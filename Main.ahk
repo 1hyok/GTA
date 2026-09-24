@@ -17,6 +17,7 @@
 #Include Features\AutoClick.ahk
 #Include Features\CayoPericoTimer.ahk
 #Include Features\Hacks\CasinoFingerprint.ahk
+#Include Features\ClawMachine.ahk
 
 ; === 초기화 ===
 LoadConfig()

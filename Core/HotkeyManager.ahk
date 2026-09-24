@@ -36,7 +36,14 @@ SetupHotkeys() {
         if (config["Hotkeys"]["CasinoFingerprint"] != "")
             Hotkey(config["Hotkeys"]["CasinoFingerprint"], (*) => ExecuteCasinoFingerprint())
     }
-    
+
+    if (config["Features"]["ClawMachine"]) {
+        if (config["Hotkeys"]["ClawAttempt"] != "")
+            Hotkey(config["Hotkeys"]["ClawAttempt"], (*) => ClawAttempt())
+        if (config["Hotkeys"]["ClawLoop"] != "")
+            Hotkey(config["Hotkeys"]["ClawLoop"], (*) => ToggleClawLoop())
+    }
+
     ; 일시정지/재개 단축키
     if (config["Hotkeys"]["PauseToggle"] != "")
         Hotkey(config["Hotkeys"]["PauseToggle"], (*) => TogglePause())

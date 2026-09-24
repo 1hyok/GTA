@@ -19,6 +19,7 @@ LoadConfig() {
     config["Features"]["AutoClick"] := IniRead("Config.ini", "Features", "AutoClick")
     config["Features"]["Timer"] := IniRead("Config.ini", "Features", "Timer")
     config["Features"]["CasinoFingerprint"] := IniRead("Config.ini", "Features", "CasinoFingerprint")
+    config["Features"]["ClawMachine"] := IniRead("Config.ini", "Features", "ClawMachine", 0)
     
     ; Hotkeys 섹션
     config["Hotkeys"]["TeleportMC1"] := IniRead("Config.ini", "Hotkeys", "TeleportMC1")
@@ -30,6 +31,8 @@ LoadConfig() {
     config["Hotkeys"]["WalkCtrl"] := IniRead("Config.ini", "Hotkeys", "WalkCtrl")
     config["Hotkeys"]["CayoPericoTimer"] := IniRead("Config.ini", "Hotkeys", "CayoPericoTimer")
     config["Hotkeys"]["CasinoFingerprint"] := IniRead("Config.ini", "Hotkeys", "CasinoFingerprint")
+    config["Hotkeys"]["ClawAttempt"] := IniRead("Config.ini", "Hotkeys", "ClawAttempt", "")
+    config["Hotkeys"]["ClawLoop"] := IniRead("Config.ini", "Hotkeys", "ClawLoop", "")
     config["Hotkeys"]["Exit"] := IniRead("Config.ini", "Hotkeys", "Exit")
     config["Hotkeys"]["PauseToggle"] := IniRead("Config.ini", "Hotkeys", "PauseToggle")
     
@@ -51,4 +54,9 @@ config["Settings"]["VellumDrivingCtrlInterval"] := IniRead("Config.ini", "Settin
     config["Settings"]["TeleportClickToEnterDelay"] := IniRead("Config.ini", "Settings", "TeleportClickToEnterDelay")
     config["Settings"]["TeleportEnterDuration"] := IniRead("Config.ini", "Settings", "TeleportEnterDuration")
     config["Settings"]["TeleportEnterInterval"] := IniRead("Config.ini", "Settings", "TeleportEnterInterval")
+
+    config["Settings"]["ClawKey"] := IniRead("Config.ini", "Settings", "ClawKey", "Space")
+    config["Settings"]["ClawForwardMs"] := IniRead("Config.ini", "Settings", "ClawForwardMs", 1200)
+    config["Settings"]["ClawRightMs"] := IniRead("Config.ini", "Settings", "ClawRightMs", 900)
+    config["Settings"]["ClawDropWait"] := IniRead("Config.ini", "Settings", "ClawDropWait", 12000)
 }
