@@ -33,6 +33,8 @@ LoadConfig() {
     config["Hotkeys"]["CasinoFingerprint"] := IniRead("Config.ini", "Hotkeys", "CasinoFingerprint")
     config["Hotkeys"]["ClawAttempt"] := IniRead("Config.ini", "Hotkeys", "ClawAttempt", "")
     config["Hotkeys"]["ClawLoop"] := IniRead("Config.ini", "Hotkeys", "ClawLoop", "")
+    config["Hotkeys"]["InviteOnlySession"] := IniRead("Config.ini", "Hotkeys", "InviteOnlySession", "")
+    config["Settings"]["SessionMenuDelay"] := IniRead("Config.ini", "Settings", "SessionMenuDelay", 600)
     config["Hotkeys"]["Exit"] := IniRead("Config.ini", "Hotkeys", "Exit")
     config["Hotkeys"]["PauseToggle"] := IniRead("Config.ini", "Hotkeys", "PauseToggle")
     
