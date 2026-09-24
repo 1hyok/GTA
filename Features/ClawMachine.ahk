@@ -6,6 +6,9 @@
 global clawLoopRunning := false
 global clawTries := 0
 
+; 스크립트가 이동 키를 누른 채로 종료되면 캐릭터가 계속 걸어가 버린다(실측). 종료 시 항상 뗀다.
+OnExit((*) => (Send("{w up}{d up}{a up}{s up}"), 0))
+
 ClawLog(msg) {
     FileAppend(FormatTime(, "HH:mm:ss") " " msg "`n", A_Temp "\gta-claw.log", "UTF-8")
 }
