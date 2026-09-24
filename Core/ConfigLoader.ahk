@@ -57,7 +57,8 @@ config["Settings"]["VellumDrivingCtrlInterval"] := IniRead("Config.ini", "Settin
     config["Settings"]["TeleportEnterDuration"] := IniRead("Config.ini", "Settings", "TeleportEnterDuration")
     config["Settings"]["TeleportEnterInterval"] := IniRead("Config.ini", "Settings", "TeleportEnterInterval")
 
-    config["Settings"]["ClawKey"] := IniRead("Config.ini", "Settings", "ClawKey", "Space")
+    for k, d in Map("ClawStartKey", "e", "ClawForwardKey", "w", "ClawRightKey", "d", "ClawDropKey", "Enter", "ClawStartWait", 5000)
+        config["Settings"][k] := IniRead("Config.ini", "Settings", k, d)
     config["Settings"]["ClawForwardMs"] := IniRead("Config.ini", "Settings", "ClawForwardMs", 1200)
     config["Settings"]["ClawRightMs"] := IniRead("Config.ini", "Settings", "ClawRightMs", 900)
     config["Settings"]["ClawDropWait"] := IniRead("Config.ini", "Settings", "ClawDropWait", 12000)
