@@ -44,6 +44,9 @@ SetupHotkeys() {
             Hotkey(config["Hotkeys"]["ClawLoop"], (*) => ToggleClawLoop())
     }
 
+    if (config["Hotkeys"]["InviteOnlySession"] != "")
+        Hotkey(config["Hotkeys"]["InviteOnlySession"], (*) => JoinInviteOnlySession())
+
     ; 일시정지/재개 단축키
     if (config["Hotkeys"]["PauseToggle"] != "")
         Hotkey(config["Hotkeys"]["PauseToggle"], (*) => TogglePause())
