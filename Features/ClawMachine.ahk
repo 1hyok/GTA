@@ -46,17 +46,31 @@ ClawAttempt() {
 
     s := config["Settings"]
 
-    if (!ClawWaitFor("play", 2000)) {
-        ClawLog("중지: Press E 안내 없음")
-        ShowTooltip("🧸 기계 앞이 아님 (Press E 안내 없음) - 중지", 2500)
-        return false
+    ; 이전 판이 중간에 끊겨 "앞으로 이동" 단계에 멈춰 있으면 E 없이 이어서 진행한다.
+    ; 오른쪽·내리기 단계에 멈춰 있으면 위치를 알 수 없으니 그 판은 그대로 내려서 끝낸다.
+    if (ClawSeen("right") || ClawSeen("down")) {
+        ClawLog("이전 판이 중간 단계에 멈춰 있어 내려서 정리")
+        if (ClawSeen("right"))
+            PressKey("d")
+        ClawWaitFor("down", 3000)
+        PressKey("Enter")
+        Sleep(3000)
+        ClawWaitFor("play", s["ClawResultTimeout"])
     }
 
-    PressKey("e")
-    if (!ClawWaitFor("forward", s["ClawEnterTimeout"])) {
-        ClawLog("중지: 게임 시작 안내 없음")
-        ShowTooltip("🧸 게임 시작 확인 실패 - 이동하지 않고 중지", 2500)
-        return false
+    if (!ClawSeen("forward")) {
+        if (!ClawWaitFor("play", 2000)) {
+            ClawLog("중지: Press E 안내 없음")
+            ShowTooltip("🧸 기계 앞이 아님 (Press E 안내 없음) - 중지", 2500)
+            return false
+        }
+
+        PressKey("e")
+        if (!ClawWaitFor("forward", s["ClawEnterTimeout"])) {
+            ClawLog("중지: 게임 시작 안내 없음")
+            ShowTooltip("🧸 게임 시작 확인 실패 - 이동하지 않고 중지", 2500)
+            return false
+        }
     }
 
     ClawHold("w", s["ClawForwardMs"])
@@ -75,6 +89,7 @@ ClawAttempt() {
 
     PressKey("Enter")
     clawTries += 1
+    ClawLog(clawTries "판 내림")
 
     ; 집게가 내려갔다 올라오고 다시 "Press E" 안내가 뜰 때까지 기다린다
     Sleep(3000)
