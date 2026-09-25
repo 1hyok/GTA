@@ -4,8 +4,15 @@ IsGTAActive() {
 }
 
 ShowTooltip(text, duration := 1000) {
-    ToolTip(text, 0, 0)
-    SetTimer(() => ToolTip(), duration)
+    ; 상태 메시지가 게임 왼쪽 위의 단계 안내와 이미지 검색을 가리지 않게 한다.
+    CoordMode("ToolTip", "Screen")
+    if (hwnd := IsGTAActive()) {
+        WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
+        ToolTip(text, cx + 20, cy + Max(260, ch - 100))
+    } else {
+        ToolTip(text, 20, A_ScreenHeight - 100)
+    }
+    SetTimer(() => ToolTip(), -duration)
 }
 
 ; 아무 키가 눌렸는지 체크하는 함수 (특정 키 제외)
