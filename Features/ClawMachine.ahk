@@ -8,8 +8,8 @@ global clawTries := 0
 global clawStep := "loaded"
 global clawLastReason := ""
 
-; 스크립트가 이동 키를 누른 채로 종료되면 캐릭터가 계속 걸어가 버린다(실측). 종료 시 항상 뗀다.
-OnExit((*) => (Send("{w up}{d up}{a up}{s up}"), 0))
+; 종료 시 이동 키를 떼는 OnExit 는 Main.ahk 의 ReleaseHeldKeys 가 맡는다.
+; 전체 멈춤(gAbort)이 켜지면 단계 대기·키 유지 루프가 즉시 실패로 끝나고 키를 뗀다.
 ClawTrace("loaded", "", "script-loaded")
 
 ClawLog(msg) {
@@ -45,7 +45,7 @@ ClawTrace(step, reason := "", event := "") {
             "threadDpiContext", DllCall("GetThreadDpiAwarenessContext", "ptr"),
             "systemDpi", DllCall("GetDpiForSystem", "uint"),
             "primarySize", A_ScreenWidth "," A_ScreenHeight, "monitorCount", MonitorGetCount())
-        if (game := WinExist("Grand Theft Auto V")) {
+        if (game := WinExist(GTA_WIN)) {
             previousDpiContext := DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
             try {
                 WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " game)
@@ -79,7 +79,7 @@ ClawFailure(step, reason) {
 
 ClawSeen(name) {
     CoordMode("Pixel", "Screen")
-    hwnd := WinActive("Grand Theft Auto V")
+    hwnd := WinActive(GTA_WIN)
     if (!hwnd)
         return ClawFailure("seen-" name, "focus-lost")
     ; 배율이나 모니터가 바뀌어도 크기 조회와 이미지 검색을 같은 물리 픽셀 좌표로 수행한다.
@@ -109,9 +109,12 @@ ClawSeen(name) {
 }
 
 ClawWaitFor(name, timeoutMs) {
+    global gAbort
     ClawTrace("wait-" name)
     deadline := A_TickCount + timeoutMs
     while (A_TickCount < deadline) {
+        if (gAbort)
+            return ClawFailure("wait-" name, "aborted")
         if (!IsGTAActive())
             return ClawFailure("wait-" name, "focus-lost")
         if (ClawSeen(name))
@@ -122,14 +125,22 @@ ClawWaitFor(name, timeoutMs) {
 }
 
 ClawHold(key, ms) {
+    global gAbort
     ClawTrace("hold-" key)
+    if (gAbort)
+        return ClawFailure("hold-" key, "aborted")
     if (!IsGTAActive())
         return ClawFailure("hold-" key, "focus-lost-before-hold")
     lostFocus := false
+    aborted := false
     Send("{" key " down}")
     try {
         deadline := A_TickCount + ms
         while (A_TickCount < deadline) {
+            if (gAbort) {
+                aborted := true
+                break
+            }
             if (!IsGTAActive()) {
                 lostFocus := true
                 break
@@ -139,6 +150,8 @@ ClawHold(key, ms) {
     } finally {
         Send("{" key " up}")
     }
+    if (aborted)
+        return ClawFailure("hold-" key, "aborted")
     if (lostFocus)
         return ClawFailure("hold-" key, "focus-lost-during-hold")
     return true
@@ -146,8 +159,9 @@ ClawHold(key, ms) {
 
 ; 한 판을 끝까지 진행하고 성공하면 true, 어느 단계든 안내가 안 보이면 false
 ClawAttempt() {
-    global config, clawTries, clawLastReason
+    global config, clawTries, clawLastReason, gAbort
     clawLastReason := ""
+    gAbort := false
     ClawTrace("attempt", "", "attempt-start")
 
     if (!IsGTAActive())
@@ -215,7 +229,7 @@ ClawAttempt() {
 }
 
 ToggleClawLoop() {
-    global clawLoopRunning, clawLastReason
+    global clawLoopRunning, clawLastReason, gAbort
 
     if (!IsGTAActive()) {
         ClawTrace("toggle-ignored", "focus-lost", "loop-toggle-ignored")
@@ -225,12 +239,15 @@ ToggleClawLoop() {
     clawLoopRunning := !clawLoopRunning
     if (clawLoopRunning) {
         clawLastReason := ""
+        gAbort := false
         ClawTrace("loop-on", "", "loop-toggle-on")
         ShowTooltip("🧸 인형 뽑기 반복 시작 - 다시 누르면 중지")
         SetTimer(ClawLoopStep, -1)
     } else {
+        ; 진행 중인 판은 다음 키 전에 멈추고 키를 뗀다. 중간에 멈춘 판은 다음 시작 때 복구 분기가 내려서 정리한다.
+        gAbort := true
         ClawTrace("loop-off", "", "loop-toggle-off")
-        ShowTooltip("🧸 인형 뽑기 반복 중지 (이번 판까지 진행)", 1500)
+        ShowTooltip("🧸 인형 뽑기 반복 중지", 1500)
     }
 }
 
