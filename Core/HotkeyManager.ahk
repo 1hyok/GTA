@@ -47,6 +47,9 @@ SetupHotkeys() {
     if (config["Hotkeys"]["InviteOnlySession"] != "")
         Hotkey(config["Hotkeys"]["InviteOnlySession"], (*) => JoinInviteOnlySession())
 
+    if (config["Features"]["AntiAFK"] && config["Hotkeys"]["AntiAFK"] != "")
+        Hotkey(config["Hotkeys"]["AntiAFK"], ToggleAntiAFK)
+
     ; 일시정지/재개 단축키
     if (config["Hotkeys"]["PauseToggle"] != "")
         Hotkey(config["Hotkeys"]["PauseToggle"], (*) => TogglePause())

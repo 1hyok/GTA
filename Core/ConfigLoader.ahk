@@ -59,4 +59,10 @@ config["Settings"]["VellumDrivingCtrlInterval"] := IniRead("Config.ini", "Settin
 
     for k, d in Map("ClawForwardMs", 3000, "ClawRightMs", 3100, "ClawEnterTimeout", 15000, "ClawResultTimeout", 30000)
         config["Settings"][k] := IniRead("Config.ini", "Settings", k, d)
+
+    ; AFK 방지
+    config["Features"]["AntiAFK"] := IniRead("Config.ini", "Features", "AntiAFK", 1)
+    config["Hotkeys"]["AntiAFK"] := IniRead("Config.ini", "Hotkeys", "AntiAFK", "")
+    for k, d in Map("AFKUserIdleSec", 45, "AFKIntervalSec", 200, "AFKOnStart", 1)
+        config["Settings"][k] := Integer(IniRead("Config.ini", "Settings", k, d))
 }
