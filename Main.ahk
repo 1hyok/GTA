@@ -19,10 +19,13 @@
 #Include Features\Hacks\CasinoFingerprint.ahk
 #Include Features\ClawMachine.ahk
 #Include Features\SessionSwitch.ahk
+#Include Features\AntiAFK.ahk
 
 ; === 초기화 ===
 LoadConfig()
 SetupHotkeys()
+if (config["Features"]["AntiAFK"] && config["Settings"]["AFKOnStart"])
+    SetAntiAFK(true)
 
 ; === 시작 메시지 ===
-ShowTooltip("✅ GTA 매크로 시작됨`n🏝️ F3: 카요 페리코 타이머`nF11: 일시정지 | F12: 종료", 3000)
+ShowTooltip("✅ GTA 매크로 시작됨`n🏝️ F3: 카요 페리코 타이머`n" config["Hotkeys"]["AntiAFK"] ": AFK 방지 켜기/끄기 | F12: 종료", 3000)
