@@ -23,8 +23,8 @@ CONFIG_DEFAULTS["Settings"] := Map(
     "SessionMenuDelay", 600,
     "AFKUserIdleSec", 45, "AFKIntervalSec", 200, "AFKJitterSec", 20, "AFKTapMs", 150, "AFKGapMs", 250, "AFKOnStart", 1,
     "MenuTopOffset", 0, "SnackMenuSteps", 4, "SnackSubSteps", 2, "SnackItemSteps", 0, "SnackCount", 1, "SnackCloseMenu", 1,
-    "CEOMenuSteps", 1, "CEOSubSteps", 0, "CEOEnterCount", 2, "CEOCloseMenu", 1,
-    "MCMenuSteps", 1, "MCSubSteps", 1, "MCEnterCount", 2, "MCCloseMenu", 1)
+    "CEOMenuSteps", 1, "CEOSubSteps", 0, "CEOEnterCount", 2, "CEOCloseMenu", 0,
+    "MCMenuSteps", 1, "MCSubSteps", 1, "MCEnterCount", 2, "MCCloseMenu", 0)
 
 LoadConfig() {
     global config, CONFIG_DEFAULTS
