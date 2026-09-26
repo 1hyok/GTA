@@ -126,8 +126,12 @@ function Invoke-PendingApply {
     $p = Read-JsonFile $PendingFile
     if (-not $p) { return $false }
     if (Test-GameRunning) { return $false }
-    $age = (Get-Date) - (Get-Item -LiteralPath $Settings).LastWriteTime
-    if ($age.TotalSeconds -lt 15) { Write-Log 'pending: settings.xml 이 방금 바뀌어 다음 실행으로 미룸'; return $false }
+    # 게임이 종료하며 settings.xml 을 쓰는 중일 수 있어, 마지막 쓰기 뒤 8초가 지날 때까지 기다린다(최대 30초).
+    for ($w = 0; $w -lt 30; $w++) {
+        if (((Get-Date) - (Get-Item -LiteralPath $Settings).LastWriteTime).TotalSeconds -ge 8) { break }
+        Start-Sleep -Seconds 1
+    }
+    if (Test-GameRunning) { return $false }
 
     $targets = ConvertTo-Hashtable $p.set
     foreach ($k in $targets.Keys) {
@@ -519,7 +523,8 @@ if ($ImportPresentMonCsv) {
 $mutex = New-Object Threading.Mutex($false, 'Local\GtaPerfWatch')
 $got = $false
 try { $got = $mutex.WaitOne(0) } catch [Threading.AbandonedMutexException] { $got = $true }
-if (-not $got) { Write-Log "mutex busy, skip (pid $PID)"; exit 0 }
+if (-not $got) { exit 0 }
+$RunStart = Get-Date
 try {
     $ladder = Read-JsonFile $LadderFile
     $deadline = [datetimeoffset]::MaxValue
@@ -591,6 +596,24 @@ try {
         Invoke-LadderJudge $ladder
     }
 
+    # 적용 대기가 있고 게임이 떠 있으면, 이 실행이 9분까지 3초 간격으로 게임 종료를 지켜보다가 꺼지는 즉시 적용한다.
+    # (10분 간격 실행만으로는 0926 13:59~14:00 처럼 1분 안에 다시 켜는 경우를 놓친다.)
+    if ((Test-Path -LiteralPath $PendingFile) -and (Test-GameRunning) -and -not $expired) {
+        $pollEnd = $RunStart.AddMinutes(9)
+        while ((Get-Date) -lt $pollEnd -and (Test-Path -LiteralPath $PendingFile)) {
+            if (-not (Test-GameRunning)) {
+                if (Invoke-PendingApply) {
+                    $applied = $true
+                    $v2 = Get-SettingValues
+                    $r2 = @{ time = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss'); status = 'applied'; stage = (Get-StageLabel $ladder); cooling = (Get-Cooling); obs = $(if (Test-ObsRunning) { 'yes' } else { 'no' }); note = 'applied right after game exit (poll)' }
+                    foreach ($k in $Keys) { $r2[$k] = $v2[$k] }
+                    Add-PerfRow $r2
+                }
+                break
+            }
+            Start-Sleep -Seconds 3
+        }
+    }
     $ladderDone = ($ladder -and $ladder.state.phase -eq 'done')
     if (($expired -or $ladderDone) -and -not $applied -and -not (Test-Path -LiteralPath $PendingFile)) {
         $why = $(if ($ladderDone) { 'ladder done' } else { "deadline $deadline" })
