@@ -249,11 +249,24 @@ PanelDisarm(action, btn) {
 }
 
 PanelRunAction(action) {
+    ; 커서가 설정 창 위에 남아 있으면 자동 클릭이 게임 대신 설정 창 버튼을 1ms 간격으로 누른다(0926 실측: AFK·벨럼 버튼이 저절로 켜졌다 꺼졌다).
+    ; 그래서 자동 클릭만 실행 전에 커서를 게임 화면 가운데로 옮긴다. SetCursorPos 는 원시 마우스 입력을 만들지 않아 카메라가 돌지 않는다.
+    ; 다른 버튼까지 옮기지 않는 까닭: 커서가 게임 안에 들어가면 GTA 가 커서를 게임 창에 가둬(ClipCursor) 설정 창을 다시 누르려면 Alt+Tab 이 필요해진다.
+    if (action.id = "AutoClick")
+        PanelCursorToGTA()
     ; 창의 도움말 버튼은 두 번 누름(설정 창 열기) 판정 없이 도움말만 토글한다
     if (action.id = "Help")
         ToggleHelp()
     else
         action.fn.Call()
+}
+
+PanelCursorToGTA() {
+    global GTA_WIN
+    if (!(hwnd := WinExist(GTA_WIN)))
+        return
+    WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
+    DllCall("SetCursorPos", "int", cx + cw // 2, "int", cy + ch // 2)
 }
 
 PanelRefreshLogs() {
