@@ -83,7 +83,29 @@ BringGTAToFront() {
             return true
         }
     }
+    ; 3차: 앞 창이 입력 도구(TextInputHost: 이모지·터치 키보드·IME 창)거나 앞 창이 없으면 Alt 를 한 번 눌렀다 떼고 AHK WinActivate 로 가져온다.
+    ; 0926 14:49~15:18 에 TextInputHost 가 앞에 있는 동안 1·2차가 계속 실패해 30분 가까이 입력이 끊겼고 게임에서 방치 킥을 당했다.
+    ; Alt 는 브라우저·탐색기에서 메뉴 바를 켜므로 이 두 경우에만 쓴다.
+    fg := DllCall("GetForegroundWindow", "ptr")
+    fgExe := ""
+    try fgExe := WinGetProcessName("ahk_id " fg)
+    if (!fg || fgExe = "TextInputHost.exe") {
+        Send("{Alt down}{Alt up}")
+        try WinActivate("ahk_id " hwnd)
+        Sleep(800)
+        if (WinActive("ahk_id " hwnd)) {
+            AFKLog("GTA 를 앞으로 가져옴 (3차: " (fgExe = "" ? "앞 창 없음" : fgExe) ")")
+            return true
+        }
+    }
+    AFKLog("앞 창: " (fgExe = "" ? "없음" : fgExe) " / " WinGetTitleSafe(fg))
     return false
+}
+
+WinGetTitleSafe(hwnd) {
+    t := ""
+    try t := WinGetTitle("ahk_id " hwnd)
+    return t
 }
 
 AFKLog(msg) {
