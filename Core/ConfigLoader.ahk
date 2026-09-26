@@ -9,7 +9,7 @@ config["Settings"] := Map()
 ; 값이 없거나 숫자가 아닐 때 쓰는 기본값. 값 줄 끝에 ; 주석을 붙이면 IniRead 가 주석까지 값으로 읽으므로 주석은 줄을 따로 쓴다.
 global CONFIG_DEFAULTS := Map()
 CONFIG_DEFAULTS["Features"] := Map(
-    "Teleport", 1, "AltF4Teleport", 0, "Movement", 1, "AutoClick", 1, "Timer", 1,
+    "Teleport", 1, "AltF4Teleport", 1, "Movement", 1, "AutoClick", 1, "Timer", 1,
     "CasinoFingerprint", 0, "ClawMachine", 1, "AntiAFK", 1, "SessionSwitch", 1, "MenuMacros", 1)
 CONFIG_DEFAULTS["Settings"] := Map(
     "ClickInterval", 1, "ClickHoldTime", 50, "KeyHoldTime", 100,
@@ -18,6 +18,7 @@ CONFIG_DEFAULTS["Settings"] := Map(
     "PhoneOpenDelay", 1000, "PhoneControlDelay", 150, "MCDisbandDelay", 1000, "PhoneCloseDelay", 1000,
     "TeleportWaitTime", 38000, "TeleportTimerInterval", 100,
     "TeleportEnterDuration", 100000, "TeleportEnterInterval", 50, "TeleportClickToEnterDelay", 4000,
+    "JobWarpStartToConfirmMs", 1200, "JobWarpConfirmToAltF4Ms", 900, "JobWarpQuitWaitMs", 90000, "JobWarpMinWaitMs", 60000, "JobWarpAfterPromptMs", 1500,
     "CayoCooldownMinutes", 48, "VellumDrivingCtrlInterval", 3000,
     "ClawForwardMs", 5000, "ClawRightMs", 5000, "ClawEnterTimeout", 15000, "ClawResultTimeout", 30000,
     "SessionMenuDelay", 600,
