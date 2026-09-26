@@ -53,7 +53,7 @@ ExecuteAltF4Teleport() {
                 ready := true
                 break
             }
-            if (!OverlayIsOn())
+            if (!OverlayVisible())
                 ToolTip("⏳ 작텔: 종료창 로딩 대기 " Round((A_TickCount - start) / 1000) "초 (End: 중단)", 20, 20)
             Sleep(500)
         }

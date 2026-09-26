@@ -42,6 +42,12 @@ OverlayIsOn() {
     return IsObject(gOverlayGui)
 }
 
+; 지금 게임 화면에 실제로 떠 있는지. 켜져 있어도 창이 작아 감지 영역을 피할 자리가 없으면 숨는다 → 그때는 작텔 카운트다운을 툴팁으로 보여야 한다.
+OverlayVisible() {
+    global gOverlayShown
+    return gOverlayShown
+}
+
 OverlayTick() {
     global gOverlayGui, gOverlayText, gOverlayShown, gOverlayLastText, gOverlayLastPos
     if (!IsObject(gOverlayGui))
