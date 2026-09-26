@@ -13,7 +13,7 @@ GetForegroundWindow, GetLastInputInfo, 이벤트 로그)와, 게임이 꺼져 �
   cooling.txt   첫 줄을 cooling 열에 적는다(없으면 flat).
   perf.csv      실행마다 한 줄(obs 열: 캡처 시작·끝에 obs64.exe 가 떠 있었으면 yes, 그 캡처는 판정에서 뺀다). crashes.csv, applied.log, ladder.log, watch.log, launch.log.
 
-판정(사다리 phase=measure/confirm): 지금 조합(expected)과 디스크 값이 같은 전경 캡처가 minCaptures 개 모이면
+판정(사다리 phase=measure/confirm): 지금 조합(expected)과 디스크 값이 같고, OBS 가 꺼져 있고, 사용자가 직접 플레이한(play=user) 전경 캡처가 minCaptures 개 모이면
   표시 FPS 시간 가중 평균 >= fpsTarget, 캡처 중 VRAM 최대 <= vramLimitMiB, 그 단계 동안 GTA 비정상 종료 없음
   (디스플레이 장치 변화로 설명되는 종료는 뺌) 이면 통과. 실패한 단계만 revert 값으로 되돌리고 다음 단계로 간다.
   마지막 단계 뒤에는 confirm 으로 남은 조합을 한 번 더 재고, 실패하면 가장 최근에 남긴 단계를 되돌려 다시 잰다.
@@ -56,7 +56,7 @@ $Keys = @('dlssQuality', 'ResScalingType', 'AAType',
           'Tessellation', 'WaterQuality', 'Shadow_LongShadows',
           'RTIndirectDiffuse_SecondBounce_Enabled', 'RTReflection_FullRes_Enabled',
           'ParticleQuality', 'ShadowQuality', 'GrassQuality', 'UltraShadows_Enabled')
-$Columns = @('time', 'status', 'stage', 'cooling', 'obs') + $Keys + @(
+$Columns = @('time', 'status', 'stage', 'cooling', 'obs', 'play') + $Keys + @(
     'span_s', 'disp_fps', 'disp_1pct_low_p99', 'frames_over_100ms', 'max_frametime_ms', 'present_fps',
     'gpu_util_pct', 'gpu_power_w', 'gpu_temp_c', 'vram_used_mib', 'vram_max_mib', 'gpu_clock_mhz',
     'gpu_samples', 'temp_max_c', 'temp_median_c', 'power_median_w', 'power_limit_median_w', 'clock_median_mhz',
@@ -360,6 +360,8 @@ function Invoke-Capture {
     $row.samples        = $samples
     $row.fg_ratio       = $(if ($samples) { [math]::Round($fgHits / $samples, 2) } else { '' })
     $row.macro_activity = Get-MacroActivity $start
+    # 매크로의 SendInput 도 GetLastInputInfo 를 갱신하므로, 매크로 로그가 캡처 동안 갱신됐으면 macro 로 먼저 가른다.
+    $row.play = $(if ($row.macro_activity) { 'macro' } elseif ($idleEnd -ge 0 -and $idleEnd -lt 60) { 'user' } else { 'idle' })
     Get-ChildItem -LiteralPath $CapDir -Filter '*-2*.csv' | Sort-Object LastWriteTime -Descending | Select-Object -Skip 24 |
         Remove-Item -Force -ErrorAction SilentlyContinue
     return $row
@@ -426,7 +428,7 @@ function Invoke-LadderJudge($ladder) {
     $label = Get-StageLabel $ladder
     $since = [datetime]::ParseExact([string]$st.since, 'yyyy-MM-dd HH:mm:ss', $Inv)
     $rows = @(Import-Csv -LiteralPath $PerfCsv | Where-Object {
-        $_.status -eq 'capture' -and $_.obs -eq 'no' -and $_.stage -eq $label -and (ConvertTo-Num $_.fg_ratio) -ge 0.9 -and
+        $_.status -eq 'capture' -and $_.obs -eq 'no' -and $_.play -eq 'user' -and $_.stage -eq $label -and (ConvertTo-Num $_.fg_ratio) -ge 0.9 -and
         [datetime]::ParseExact($_.time, 'yyyy-MM-dd HH:mm:ss', $Inv) -ge $since })
     if ($rows.Count -lt [int]$ladder.minCaptures) { return }
 
