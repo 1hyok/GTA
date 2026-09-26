@@ -28,8 +28,8 @@ ToggleCayoPericoTimer() {
         SetTimer(CayoCompleted, 0)
 
         ; GUI 닫기
-        if (cayoGUI != "") {
-            cayoGUI.Close()
+        if (IsObject(cayoGUI)) {
+            cayoGUI.Destroy()   ; v2 Gui 에는 Close() 가 없다 (Destroy/Hide 만)
             cayoGUI := ""
         }
 
@@ -44,8 +44,8 @@ CayoCompleted() {
     SetTimer(CayoCompleted, 0)
 
     ; GUI 닫기
-    if (cayoGUI != "") {
-        cayoGUI.Close()
+    if (IsObject(cayoGUI)) {
+        cayoGUI.Destroy()
         cayoGUI := ""
     }
 
