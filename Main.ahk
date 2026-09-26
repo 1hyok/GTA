@@ -12,6 +12,7 @@ A_MenuMaskKey := "vkE8"
 #Include Core\ConfigLoader.ahk
 #Include Core\HotkeyManager.ahk
 #Include Core\Menu.ahk
+#Include Core\Screen.ahk
 
 ; === 기능 모듈 로드 ===
 #Include Features\Teleport\TeleportBase.ahk
