@@ -1,5 +1,7 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
+; Send 는 기본값에서 보내기 전 CapsLock 을 껐다가 되돌린다 → CapsLock 이 켜져 있으면 W/S 앞뒤로 CapsLock 눌림이 게임에 들어가 특수 능력이 발동한다 (0926 원인 확정). 끈다.
+SetStoreCapsLockMode false
 ; Alt/Win 이 든 조합 뒤에 기본 마스크 키(LCtrl)가 끼어 게임에서 웅크리기가 되는 일을 막는다. vkE8 은 할당되지 않은 가상 키다.
 A_MenuMaskKey := "vkE8"
 
