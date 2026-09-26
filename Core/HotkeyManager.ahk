@@ -41,7 +41,7 @@ RegisterActions() {
     gActions.Push({id: "Exit", label: "종료", fn: (*) => ExitAll(), global: true, confirm: true})   ; 전역이라 노트북 Fn+P/Fn+B(Pause) 오타로 꺼지지 않게 두 번 누름
     gActions.Push({id: "TeleportMC1", label: "CEO 재등록 텔레포트", fn: (*) => TeleportMC("CEO"), feature: "Teleport", confirm: true})
     gActions.Push({id: "TeleportMC2", label: "MC 재등록 텔레포트", fn: (*) => TeleportMC("MC"), feature: "Teleport", confirm: true})
-    gActions.Push({id: "TeleportAltF4", label: "F4 텔레포트", fn: (*) => TeleportAltF4(), feature: "AltF4Teleport", confirm: true})
+    gActions.Push({id: "TeleportAltF4", label: "작텔(Alt+F4)", fn: (*) => TeleportAltF4(), feature: "AltF4Teleport", confirm: true})
     gActions.Push({id: "CasinoFingerprint", label: "지문 해킹", fn: (*) => ExecuteCasinoFingerprint(), feature: "CasinoFingerprint"})
 }
 
