@@ -153,7 +153,7 @@ function Invoke-PendingApply {
     $tmp = "$Settings.gpw.tmp"
     try {
         [IO.File]::WriteAllText($tmp, $text, (New-Object Text.UTF8Encoding($hasBom)))
-        [IO.File]::Replace($tmp, $Settings, $null)
+        [IO.File]::Replace($tmp, $Settings, [NullString]::Value)
     } catch {
         Copy-Item -LiteralPath $backup -Destination $Settings -Force
         Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
