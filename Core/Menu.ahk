@@ -42,6 +42,8 @@ RunMenuPath(label, steps, enterCount := 1, closeAfter := 1) {
     gMenuBusy := true
     gAbort := false
     ok := false
+    ; 내 부동산(아케이드·에이전시 등) 안에서는 맨 위에 "… Management" 줄이 한 줄 더 붙어 첫 단계 칸 수가 1 늘어난다 (0926 아케이드 실측)
+    steps[1] += config["Settings"]["MenuTopOffset"]
     try {
         if (!MenuOpen())
             return false
