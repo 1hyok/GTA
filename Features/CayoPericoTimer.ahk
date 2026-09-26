@@ -1,14 +1,16 @@
 ; === 카요 페리코 쿨타임 타이머 변수 ===
 global cayoTimerRunning := false
 global cayoGUI := ""
+global cayoEndTick := 0   ; 끝나는 시각(A_TickCount). 오버레이·설정 창이 남은 시간을 읽는다
 
 ToggleCayoPericoTimer() {
-    global cayoTimerRunning, cayoGUI, config
+    global cayoTimerRunning, cayoGUI, cayoEndTick, config
 
     if (!cayoTimerRunning) {
         cayoTimerRunning := true
 
         cayoCooldownMinutes := config["Settings"]["CayoCooldownMinutes"]
+        cayoEndTick := A_TickCount + cayoCooldownMinutes * 60000
 
         ; 완료 예정 시각 계산
         endDateTime := DateAdd(A_Now, cayoCooldownMinutes, "Minutes")

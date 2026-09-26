@@ -36,7 +36,7 @@ RegisterActions() {
     gActions.Push({id: "RegisterMC", label: "MC 등록", fn: (*) => RegisterMC(), feature: "MenuMacros"})
     gActions.Push({id: "CayoPericoTimer", label: "카요 타이머", fn: (*) => ToggleCayoPericoTimer(), feature: "Timer", state: (*) => cayoTimerRunning ? "켜짐" : ""})
     gActions.Push({id: "Snack", label: "스낵", fn: (*) => EatSnack(), feature: "MenuMacros"})
-    gActions.Push({id: "Help", label: "도움말", fn: (*) => ToggleHelp()})
+    gActions.Push({id: "Help", label: "도움말", fn: (*) => HelpKey()})   ; 두 번 누르면 설정 창
     gActions.Push({id: "StopAll", label: "전체 멈춤", fn: (*) => StopAll("hotkey")})
     gActions.Push({id: "Exit", label: "종료", fn: (*) => ExitAll(), global: true, confirm: true})   ; 전역이라 노트북 Fn+P/Fn+B(Pause) 오타로 꺼지지 않게 두 번 누름
     gActions.Push({id: "TeleportMC1", label: "CEO 재등록 텔레포트", fn: (*) => TeleportMC("CEO"), feature: "Teleport", confirm: true})
@@ -130,5 +130,7 @@ SetupTrayMenu() {
     tray.Insert("1&", "전체 멈춤", (*) => StopAll("tray"))
     tray.Insert("1&", "AFK 방지 켜기/끄기", (*) => ToggleAntiAFK())
     tray.Insert("1&", "단축키 보기", (*) => ShowHelp())
-    tray.Insert("5&")
+    tray.Insert("1&", "설정 창 열기", (*) => OpenPanel())
+    tray.Insert("6&")
+    tray.Default := "설정 창 열기"   ; 트레이 아이콘 더블클릭으로도 열린다
 }

@@ -1,7 +1,21 @@
 ; === 도움말 툴팁 (현재 키맵) ===
 ; 액션 표와 실제 등록된 키로 만든다. 2번 툴팁이라 상태 툴팁(1번)과 서로 지우지 않는다.
-; HelpShowMs 뒤에 닫히고, 다시 누르면 바로 닫힌다.
+; HelpShowMs 뒤에 닫히고, 다시 누르면 바로 닫힌다. ConfirmWindowMs 안에 두 번 누르면 툴팁을 닫고 설정 창(Panel.ahk)을 연다.
 global helpShown := false
+global helpLastPress := 0
+
+; 도움말 키의 진입점. 첫 번째는 예전처럼 도움말 토글, ConfirmWindowMs 안의 두 번째는 설정 창 열기. 새 키를 쓰지 않으려고 도움말 키에 얹었다.
+HelpKey() {
+    global helpLastPress, config
+    if (helpLastPress && A_TickCount - helpLastPress <= config["Settings"]["ConfirmWindowMs"]) {
+        helpLastPress := 0
+        HideHelp()
+        OpenPanel()
+        return
+    }
+    helpLastPress := A_TickCount
+    ToggleHelp()
+}
 
 ToggleHelp() {
     global helpShown
@@ -34,7 +48,8 @@ HideHelp() {
 
 BuildHelpText() {
     global gActions, gKeyTable, config
-    text := "GTA 매크로 단축키 (" KeyLabelFor("Help") " 다시 누르면 닫힘, 게임 창에서만 동작)"
+    help := KeyLabelFor("Help")
+    text := "GTA 매크로 단축키 (" help " 두 번: 설정 창 | " help " 다시 누르면 닫힘 | 게임 창에서만 동작)"
     count := 0
     for action in gActions {
         keys := ""
