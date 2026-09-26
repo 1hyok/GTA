@@ -36,6 +36,10 @@ AntiAFKTick() {
         return
     if (!WinExist("ahk_exe GTA5_Enhanced.exe"))
         return
+    ; 작텔(Alt+F4·스팀 봇·MC)이 도는 중에는 누르지 않는다. 스팀 봇 작텔은 도착까지 최대 90초 입력 없이 기다려 유휴 시간을 넘길 수 있고,
+    ; 그때 끼어든 W/S 나 GTA 전면화가 그쪽의 알림 판정·스팀 클릭 사이에 들어간다
+    if (IsTeleportRunning())
+        return
     idleSec := Round(A_TimeIdle / 1000)   ; 앞으로 가져오기 전에 잰다 (가져오는 과정이 유휴 시간을 0 으로 만든다)
     if (!IsGTAActive() && !BringGTAToFront()) {
         AFKLog("skip: GTA 를 앞으로 가져오지 못함")

@@ -69,5 +69,8 @@ BuildHelpText() {
         text .= (Mod(count, 3) = 0 ? "`n" : "   |   ") entry
         count += 1
     }
+    ; 작텔 두 가지는 키 이름만 봐서는 언제 누르는지 알 수 없어 한 줄 덧붙인다
+    if (config["Features"].Get("AltF4Teleport", 0) || config["Features"].Get("BotWarp", 0))
+        text .= "`n작텔: 지도에서 작업 블립을 골라 Start Job (Space) 가 보일 때 두 번. 스팀 봇 작텔로 도착한 세션에서는 작업 시작이 막히니 " KeyLabelFor("InviteOnlySession") " 두 번으로 세션을 옮긴 뒤"
     return text
 }

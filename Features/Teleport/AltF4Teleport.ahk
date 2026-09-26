@@ -15,7 +15,8 @@
 ExecuteAltF4Teleport() {
     global config, altF4Running, gAbort, gJobWarpStart, gJobWarpMinMs
 
-    if (!IsGTAActive() || altF4Running)
+    ; 스팀 봇 작텔이 도는 중에 Alt+F4 를 보내면 그쪽 Enter 가 종료 확인창에 들어갈 수 있다
+    if (!IsGTAActive() || IsTeleportRunning())
         return
 
     altF4Running := true

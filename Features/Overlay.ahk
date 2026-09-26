@@ -187,6 +187,8 @@ RunningItems() {
     }
     if (altF4Running)
         items.Push(gJobWarpStart ? "작텔 대기 " Round((A_TickCount - gJobWarpStart) / 1000) "/" Round(gJobWarpMinMs / 1000) "초" : "작텔 진행 중")
+    if ((botWarp := BotWarpStatusText()) != "")
+        items.Push(botWarp)
     if (mcRunning)
         items.Push("MC 텔레포트 진행 중")
     if (gMenuBusy)
