@@ -23,6 +23,7 @@ CONFIG_DEFAULTS["Settings"] := Map(
     "ClawForwardMs", 5000, "ClawRightMs", 5000, "ClawEnterTimeout", 15000, "ClawResultTimeout", 30000,
     "SessionMenuDelay", 600,
     "AFKUserIdleSec", 45, "AFKIntervalSec", 200, "AFKJitterSec", 20, "AFKTapMs", 150, "AFKGapMs", 250, "AFKOnStart", 1,
+    "OverlayEnabled", 1, "OverlayXPct", 98, "OverlayYPct", 18,
     "MenuTopOffset", 0, "SnackMenuSteps", 4, "SnackSubSteps", 2, "SnackItemSteps", 0, "SnackCount", 1, "SnackCloseMenu", 1,
     "CEOMenuSteps", 1, "CEOSubSteps", 0, "CEOEnterCount", 2, "CEOCloseMenu", 0,
     "MCMenuSteps", 1, "MCSubSteps", 1, "MCEnterCount", 2, "MCCloseMenu", 0)
@@ -61,6 +62,53 @@ LoadConfig() {
             continue
         config["Hotkeys"][name] := Trim(SubStr(line, pos + 1))
     }
+}
+
+; Config.ini 의 [section] 안 key= 줄 하나만 바꾸고(없으면 섹션 끝에 추가) config Map 도 바로 고친다. 재시작 없이 반영된다.
+; IniWrite 는 쓰지 않는다: BOM 없는 파일을 ANSI 로 다뤄 한국어 주석을 깨뜨릴 수 있다. 파일은 BOM 없는 UTF-8 + CRLF 그대로 둔다.
+; 임시 파일에 다 쓴 뒤 바꿔 끼워서, 쓰다가 끊겨도 Config.ini 가 반쯤 잘린 채 남지 않게 한다.
+SetConfigValue(section, key, value) {
+    global config
+    file := A_ScriptDir "\Config.ini"
+    lines := StrSplit(FileRead(file, "UTF-8"), "`n", "`r")
+    current := ""
+    sectionAt := 0     ; 섹션 안 마지막 내용 줄 다음 자리 (없는 키를 넣을 곳)
+    done := false
+    for i, line in lines {
+        if (RegExMatch(line, "^\s*\[\s*(.+?)\s*\]\s*$", &m)) {
+            current := m[1]
+            if (current = section)
+                sectionAt := i + 1
+            continue
+        }
+        if (current != section)
+            continue
+        if (RegExMatch(line, "i)^\s*\Q" key "\E\s*=")) {
+            lines[i] := key "=" value
+            done := true
+            break
+        }
+        if (Trim(line) != "")
+            sectionAt := i + 1
+    }
+    if (!done) {
+        if (sectionAt)
+            lines.InsertAt(sectionAt, key "=" value)
+        else if (lines.Length && lines[lines.Length] = "")
+            lines.InsertAt(lines.Length, "[" section "]", key "=" value)
+        else
+            lines.Push("[" section "]", key "=" value)
+    }
+    text := ""
+    for i, line in lines
+        text .= (i = 1 ? "" : "`r`n") line
+    tmp := file ".tmp"
+    f := FileOpen(tmp, "w", "UTF-8-RAW")
+    f.Write(text)
+    f.Close()
+    FileMove(tmp, file, 1)
+    config[section][key] := IsNumber(value) ? Number(value) : value
+    MacroLog("config", section "." key "=" value " 저장")
 }
 
 ; UTF-8 BOM 이 있으면 IniRead 가 첫 섹션 이름을 못 읽는다(85009a1 실측). 발견하면 BOM 만 떼고 다시 저장한다.

@@ -30,6 +30,8 @@ A_MenuMaskKey := "vkE8"
 #Include Features\RegisterMC.ahk
 #Include Features\StopAll.ahk
 #Include Features\Help.ahk
+#Include Features\Overlay.ahk
+#Include Features\Panel.ahk
 
 ; === 초기화 ===
 ; 스크립트가 이동 키를 누른 채로 종료되면 캐릭터가 계속 걸어가 버린다(실측). 종료 시 항상 뗀다.
@@ -47,6 +49,9 @@ SetupHotkeys()
 SetupTrayMenu()
 if (config["Features"]["AntiAFK"] && config["Settings"]["AFKOnStart"])
     SetAntiAFK(true)
+; 게임 화면 오른쪽 위 상태 표시 (클릭 통과·포커스 안 가져감). 설정 창은 트레이 메뉴 또는 도움말 키 두 번.
+if (config["Settings"]["OverlayEnabled"])
+    SetOverlay(true)
 
 ; === 시작 메시지 ===
-ShowTooltip("✅ GTA 매크로 시작됨 (게임 창에서만 동작)`n" KeyLabelFor("Help") ": 단축키 보기 | " KeyLabelFor("StopAll") ": 전체 멈춤 | " KeyLabelFor("Exit") ": 종료", 3000)
+ShowTooltip("✅ GTA 매크로 시작됨 (게임 창에서만 동작)`n" KeyLabelFor("Help") ": 단축키 보기 (두 번: 설정 창) | " KeyLabelFor("StopAll") ": 전체 멈춤 | " KeyLabelFor("Exit") ": 종료", 3000)

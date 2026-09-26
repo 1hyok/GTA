@@ -13,7 +13,7 @@
 ; 사전 설정: Online → Options → Matchmaking = Closed. 상호작용 메뉴 → Preferences → Map Blip Options → Jobs 표시.
 
 ExecuteAltF4Teleport() {
-    global config, altF4Running, gAbort
+    global config, altF4Running, gAbort, gJobWarpStart, gJobWarpMinMs
 
     if (!IsGTAActive() || altF4Running)
         return
@@ -40,6 +40,9 @@ ExecuteAltF4Teleport() {
         waitMs := s["JobWarpQuitWaitMs"]
         start := A_TickCount
         ready := false
+        ; 대기 시간은 오버레이가 "작텔 대기 N/60초" 로 보여 준다. 오버레이가 꺼져 있으면 예전처럼 왼쪽 위 툴팁으로 보인다.
+        gJobWarpStart := start
+        gJobWarpMinMs := s["JobWarpMinWaitMs"]
         while (A_TickCount - start < waitMs) {
             if (gAbort) {
                 ShowAltF4Message("⏹ 작텔 중단: 종료 확인창은 직접 No(Backspace)로 닫으세요", 4000)
@@ -50,7 +53,8 @@ ExecuteAltF4Teleport() {
                 ready := true
                 break
             }
-            ToolTip("⏳ 작텔: 종료창 로딩 대기 " Round((A_TickCount - start) / 1000) "초 (End: 중단)", 20, 20)
+            if (!OverlayIsOn())
+                ToolTip("⏳ 작텔: 종료창 로딩 대기 " Round((A_TickCount - start) / 1000) "초 (End: 중단)", 20, 20)
             Sleep(500)
         }
         ToolTip()
@@ -68,6 +72,7 @@ ExecuteAltF4Teleport() {
         ShowAltF4Message("✅ 작텔 완료 (작업 위치 확인)", 2500)
     } finally {
         ToolTip()
+        gJobWarpStart := 0
         altF4Running := false
         MacroLog("jobwarp", ok ? "done" : "stopped")
     }
