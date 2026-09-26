@@ -20,7 +20,9 @@ ToggleCayoPericoTimer() {
         cayoGUI := Gui("+AlwaysOnTop -MaximizeBox", "🏝️ 카요 페리코")
         cayoGUI.SetFont("s11 Bold")
         cayoGUI.Add("Text", "x10 y10 w150 h30 Center", "완료 예정: " . endTime)
-        cayoGUI.Show("x-180 y100 w170 h50")
+        ; 게임 포커스를 뺏지 않게 NA 로, GTA 가 없는 모니터(노트북 화면) 오른쪽 위에 띄운다. 게임 안에서는 오버레이가 남은 시간을 보여 준다
+        PanelTargetArea(&l, &t, &r, &b)
+        cayoGUI.Show("NA x" (r - 360) " y" (t + 20) " w170 h50")
 
         ; 완료 시각에 알림
         SetTimer(CayoCompleted, cayoCooldownMinutes * 60000)

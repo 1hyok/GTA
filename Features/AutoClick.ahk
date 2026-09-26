@@ -36,6 +36,16 @@ DoClick() {
         return
     }
 
+    ; 커서 아래 창이 게임이 아니면(설정 창·다른 모니터) 누르지 않고 멈춘다. 그대로 두면 그 창의 버튼을 1ms 간격으로 누른다(0926 실측)
+    MouseGetPos(, , &underWin)
+    underExe := ""
+    try underExe := WinGetProcessName("ahk_id " underWin)
+    if (underExe != "GTA5_Enhanced.exe") {
+        StopAutoClick()
+        ShowTooltip("커서가 게임 밖에 있어 자동 클릭 중지", 1500)
+        return
+    }
+
     ClickMouse("Left", 1)
 }
 
