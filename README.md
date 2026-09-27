@@ -84,7 +84,7 @@ F11 두 번을 두 단계로 쓴다. prep 을 시작하기 전(보스 해제가 
 
 옛 재등록 텔레포트와 순서는 같지만 칸 수를 세지 않는다. 폰 앱·목록 줄·상호작용 메뉴 줄을 누르기 전마다 `Images\JobWarp\1920x1080\` 템플릿으로 선택된 줄을 확인하고, 안 보이면 더 누르지 않고 멈춘다(까닭은 툴팁과 `gta-macro.log` 의 `[jobwarp]` 줄). 템플릿 목록은 `Features/Teleport/QuickJoinPrep.ahk` 맨 위. 템플릿을 다 뜨기 전에는 `JobWarpQuickJoin=0` 이라 F11 은 예전처럼 바로 작텔한다.
 
-템플릿은 `tools/jobwarp-capture.ps1` 로 뜬다. 백그라운드로 띄워 두면 ScrollLock 이 켜져 있는 동안만 게임 모니터를 찍고 앞 장과 달라진 화면만 `%TEMP%\claude\jobwarp\` 에 남긴다(게임에 키를 보내지 않는다). ScrollLock 을 켜고 손으로 한 번 보스 해제 → Quick Join → Random → Alone → Yes → 보스 등록을 한 뒤 끄면, 남은 장에서 선택된 줄을 잘라 템플릿을 만든다.
+템플릿은 `tools/jobwarp-capture.ps1` 로 뜬다. 백그라운드로 띄워 두면 App menu 키(오른쪽 클릭 메뉴 키)를 한 번 눌러 켠 동안, 또는 ScrollLock 이 켜진 동안만 게임 모니터를 찍고 앞 장과 달라진 화면만 `%TEMP%\claude\jobwarp\` 에 남긴다(게임에 키를 보내지 않는다). 켜고 손으로 한 번 보스 해제 → Quick Join → Random → Alone → Yes → 보스 등록을 한 뒤 App menu 키를 다시 눌러 끄면, 남은 장에서 선택된 줄을 잘라 템플릿을 만든다.
 
 ```powershell
 Start-Process powershell -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File tools\jobwarp-capture.ps1' -WindowStyle Hidden
