@@ -36,7 +36,9 @@ EarnSoftFail(reason, retryMin) {
 
 ; 전체 멈춤(End)·GTA 가 앞이 아님·스케줄러가 꺼짐(F9 두 번). 시험 스크립트(earntest.ahk)는 gEarnOn 이 없어 IsSet 으로 본다
 EarnAborted() {
-    global gAbort, gEarnOn
+    global gAbort, gEarnOn, gEarnInputGuard
+    if (IsSet(gEarnInputGuard) && !gEarnInputGuard.Call())
+        return true
     return gAbort || !IsGTAActive() || (IsSet(gEarnOn) && !gEarnOn)
 }
 
@@ -99,6 +101,8 @@ EarnSelectRow(name, area, key, maxPress) {
     if (EarnSeen(name, area))
         return true
     Loop maxPress {
+        if (!EarnMenuIsOpen())
+            return EarnFail("선택 이동: 상호작용 메뉴 제목을 확인하지 못함")
         if (!EarnPress(key))
             return false
         if (EarnSeen(name, area))
@@ -120,6 +124,8 @@ EarnMenuOpen() {
         return true
     if (EarnMenuIsOpen())
         return false          ; 하위 메뉴에 들어가 있는 상태는 모른 채 이어 가지 않는다
+    if (!EarnHudVisible())
+        return EarnFail("상호작용 메뉴: 게임 HUD를 확인하지 못함")
     if (!EarnPress("m"))
         return false
     return EarnWaitSeen("m_title", EARN_MENU_AREA, 2500)
@@ -212,6 +218,8 @@ EarnWalk(path) {
         key := parts[1], ms := parts.Length > 1 ? Integer(parts[2]) : 300
         if (EarnAborted())
             return false
+        if (!EarnHudVisible())
+            return EarnFail("걷기: 게임 HUD를 확인하지 못함")
         Send("{" key " down}")
         ok := EarnSleep(ms)
         Send("{" key " up}")
@@ -350,6 +358,8 @@ EarnTurn(units) {
     Loop n {
         if (EarnAborted())
             return false
+        if (!EarnHudVisible())
+            return EarnFail("카메라: 게임 HUD를 확인하지 못함")
         DllCall("mouse_event", "uint", 1, "int", step, "int", 0, "uint", 0, "uptr", 0)
         Sleep(15)
     }
@@ -599,7 +609,8 @@ EarnNavTo(name, prompt := "", stopPx := 12, maxSteps := 40) {
         if (!planned)
             return EarnFail("길찾기: " name " 블립까지 길이 안 보임")
         ; 진척은 블립까지 실제 거리(bd)로 잰다. gp 는 길 끝에서 블립까지 남는 거리라 걷는 동안 줄지 않는다(0927 실측: 26걸음 내내 4~11px)
-        EarnBlip(name, &ba, &bd)
+        if (!EarnBlip(name, &ba, &bd))
+            return EarnFail("길찾기: 이동 전 " name " 블립을 확인하지 못함")
         if (prompt = "" && bd <= stopPx)
             return true
         EarnLog("길찾기 " name ": 걸음 " A_Index " 방향 " Round(ta) "도 " Round(sp) "px, 블립까지 " Round(bd) "px (길 끝 " Round(gp) "px)")
@@ -611,7 +622,8 @@ EarnNavTo(name, prompt := "", stopPx := 12, maxSteps := 40) {
             if (dodges >= 3)
                 return EarnFail("길찾기: " name " 쪽으로 더 못 감 (블립까지 " Round(bd) "px)")
             dodges += 1, flat := 0
-            EarnWalk((Mod(dodges, 2) ? "a" : "d") ":450,s:300")
+            if (!EarnWalk((Mod(dodges, 2) ? "a" : "d") ":450,s:300"))
+                return false
             continue
         }
         if (Abs(ta) > 4 && !EarnTurn(Round(ta * k)))
@@ -642,6 +654,8 @@ EarnMCTOpen() {
         if (!EarnWaitSeen("mct_seated", EARN_PROMPT_AREA, 8000))
             return EarnFail("MCT: 앉았다는 안내가 안 뜸")
     }
+    if (!EarnSeen("mct_seated", EARN_PROMPT_AREA))
+        return EarnFail("MCT: 열기 직전 앉은 상태 안내 없음")
     if (!EarnPress("Enter"))
         return false
     if (!EarnWaitSeen("mct_title", [0.3, 0, 0.7, 0.1], 8000))
@@ -656,6 +670,8 @@ EarnMCTClose() {
     Loop 5 {
         if (EarnSeen("mct_seated", EARN_PROMPT_AREA))
             break
+        if (!EarnSeen("mct_title", [0.3, 0, 0.7, 0.1]) && !EarnSeen("mct_need_ceo"))
+            return EarnFail("MCT: 닫기 전 터미널 화면을 확인하지 못함")
         if (!EarnPress("Backspace"))
             return false
         EarnSleep(900)
