@@ -39,7 +39,7 @@ if (!A_Args.Length) {
 }
 fn := A_Args[1], arg := A_Args.Length > 1 ? A_Args[2] : "", arg2 := A_Args.Length > 2 ? A_Args[3] : "", arg3 := A_Args.Length > 3 ? A_Args[4] : ""
 t0 := A_TickCount
-if (fn != "Idle" && fn != "Status" && fn != "SessionInfo" && fn != "BlipInfo" && fn != "NavInfo" && fn != "EarnSpawnRoute" && !EarnTestPrepare()) {
+if (fn != "MCTStatus" && fn != "Idle" && fn != "Status" && fn != "SessionInfo" && fn != "BlipInfo" && fn != "NavInfo" && fn != "EarnSpawnRoute" && !EarnTestPrepare()) {
     FileAppend(fn " = not started fail=" gEarnFail "`n", "*", "UTF-8")
     ExitApp(3)
 }
@@ -67,6 +67,23 @@ Idle() {
 
 Probe() {
     return Status()
+}
+
+MCTStatus() {
+    return "mct=" EarnSeen("mct_title", [0.3,0,0.7,0.1])
+        . " bunkerCard=" EarnSeen("mct_bunker_card") " nightclubCard=" EarnSeen("mct_nightclub_card")
+        . " popularity=" EarnPopularityMCTPct()
+        . " stock=" EarnBarFill(766,1154,555,"green") " supply=" EarnBarFill(766,1154,577,"blue")
+}
+
+MCTSmoke() {
+    global config
+    config["Settings"]["EarnDJPopularityPct"] := 95
+    if (EarnSeen("bunker_entry") && !EarnUIBackToMCT("bunker_entry", 1))
+        return false
+    if (!EarnBunkerBuy())
+        return false
+    return EarnDJSwapLoop(EarnPopularityMCTPct())
 }
 
 SessionInfo() {

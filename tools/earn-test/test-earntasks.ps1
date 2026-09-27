@@ -256,7 +256,17 @@ try {
     Invoke-EarnOfflineCheck 'InPlace' 'EarnInPlace' $placeDriver 4
     Invoke-EarnOfflineCheck 'GoHome' 'EarnGoHome' $homeDriver 4
     Invoke-EarnOfflineCheck 'SafeTask' 'EarnSafeTask' $safeDriver 3
-    Write-Output 'PASS EarnTasks: 23 cases; no game input'
+    $djDriver = @'
+cases := [[-1,95,false],[0,95,true],[80,95,true],[86,95,true],[90,95,true],[90.1,95,true],[94,95,true],[95,95,false],[100,95,false],[80,80,false]]
+for c in cases {
+    if (EarnDJNeedsRebook(c[1],c[2]) != c[3])
+        throw Error("DJ boundary " c[1])
+}
+FileAppend("PASS DJRebook cases=10`n", "*")
+ExitApp(0)
+'@
+    Invoke-EarnOfflineCheck 'DJRebook' 'EarnDJNeedsRebook' $djDriver 10
+    Write-Output 'PASS EarnTasks: 33 cases; no game input'
 } finally {
     [Console]::InputEncoding = $previousInputEncoding
 }

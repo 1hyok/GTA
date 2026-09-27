@@ -1,0 +1,1 @@
+MCTStatus() = mct=1 bunkerCard=1 nightclubCard=1 popularity=97 stock=0.5461538461538461 supply=0.93846153846153846 in 5344ms fail=
