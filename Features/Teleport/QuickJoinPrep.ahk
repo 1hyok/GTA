@@ -11,13 +11,36 @@
 ; 되돌리는 키는 Backspace·M 만 쓴다(Esc 금지: 런처 종료창).
 ;
 ; 템플릿: Images\JobWarp\<가로>x<세로>\*.png (없으면 그 단계에서 멈추고 gta-macro.log 에 "템플릿 없음" 이 남는다)
-;   상호작용 메뉴(왼쪽 위): m_securo·m_securo_sel(CEO 맨 위 줄) / m_retire_sel(CEO 메뉴 맨 아래 Retire)
-;                           m_mc·m_mc_sel(MC 맨 위 줄) / m_mc_disband_sel(MC 메뉴 맨 아래 Disband Club)
-;                           m_boss·m_boss_sel(Register as a Boss) / m_ceo_sel(SecuroServ CEO) / m_mcpres_sel(Motorcycle Club President)
-;                           m_start_org_sel(Start an Organization) / m_start_mc_sel(Start a Motorcycle Club)
+;   1920x1080 은 tools\build-jobwarp-templates.ps1 이 docs\evidence\2026-09-27-jobwarp\ 실측 화면에서 뜨고, 같은 스크립트가 모든 원본에 대 보는 시험까지 한다.
+;   상호작용 메뉴(왼쪽 위): m_securo·m_securo_sel(CEO 맨 위 줄 SecuroServ CEO) / m_retire_sel(CEO 하위 메뉴 맨 아래 Retire)
+;                           m_boss·m_boss_sel(Register as a Boss) / m_ceo_sel(SecuroServ CEO) / m_start_org_sel(Start an Organization)
+;                           m_sub_boss·m_sub_securo(하위 메뉴 제목 REGISTER AS A BOSS·SECUROSERV, 메뉴가 열려 있는지 볼 때 m_title 과 같이 쓴다)
+;   MC 쪽(m_mc·m_mc_sel·m_mc_disband_sel·m_mcpres_sel·m_start_mc_sel, MC 하위 메뉴 제목)은 아직 없다. JobWarpBossRole=MC 나 MC 상태에서는 그 단계에서 멈춘다.
 ;   폰(오른쪽 아래): ph_quickjoin_sel(홈 화면에서 Quick Join 앱이 골라진 상태) / qj_random_sel / qj_alone_sel / qj_yes_sel
 ;   메뉴 제목 확인은 수익 자동화가 이미 가진 Images\Earn\<해상도>\m_title.png 를 같이 쓴다.
-; _sel 은 선택(흰 바탕) 줄, 접미사 없는 것은 선택 안 된 줄이다. 줄 템플릿은 글자만 남기고 가장자리를 FF00FF(투명)로 뜬다.
+; _sel 은 선택(흰 바탕·폰은 파란 바탕) 줄, 접미사 없는 것은 선택 안 된 줄이다. 선택 안 된 메뉴 줄은 반투명이라 흰 글자만 남기고 나머지를 FF00FF(투명)로 뜬다.
+; "SecuroServ CEO" 선택 줄은 등록 하위 메뉴와 CEO 메인 메뉴에서 글자·자리가 같아, m_ceo_sel·m_securo_sel·m_securo 는 바로 위 제목 줄까지 같이 떴다.
+;
+; 0927 실측(1920x1080, 저택 안):
+;   메뉴 맨 위 줄은 자리마다 다르다. 저택 안 해제 상태는 Mansion Management → Quick GPS → Register as a Boss(3번째), CEO 면 SecuroServ CEO 가 맨 위로 온다.
+;   메뉴는 열 때마다 맨 위 줄에 커서가 있다. 하위 메뉴에서 M 한 번이면 전체가 닫힌다. Retire·Start an Organization 은 확인 창 없이 되고 게임이 메뉴를 닫는다.
+;   앉아 있다 일어나는 동안 Register as a Boss 줄이 잠깐 빠졌다(12줄 → 11줄 → 12줄). 그래서 보스 상태 판정은 잠깐 기다려 다시 본다.
+;   폰 홈은 두 쪽이다. Quick Join 은 2쪽 첫 칸(2쪽은 Quick Join·Settings 두 칸)이고 1쪽 3x3 은 Email·Messages·Contacts / (파란 > 아이콘)·Job List·Vinewood Club / Snapmatic·Internet·SecuroServ.
+;   1쪽 오른쪽 끝 칸(어느 줄이든)에서 Right 면 2쪽 Quick Join, 2쪽에서 Right 는 두 칸 사이를 돈다. 그래서 Right 만 눌러도 어디서 시작하든 3번 안에 닿는다.
+;   Quick Join 목록은 늘 맨 위(Series Modes)에서 열리고 Random 은 맨 아래라 Up 한 번. Random 안은 Friends in Session·Alone 두 줄이라 Down 한 번.
+;   Alone 에 Enter 면 폰 안에 "Are you sure?" 한 줄이 이미 골라진 채로 뜬다(화면 가운데 알림이 아니다). Backspace 는 확인 줄에서 Quick Join 목록 맨 위로 돌아간다.
+;   F11 실제 시험(23:12): Yes 에 Enter 하면 폰이 저절로 내려가고 화면에 Looking For Job 문구는 안 보였다. Yes 뒤 약 3.5초에 Start an Organization,
+;   약 7초에 "퀵 조인 준비 ok". 그 뒤 95초 동안 작업 로비로 끌려가지 않았다(검색이 등록으로 끝났다는 표시가 화면에 따로 뜨지는 않는다).
+
+; 설정 기본값. ConfigLoader 는 기본값 표에 있는 키만 Config.ini 에서 읽으므로, BotWarp.ahk 처럼 LoadConfig() 앞(이 파일은 TeleportBase.ahk 끝에서 포함된다)에 표에 더한다.
+; 0927 실측: 이것 없이 JobWarpQuickJoin=1 로 두고 F11 두 번을 보냈더니 값이 0 으로 읽혀 퀵 조인 준비 대신 곧바로 Alt+F4 작텔(Space·Enter·Alt+F4)이 돌았다.
+JobWarpAddDefaults()
+JobWarpAddDefaults() {
+    global CONFIG_DEFAULTS
+    for key, value in Map("JobWarpQuickJoin", 0, "JobWarpBossRole", "CEO", "JobWarpArmMaxMin", 30,
+        "JobWarpRetireWaitMs", 2500, "JobWarpRegisterWaitMs", 2500)
+        CONFIG_DEFAULTS["Settings"][key] := value
+}
 
 global gJobWarpArmed := false     ; 1단계를 마치고 2단계(F11 두 번)를 기다리는 중
 global gJobWarpArmedAt := 0
@@ -84,31 +107,46 @@ QuickJoinPrep() {
     return ok
 }
 
-; --- 보스 해제: 맨 위 줄이 Register as a Boss 면 이미 해제, SecuroServ 면 Retire, Motorcycle Club 이면 Disband Club ---
+; --- 보스 해제: 메뉴에 Register as a Boss 줄이 보이면 이미 해제, 맨 위가 SecuroServ CEO 면 Retire, Motorcycle Club 이면 Disband Club ---
 JWRetireBoss() {
     global config, JW_MENU_AREA
     if (!JWMenuOpen())
         return false
-    if (JWSeen("m_boss_sel", JW_MENU_AREA) || JWSeen("m_boss", JW_MENU_AREA))
+    ; 앉았다 일어나는 동안처럼 Register as a Boss 줄이 잠깐 빠질 때가 있어(0927 실측) 바로 "모름" 으로 멈추지 않고 조금 기다려 다시 본다
+    state := ""
+    deadline := A_TickCount + 2000
+    Loop {
+        if (JWSeen("m_boss_sel", JW_MENU_AREA) || JWSeen("m_boss", JW_MENU_AREA))
+            state := "free"
+        else if (JWSeen("m_securo_sel", JW_MENU_AREA) || JWSeen("m_securo", JW_MENU_AREA))
+            state := "ceo"
+        else if (JWSeen("m_mc_sel", JW_MENU_AREA) || JWSeen("m_mc", JW_MENU_AREA))
+            state := "mc"
+        if (state != "" || A_TickCount >= deadline)
+            break
+        if (!JWSleep(200))
+            return false
+    }
+    if (state = "free")
         return JWMenuClose()
-    if (JWSeen("m_securo_sel", JW_MENU_AREA) || JWSeen("m_securo", JW_MENU_AREA)) {
+    if (state = "ceo") {
         top := "m_securo_sel", bottom := "m_retire_sel", label := "CEO Retire"
-    } else if (JWSeen("m_mc_sel", JW_MENU_AREA) || JWSeen("m_mc", JW_MENU_AREA)) {
+    } else if (state = "mc") {
         top := "m_mc_sel", bottom := "m_mc_disband_sel", label := "MC Disband Club"
     } else {
-        return JWFail("보스 상태를 모름 (메뉴 맨 위 줄이 Register as a Boss·SecuroServ·Motorcycle Club 어느 것도 아님)")
+        return JWFail("보스 상태를 모름 (메뉴에 Register as a Boss·SecuroServ CEO·Motorcycle Club 어느 줄도 안 보임)")
     }
     if (!JWSelectRow(top, JW_MENU_AREA, "Up", 4) || !JWPress("Enter"))
         return JWFail(label ": 맨 위 줄을 고르지 못함")
-    ; 해제 줄은 하위 메뉴 맨 아래라 Up 으로 한 바퀴 돌아간다
+    ; 해제 줄은 하위 메뉴 맨 아래라 Up 으로 한 바퀴 돌아간다 (CEO 는 Hire Associates 에서 Up 한 번이면 Retire, 0927 실측)
     if (!JWSelectRow(bottom, JW_MENU_AREA, "Up", 12))
         return JWFail(label ": 해제 줄을 찾지 못함 (임무 중이면 해제가 막힌다)")
     if (!JWPress("Enter"))
         return false
     if (!JWSleep(config["Settings"].Get("JobWarpRetireWaitMs", 2500)))
         return false
-    ; 해제됐는지 메뉴로 확인한다. 게임이 메뉴를 닫았으면 다시 연다
-    if (!JWMenuOpen())
+    ; 해제됐는지 메뉴로 확인한다
+    if (!JWReopenMenu())
         return false
     if (!(JWSeen("m_boss_sel", JW_MENU_AREA) || JWSeen("m_boss", JW_MENU_AREA)))
         return JWFail(label ": 해제 뒤 메뉴에 Register as a Boss 가 안 보임")
@@ -116,7 +154,8 @@ JWRetireBoss() {
 }
 
 ; --- 폰: Up 으로 열고 Quick Join 앱 → Random → Alone → Yes ---
-; 폰 홈은 마지막으로 고른 앱을 기억하므로 칸 수로 가지 않는다. 3x3 격자를 뱀 모양(→→↓←←↓→→)으로 돌면 어디서 시작해도 9칸을 다 본다.
+; 폰 홈은 마지막으로 고른 앱을 기억하므로 칸 수로 가지 않는다. Quick Join 은 홈 2쪽 첫 칸이고, 1쪽 오른쪽 끝 칸에서 Right 면 거기로 넘어가며
+; 2쪽에서 Right 는 Quick Join·Settings 사이를 돈다(0927 실측). 그래서 Right 만 누르면 어디서 시작하든 3번 안에 닿는다. 씹힐 몫까지 6번.
 JWPhoneQuickJoin() {
     global config, JW_PHONE_AREA
     s := config["Settings"]
@@ -125,10 +164,10 @@ JWPhoneQuickJoin() {
     if (!JWSleep(s.Get("PhoneOpenDelay", 1000)))
         return false
     found := JWSeen("ph_quickjoin_sel", JW_PHONE_AREA)
-    for key in ["Right", "Right", "Down", "Left", "Left", "Down", "Right", "Right"] {
+    Loop 6 {
         if (found)
             break
-        if (!JWPress(key, s.Get("PhoneControlDelay", 150) + 250))
+        if (!JWPress("Right", s.Get("PhoneControlDelay", 150) + 250))
             return false
         found := JWSeen("ph_quickjoin_sel", JW_PHONE_AREA)
     }
@@ -137,9 +176,9 @@ JWPhoneQuickJoin() {
     if (!JWPress("Enter", 600))
         return false
     ; 목록에 들어간 직후 첫 키가 씹히는 일이 잦아 누른 횟수가 아니라 선택 줄로 판정한다
-    ; Yes 확인이 폰 안에 뜨는지 화면 가운데 알림으로 뜨는지 아직 실측하지 않아 Yes 는 화면 전체에서 찾는다
-    for step in [["qj_random_sel", "Up", 8, "Random", JW_PHONE_AREA], ["qj_alone_sel", "Down", 6, "Alone", JW_PHONE_AREA], ["qj_yes_sel", "Down", 3, "Yes", [0, 0, 1, 1]]] {
-        if (!JWWaitSeen(step[1], step[5], 1500) && !JWSelectRow(step[1], step[5], step[2], step[3], false))
+    ; 목록은 맨 위에서 열려 Random(맨 아래)은 Up, Alone 은 Friends in Session 다음 줄이라 Down. Yes 는 폰 안의 "Are you sure?" 한 줄이 이미 골라진 채로 뜬다(0927 실측)
+    for step in [["qj_random_sel", "Up", 8, "Random"], ["qj_alone_sel", "Down", 6, "Alone"], ["qj_yes_sel", "Down", 3, "Yes"]] {
+        if (!JWWaitSeen(step[1], JW_PHONE_AREA, 1500) && !JWSelectRow(step[1], JW_PHONE_AREA, step[2], step[3], false))
             return JWFail("폰: " step[4] " 줄을 찾지 못함")
         if (!JWPress("Enter", 500))
             return false
@@ -150,10 +189,10 @@ JWPhoneQuickJoin() {
 
 ; --- 보스 등록: M → Register as a Boss → SecuroServ CEO / Motorcycle Club President → Start ... ---
 JWRegisterBoss(role) {
-    global config, JW_MENU_AREA
+    global config, JW_MENU_AREA, JW_PHONE_AREA
     ; Yes 뒤 폰(확인 줄)이 닫혀야 M 이 먹는다
     deadline := A_TickCount + 3000
-    while (A_TickCount < deadline && JWSeen("qj_yes_sel", [0, 0, 1, 1])) {
+    while (A_TickCount < deadline && JWSeen("qj_yes_sel", JW_PHONE_AREA)) {
         if (!JWSleep(150))
             return false
     }
@@ -172,7 +211,7 @@ JWRegisterBoss(role) {
     if (!JWSleep(config["Settings"].Get("JobWarpRegisterWaitMs", 2500)))
         return false
     ; 등록이 끝나면 게임이 메뉴를 닫는다. 다시 열어 맨 위 줄이 보스 메뉴인지 본다
-    if (!JWMenuOpen())
+    if (!JWReopenMenu())
         return false
     if (!(JWSeen(top "_sel", JW_MENU_AREA) || JWSeen(top, JW_MENU_AREA)))
         return JWFail(role " 등록: 등록 뒤 메뉴 맨 위에 보스 줄이 안 보임")
@@ -243,10 +282,18 @@ JWSelectRow(name, area, key, maxPress, inMenu := true) {
     return false
 }
 
-; 상호작용 메뉴 제목(INTERACTION MENU)은 수익 자동화의 템플릿을 같이 쓴다
+; 상호작용 메뉴 제목(INTERACTION MENU)은 수익 자동화의 템플릿을 같이 쓴다. 하위 메뉴에서는 제목 줄이 바뀌어
+; 이 기능이 들어가는 하위 메뉴(REGISTER AS A BOSS, SECUROSERV, SECUROSERV CEO)의 제목도 본다
 JWMenuIsOpen() {
     global JW_MENU_AREA
-    return TemplateSeen("Earn", "m_title", JW_MENU_AREA)
+    return TemplateSeen("Earn", "m_title", JW_MENU_AREA) || JWSeen("m_sub_boss", JW_MENU_AREA) || JWSeen("m_sub_securo", JW_MENU_AREA)
+}
+
+; 해제·등록(Enter) 뒤에는 게임이 메뉴를 스스로 닫는다(0927 실측). 아직 하위 메뉴가 떠 있으면 M 으로 닫고 다시 연다
+JWReopenMenu() {
+    if (!JWWaitMenu(false, 3000) && !JWMenuClose())
+        return false
+    return JWMenuOpen()
 }
 
 JWMenuOpen() {
