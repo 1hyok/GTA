@@ -12,6 +12,7 @@
 ;       대기 중 End(전체 멈춤)를 누르면 Backspace 를 보내지 않고 멈춘다(창은 직접 No 로 닫는다).
 ; 사전 설정: Online → Options → Matchmaking = Closed. 상호작용 메뉴 → Preferences → Map Blip Options → Jobs 표시.
 
+; 성공(No 까지 보냄)이면 true. F11 두 단계(QuickJoinPrep.ahk)가 이 값으로 준비 상태를 푼다
 ExecuteAltF4Teleport() {
     global config, altF4Running, gAbort, gJobWarpStart, gJobWarpMinMs
 
@@ -81,6 +82,7 @@ ExecuteAltF4Teleport() {
         altF4Running := false
         MacroLog("jobwarp", ok ? "done" : "stopped")
     }
+    return ok
 }
 
 ; 종료 확인창 오른쪽 아래의 "No [Esc]" 키캡(흰 네모)이 보이면 true. 로딩 중에는 그 자리가 검고 스피너는 더 오른쪽(↵ 자리)에 있다.
