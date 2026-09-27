@@ -272,6 +272,13 @@ EarnBlip(name, &ang, &dist) {
     mx := cx + Round(EARN_MINIMAP[1] * sx), my := cy + Round(EARN_MINIMAP[2] * sy)
     w := Round((EARN_MINIMAP[3] - EARN_MINIMAP[1]) * sx), h := Round((EARN_MINIMAP[4] - EARN_MINIMAP[2]) * sy)
     buf := EarnGrab(mx, my, w, h)
+    return EarnBlipFromPixels(name, buf, w, h, sx, sy, &ang, &dist)
+}
+
+; 화면 캡처와 분리한 픽셀 판독. 저장된 미니맵으로도 같은 검출기를 검사한다.
+EarnBlipFromPixels(name, buf, w, h, sx, sy, &ang, &dist) {
+    global EARN_MINIMAP, EARN_ARROW
+    ang := 0, dist := 0
     ax := (EARN_ARROW[1] - EARN_MINIMAP[1]) * sx, ay := (EARN_ARROW[2] - EARN_MINIMAP[2]) * sy
     ; 테두리 3px 은 뺀다(둥근 모서리·프레임). 아래쪽은 8px: 체력 막대(초록)가 미니맵 바닥 줄에 걸친다(0927 실측)
     margin := Round(3 * sx), bottom := Round((name = "safe" ? 8 : 3) * sy)   ; 초록 판정만 체력 막대에 걸린다
@@ -331,12 +338,13 @@ EarnBlip(name, &ang, &dist) {
             atEdge := minX <= 14 || maxX >= w - 15 || minY <= 14 || maxY >= h - 15
             if (name = "safe")
                 ok := n >= 12 && bw <= 16 && bh <= 20
-            else if (atEdge)
-                ok := bw >= 6 && bw <= 16 && bh >= 3 && bh <= 11 && n >= bw * bh * 0.7
-            else if (name = "laptop")
-                ok := bw >= 9 && bw <= 14 && bh >= 5 && bh <= 7 && n >= bw * bh * 0.8
-            else
-                ok := bw >= 9 && bw <= 14 && bh >= 8 && bh <= 10 && n >= bw * bh * 0.8
+            else {
+                ; 두 아이콘 모두 화면 높이가 7px일 수 있다. 하단 받침대/키보드 모양으로 구분한다.
+                ; 가장자리도 몸체가 온전히 보이면 분류한다. 잘려서 구분할 수 없으면 쓰지 않는다.
+                ok := bw >= Round(9 * sx) && bw <= Round(14 * sx)
+                    && bh >= Round(5 * sy) && bh <= Round(10 * sy) && n >= bw * bh * 0.8
+                    && EarnComputerBlipKind(buf, w, h, minX, maxX, maxY, sx, sy) = name
+            }
             ; 안쪽에 온전한 아이콘이 있으면 그것을, 없으면 가장자리 것을 쓴다
             score := n + (atEdge ? 0 : 10000)
             if (ok && score > bestScore) {
@@ -352,6 +360,51 @@ EarnBlip(name, &ang, &dist) {
     dist := best[3] ? 999 : Sqrt(dx * dx + dy * dy)
     return true
 }
+
+; 흰 화면 아래 MCT는 좁은 목과 양옆 빈틈, 노트북은 넓은 몸체와 흰 터치패드가 있다.
+; 검은 윤곽과 밝은 빈틈을 둘 다 확인해 모양이 불명확하면 빈 문자열로 돌려준다.
+EarnComputerBlipKind(buf, w, h, left, right, bottom, sx, sy) {
+    center := Round((left + right) / 2)
+    ; 아이콘 전체 폭의 경계를 확보한다. 잘린 화면도 폭 조건을 통과할 수 있다.
+    if (center - Round(12 * sx) < 0 || center + Round(12 * sx) >= w
+        || bottom + Round(8 * sy) >= h)
+        return ""
+    neck := 0, body := 0, pad := 0
+    Loop 4 {
+        row := A_Index + 1
+        y := bottom + Round(row * sy)
+        darkCenter := true
+        for dx in [-2, -1, 0, 1, 2]
+            darkCenter := darkCenter && EarnBlipPixelLevel(buf, w, center + Round(dx * sx), y, false) < 70
+        sidesLight := EarnBlipPixelLevel(buf, w, center - Round(5 * sx), y, true) >= 100
+            && EarnBlipPixelLevel(buf, w, center + Round(5 * sx), y, true) >= 100
+        if (darkCenter && sidesLight)
+            neck += 1
+        if (row <= 4 && EarnBlipPixelLevel(buf, w, center - Round(5 * sx), y, false) < 70
+            && EarnBlipPixelLevel(buf, w, center + Round(5 * sx), y, false) < 70)
+            body += 1
+    }
+    Loop 4 {
+        y := bottom + Round((A_Index + 3) * sy)
+        bright := 0
+        for dx in [-1, 0, 1]
+            bright += EarnBlipPixelLevel(buf, w, center + Round(dx * sx), y, true) >= 180 ? 1 : 0
+        if (bright >= 2)
+            pad += 1
+    }
+    if (neck >= 2 && body < 2)
+        return "mct"
+    if (!neck && body >= 2 && pad >= 1)
+        return "laptop"
+    return ""
+}
+
+EarnBlipPixelLevel(buf, w, x, y, minimum) {
+    off := (y * w + x) * 4
+    b := NumGet(buf, off, "uchar"), g := NumGet(buf, off + 1, "uchar"), r := NumGet(buf, off + 2, "uchar")
+    return minimum ? Min(r, g, b) : Max(r, g, b)
+}
+
 ATan2Deg(x, y) {
     ; atan2(x, y) 을 도로 (y 가 위쪽 양수). AHK 에는 ATan2 가 없다
     if (y > 0)
