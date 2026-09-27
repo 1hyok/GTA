@@ -19,7 +19,7 @@ description: GTA V Enhanced 그래픽 사다리(0~4단계, 평균 60 FPS 기준)
 0단계(DLAA)는 게임 메뉴에서만 켤 수 있다. 2026-09-26 14:41 에 사용자 승인을 받아 메뉴에서 켰다(dlssQuality 2→3). 0926 20:11 에 통과했고(평균 80.1 FPS), 1단계는 0926 23:06:41 게임이 꺼진 순간 적용됐다. 프레임 생성(DLSS FG 2X)·DLSS 품질·프레임 제한 120·VSync 는 건드리지 않는다.
 
 ## 누가 무엇을 하나
-- **판정과 적용은 윈도우 작업 스케줄러 작업 `GTA Perf Watch` 가 한다.** 10분마다 같은 폴더의 `gta-perf-watch.ps1` 을 숨겨서 돌린다. GTA 가 전경이면 PresentMon 으로 60초를 잰다. 지금 단계의 전경 캡처 중 OBS 가 꺼져 있고, 사용자가 직접 플레이했고(play=user), GPU 평균 사용률이 90% 이상인 것이 6개 모이면 판정한다. 매크로가 도는 정지 장면(macro)과 아무 입력 없는 장면(idle)은 FPS 가 실제 플레이보다 높게 나오고, GPU 사용률 90% 미만(나이트클럽 안처럼 사람이 많아 CPU 가 막는 장면)은 그래픽 단계와 무관하게 낮게 나와서, 기록만 하고 판정에서 뺀다. 통과 기준은 표시 FPS 시간 가중 평균 60 이상, VRAM 7600 MiB 이하, 그 단계 동안 GTA 비정상 종료 없음이다. 실패하면 그 단계만 되돌리고 다음 단계로 간다. 4단계 뒤에는 남은 조합으로 6개를 더 재 확인하고 끝난다. 확인에 실패하면 가장 최근에 남긴 단계를 되돌리고 다시 확인한다. 값은 게임이 꺼진 순간에만 settings.xml 에 쓴다. 늦어도 2026-10-10 23:59 에 끝나고, 끝나면 작업을 스스로 지운다.
+- **판정과 적용은 윈도우 작업 스케줄러 작업 `GTA Perf Watch` 가 한다.** 10분마다 같은 폴더의 `gta-perf-watch.ps1` 을 숨겨서 돌린다. GTA 가 전경이면 PresentMon 으로 60초를 잰다. 지금 단계의 전경 캡처 중 OBS 가 꺼져 있고, 사용자가 직접 플레이한 것으로 분류됐고(play=user), 수익 매크로를 포함한 로그 확인 표식(note 의 `activity-check=2`)이 있고, GPU 평균 사용률이 90% 이상인 것이 6개 모이면 판정한다. macro·idle 은 활동이 달라 판정에서 뺀다. GPU 90% 미만인 장면도 GPU 부하가 높은 표본으로 그래픽 단계를 비교하기 위해 제외한다. GPU 사용률만으로 CPU 병목이나 그래픽 설정과 무관함을 확정하지 않는다. 통과 기준은 표시 FPS 시간 가중 평균 60 이상, VRAM 7600 MiB 이하, 그 단계 동안 GTA 비정상 종료 없음이다. 실패하면 그 단계만 되돌리고 다음 단계로 간다. 4단계 뒤에는 남은 조합으로 6개를 더 재 확인하고 끝난다. 확인에 실패하면 가장 최근에 남긴 단계를 되돌리고 다시 확인한다. 값은 게임이 꺼진 순간에만 settings.xml 에 쓴다. 늦어도 2026-10-10 23:59 에 끝나고, 끝나면 작업을 스스로 지운다.
 - **이 루틴은 읽고 알리기만 한다.** settings.xml·pending.json·ladder.json 을 고치지 않는다.
 
 ## 자료 (전부 `C:\Users\rlfjr\gta-perf`)
@@ -39,15 +39,15 @@ $s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBat
 $p = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
 Register-ScheduledTask -TaskName 'GTA Perf Watch' -Action $a -Trigger $t -Settings $s -Principal $p
 ```
-2. 단계별 표를 만든다. 쓰는 줄은 `status` 가 capture, `obs` 가 no, `fg_ratio` 가 0.9 이상인 줄이다. `play` 열로 나눈다. 캡처 60초 동안 매크로 로그(gta-afk·gta-macro·gta-claw)가 갱신됐으면 macro, 아니고 마지막 입력이 60초 안이면 user, 둘 다 아니면 idle 이다. user 중에서도 `gpu_util_pct` 가 90 미만인 줄은 `user(cpu)` 로 따로 센다(0926 21:10~23:00 실측: GPU 55~90 %, 전력 한도가 99 W 에서 71~83 W 로 내려감, 43~68 FPS). 판정은 GPU 90% 이상 user 만 쓰지만, 표에는 user·user(cpu)·macro·idle 의 캡처 수와 각각의 평균 FPS 를 나눠 적는다. `stage` 값마다(pre 포함):
+2. 단계별 표를 만든다. 쓰는 줄은 `status` 가 capture, `obs` 가 no, `fg_ratio` 가 0.9 이상인 줄이다. `play` 열로 나눈다. 캡처 60초 동안 매크로 로그(gta-afk·gta-macro·gta-claw·gta-earn)가 갱신됐으면 macro, 아니고 마지막 입력이 60초 안이면 user, 둘 다 아니면 idle 이다. 판정용 user 는 note 를 `|` 로 나눠 공백을 제거한 항목에 `activity-check=2` 가 있는 신규 캡처만 쓴다. 이 표식은 네 로그를 확인한 정규 캡처 경로에서만 남긴다. 수동 import 는 status=manual 이므로 판정 대상이 아니다. 표식 없는 과거 user 는 `user(과거 미검증)`으로 따로 보존하고 판정 수에 넣지 않는다. 0927 00:40·01:20·01:40의 S1 user 세 개는 gta-earn.log 길찾기와 겹친다. CSV와 이미 끝난 S0 판정 history 를 고치지 않고, 현재 S1 판정 수를 신규 유효 표본부터 다시 센다. 표식 있는 user 중 `gpu_util_pct` 가 90 미만인 줄은 `user(gpu<90)`으로 따로 센다. 낮은 GPU 사용률은 CPU 병목을 확정하는 값이 아니므로 CPU 병목으로 이름 붙이지 않는다. 판정은 GPU 90% 이상 신규 user 만 쓰고, 표에는 user·user(gpu<90)·user(과거 미검증)·macro·idle 의 캡처 수와 각각의 평균 FPS 를 나눠 적는다. `stage` 값마다(pre 포함):
    - 평균 FPS = Σ(disp_fps × span_s) ÷ Σ span_s, 캡처 수, 최대 vram_max_mib.
    - temp_median_c·power_median_w·clock_median_mhz 의 중앙값, temp_max_c 의 최댓값.
    - 제한 비율 = Σ thr_* ÷ Σ gpu_samples 를 SW Power Cap·SW Thermal·HW Thermal·Reliability 각각 %로.
    - 오늘 cooling 값이 둘 이상이면 같은 표를 cooling 값마다 나누고, 온도 중앙값·클럭 중앙값·열 제한 비율(thr_swthermal_s ÷ gpu_samples)을 값별로 비교한다. 이 노트북 GPU(RTX 4060 Laptop)는 86도쯤에서 열 제한을 걸므로 냉각이 좋아지면 온도보다 열 제한 시간과 클럭이 먼저 바뀐다(0926 실측: 평평 45~60초·2235~2400 MHz, 책 받침 36초·2520 MHz, 에어컨 뒤 0초·2580~2610 MHz). 열 제한이 0초가 된 뒤에는 병목이 전력 한도(약 99 W)다.
 3. `C:\Users\rlfjr\gta-perf\verdict.md` 맨 위에 오늘 절을 더한다(이전 절은 아래에 남긴다): 날짜, 지금 phase·단계·조합, 오늘 ladder.log 줄, 단계별 표, 되돌린 단계와 이유, 비정상 종료, 작업 상태.
-4. 메일은 **오늘 단계가 바뀌었을 때**(ladder.log 에 오늘 날짜의 판정 줄이 있을 때)와 **사다리가 끝났을 때**만 Gmail 커넥터 `send_message` 로 `dnfjddk2@gmail.com` 에 보낸다. 그 밖의 날은 보내지 않는다. `PushNotification` 은 예약 실행에서 폰에 가지 않으니 쓰지 않는다.
+4. 메일은 오늘 단계가 바뀌었을 때(ladder.log 에 오늘 날짜의 판정 줄이 있을 때)와 사다리가 끝났을 때만 Gmail 커넥터 `send_message` 로 `dnfjddk2@gmail.com` 에 보낸다. 그 밖의 날은 보내지 않는다. `PushNotification` 은 예약 실행에서 폰에 가지 않으니 쓰지 않는다.
    - subject: `[GTA 그래픽] <n>단계 <통과|실패, 되돌림> → 지금 <단계>` 또는 끝난 날은 `[GTA 그래픽] 사다리 끝: <남은 조합 요약>`
-   - body(평문, 14줄 이내): 지금 단계, 단계별 user·user(cpu)·macro·idle 캡처 수와 각각의 평균 FPS·최대 VRAM 한 줄씩, 단계별 온도·전력·클럭 중앙값과 열·전력 제한 비율 한 줄씩, 되돌린 게 있으면 그 이유, cooling 이 바뀐 날이면 cooling 값별로 나눈 값, 자세한 표는 `C:\Users\rlfjr\gta-perf\verdict.md`.
+   - body(평문, 14줄 이내): 지금 단계, 단계별 user·user(gpu<90)·user(과거 미검증)·macro·idle 캡처 수와 각각의 평균 FPS·최대 VRAM 한 줄씩, 단계별 온도·전력·클럭 중앙값과 열·전력 제한 비율 한 줄씩, 되돌린 게 있으면 그 이유, cooling 이 바뀐 날이면 cooling 값별로 나눈 값, 자세한 표는 `C:\Users\rlfjr\gta-perf\verdict.md`.
 5. `C:\Users\rlfjr\gta-perf\verdict-runs.md` 맨 위(제목 줄 바로 아래)에 `- <yyyy-MM-dd HH:mm> <phase>/<단계>: <오늘 한 줄> (메일 <보냄|안 보냄>)` 을 더한다. 이 폴더는 git 저장소가 아니니 커밋하지 않는다.
 6. **감시가 끝났으면**(ladder.json 의 phase 가 done 이고 작업 GTA Perf Watch 가 없거나, 2026-10-10 이 지났으면) 4단계의 끝난 날 메일을 보내고 5단계 기록을 남긴 뒤, ToolSearch 로 `mcp__scheduled-tasks__delete_scheduled_task` 를 불러 taskId `gta-perf-verdict` 를 지운다.
 

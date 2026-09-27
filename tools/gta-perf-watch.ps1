@@ -14,7 +14,7 @@ GetForegroundWindow, GetLastInputInfo, 이벤트 로그)와, 게임이 꺼져 �
   perf.csv      실행마다 한 줄(obs 열: 캡처 시작·끝에 obs64.exe 가 떠 있었으면 yes, 그 캡처는 판정에서 뺀다). crashes.csv, applied.log, ladder.log, watch.log, launch.log.
 
 판정(사다리 phase=measure/confirm): 지금 조합(expected)과 디스크 값이 같고, OBS 가 꺼져 있고, 사용자가 직접 플레이한(play=user) 전경 캡처 중
-  GPU 평균 사용률 90% 이상인 것(GPU 가 병목인 장면. 나이트클럽 안처럼 CPU 가 막는 장면은 뺀다)이 minCaptures 개 모이면
+  수익 매크로까지 확인한 신규 캡처(note 의 activity-check=2)이고 GPU 평균 사용률 90% 이상인 것이 minCaptures 개 모이면
   표시 FPS 시간 가중 평균 >= fpsTarget, 캡처 중 VRAM 최대 <= vramLimitMiB, 그 단계 동안 GTA 비정상 종료 없음
   (디스플레이 장치 변화로 설명되는 종료는 뺌) 이면 통과. 실패한 단계만 revert 값으로 되돌리고 다음 단계로 간다.
   마지막 단계 뒤에는 confirm 으로 남은 조합을 한 번 더 재고, 실패하면 가장 최근에 남긴 단계를 되돌려 다시 잰다.
@@ -304,7 +304,7 @@ function Test-ObsRunning { return [bool](Get-Process -Name 'obs64' -ErrorAction 
 
 function Get-MacroActivity([datetime]$since) {
     $names = @()
-    foreach ($n in 'gta-afk', 'gta-claw', 'gta-macro') {
+    foreach ($n in 'gta-afk', 'gta-claw', 'gta-macro', 'gta-earn') {
         $f = Join-Path $env:TEMP "$n.log"
         if ((Test-Path -LiteralPath $f) -and (Get-Item -LiteralPath $f).LastWriteTime -ge $since) { $names += $n }
     }
@@ -343,7 +343,8 @@ function Invoke-Capture {
     if (-not $smi.HasExited) { Stop-Process -Id $smi.Id -Force -ErrorAction SilentlyContinue }
     $idleEnd = [GtaPerfNative]::IdleSeconds()
 
-    $row = @{ status = 'capture' }
+    # 기존 play=user 행에는 수익 매크로가 섞였다. 네 로그를 확인하는 이 경로에서만 판정용 표식을 남긴다.
+    $row = @{ status = 'capture'; note = 'activity-check=2' }
     $row.obs = $(if ($obsAtStart -or (Test-ObsRunning)) { 'yes' } else { 'no' })
     if (Test-Path -LiteralPath $csv) {
         $s = Get-PresentMonStats $csv
@@ -424,16 +425,24 @@ function Write-LadderLog([string]$msg) {
     Add-Content -LiteralPath $LadderLog -Encoding UTF8 -Value ((Get-Date).ToString('yyyy-MM-dd HH:mm:ss') + ' ' + $msg)
 }
 
+function Get-LadderCaptures($ladder) {
+    $st = $ladder.state
+    $label = Get-StageLabel $ladder
+    $since = [datetime]::ParseExact([string]$st.since, 'yyyy-MM-dd HH:mm:ss', $Inv)
+    return @(Import-Csv -LiteralPath $PerfCsv | Where-Object {
+        $_.status -eq 'capture' -and $_.obs -eq 'no' -and $_.play -eq 'user' -and $_.stage -eq $label -and (ConvertTo-Num $_.fg_ratio) -ge 0.9 -and
+        # GPU 부하가 높은 표본으로 그래픽 단계를 비교한다. 낮은 GPU 사용률만으로 CPU 병목을 확정하지 않는다.
+        (ConvertTo-Num $_.gpu_util_pct) -ge 90 -and
+        # CSV 원자료와 이미 끝난 판정은 보존한다. 무표식 과거 user 는 참고 기록으로만 쓴다.
+        ($_.note -match '(?:^|\|)\s*activity-check=2\s*(?:\||$)') -and
+        [datetime]::ParseExact($_.time, 'yyyy-MM-dd HH:mm:ss', $Inv) -ge $since })
+}
+
 function Invoke-LadderJudge($ladder) {
     $st = $ladder.state
     $label = Get-StageLabel $ladder
     $since = [datetime]::ParseExact([string]$st.since, 'yyyy-MM-dd HH:mm:ss', $Inv)
-    $rows = @(Import-Csv -LiteralPath $PerfCsv | Where-Object {
-        $_.status -eq 'capture' -and $_.obs -eq 'no' -and $_.play -eq 'user' -and $_.stage -eq $label -and (ConvertTo-Num $_.fg_ratio) -ge 0.9 -and
-        # GPU 평균 사용률 90% 미만이면 GPU 가 병목이 아닌 장면이다(나이트클럽 안처럼 사람이 많아 CPU 가 막는 곳: 0926 21:10~23:00
-        # 실측 GPU 55~90 %·전력 한도가 71~83 W 로 내려감·43~68 FPS). 그런 캡처는 그래픽 단계와 무관하니 판정에서 뺀다(기록은 남긴다).
-        (ConvertTo-Num $_.gpu_util_pct) -ge 90 -and
-        [datetime]::ParseExact($_.time, 'yyyy-MM-dd HH:mm:ss', $Inv) -ge $since })
+    $rows = @(Get-LadderCaptures $ladder)
     if ($rows.Count -lt [int]$ladder.minCaptures) { return }
 
     $spanSum = 0.0; $frameSum = 0.0; $vmax = 0.0
