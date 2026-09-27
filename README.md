@@ -40,7 +40,7 @@ Copy-Item Main.ahk Main_check.ahk
 | F8 | 벨럼 운전(W 유지 + 3초마다 LCtrl) | 토글 |
 | F9 | 수익 자동화 | ×2 토글 |
 | F10 | 작텔(스팀 봇) | ×2 |
-| F11 | 작텔(Alt+F4) | ×2 |
+| F11 | 작텔(Alt+F4). `JobWarpQuickJoin=1` 이면 첫 ×2 는 퀵 조인 준비 | ×2 |
 | Num/ | 인형 뽑기 1판 | 한 번 |
 | Num* | 인형 뽑기 반복 | 토글 |
 | Num0 | 스낵 먹기 | 한 번 |
@@ -73,6 +73,16 @@ Copy-Item Main.ahk Main_check.ahk
 출처는 [2024-12-30 작성자 절차](https://www.reddit.com/r/gtaglitches/comments/1hpoqk9/job_warping_during_missions_update/)와 기존 조사에서 인용한 [한국어 가이드의 작업 텔레포트 절](https://www.namu.moe/w/Grand%20Theft%20Auto%20Online/가이드)다. 원문의 2025-03-08 댓글은 PC 카지노 prep에서 Alt+F4 후 60초 대기로 성공했다고 보고한다(Legacy/Enhanced 구분·세부 버전 미기재). 일부 임무의 취소·운반물 유실도 원문에 명시돼 있어 모든 prep의 유지 보장은 아니다. 이 계정의 유지 성공 실측은 아래 페이폰 히트 두 건이며, 웹 보고와 구분한다. 조사 원자료와 과거 invalid 작업 경로는 dotfiles의 `claude/skills/gta-online-research/SKILL.md`에 정리했다.
 
 ### F11 두 번: Alt+F4 방식
+
+#### 퀵 조인 준비까지 F11 로 (`JobWarpQuickJoin=1`)
+
+F11 두 번을 두 단계로 쓴다. prep 을 시작하기 전(보스 해제가 되는 때)에 누른다.
+
+1. F11 두 번: 매크로가 보스 해제 → 폰 Quick Join → Random → Alone → Yes → 곧바로 보스 등록(`JobWarpBossRole`, 기본 CEO)까지 하고 오버레이에 "작텔 준비됨" 을 띄운다. Looking For Job 은 기다리지 않는다. Yes 까지 눌렸으면 검색은 시작됐고, 바로 등록해야 검색이 작업 로비를 잡기 전에 끝난다.
+2. 직접: prep 을 시작하고, 지도에서 작업 아이콘에 커서를 올려 "Start Job (Space)" 가 보이게 한다.
+3. F11 두 번: 아래 Alt+F4 작텔. 성공하면 준비 상태가 풀린다. 준비 상태는 `JobWarpArmMaxMin`(30분)이 지나도 풀린다.
+
+옛 재등록 텔레포트와 순서는 같지만 칸 수를 세지 않는다. 폰 앱·목록 줄·상호작용 메뉴 줄을 누르기 전마다 `Images\JobWarp\1920x1080\` 템플릿으로 선택된 줄을 확인하고, 안 보이면 더 누르지 않고 멈춘다(까닭은 툴팁과 `gta-macro.log` 의 `[jobwarp]` 줄). 템플릿 목록은 `Features/Teleport/QuickJoinPrep.ahk` 맨 위. 템플릿을 다 뜨기 전에는 `JobWarpQuickJoin=0` 이라 F11 은 예전처럼 바로 작텔한다.
 
 사전 설정: Online → Options → Matchmaking = Closed, 상호작용 메뉴 → Preferences → Map Blip Options → Jobs 표시.
 
