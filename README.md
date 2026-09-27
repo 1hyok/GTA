@@ -84,6 +84,12 @@ F11 두 번을 두 단계로 쓴다. prep 을 시작하기 전(보스 해제가 
 
 옛 재등록 텔레포트와 순서는 같지만 칸 수를 세지 않는다. 폰 앱·목록 줄·상호작용 메뉴 줄을 누르기 전마다 `Images\JobWarp\1920x1080\` 템플릿으로 선택된 줄을 확인하고, 안 보이면 더 누르지 않고 멈춘다(까닭은 툴팁과 `gta-macro.log` 의 `[jobwarp]` 줄). 템플릿 목록은 `Features/Teleport/QuickJoinPrep.ahk` 맨 위. 템플릿을 다 뜨기 전에는 `JobWarpQuickJoin=0` 이라 F11 은 예전처럼 바로 작텔한다.
 
+템플릿은 `tools/jobwarp-capture.ps1` 로 뜬다. 백그라운드로 띄워 두면 ScrollLock 이 켜져 있는 동안만 게임 모니터를 찍고 앞 장과 달라진 화면만 `%TEMP%\claude\jobwarp\` 에 남긴다(게임에 키를 보내지 않는다). ScrollLock 을 켜고 손으로 한 번 보스 해제 → Quick Join → Random → Alone → Yes → 보스 등록을 한 뒤 끄면, 남은 장에서 선택된 줄을 잘라 템플릿을 만든다.
+
+```powershell
+Start-Process powershell -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File tools\jobwarp-capture.ps1' -WindowStyle Hidden
+```
+
 사전 설정: Online → Options → Matchmaking = Closed, 상호작용 메뉴 → Preferences → Map Blip Options → Jobs 표시.
 
 Space → CONFIRM Enter → 바로 Alt+F4 → 게임 종료 확인창에서 60초가 지나고 오른쪽 아래 No/Yes 안내가 보이면 Backspace(No). 작업 로딩이 뒤에서 튕기고 나면 작업 위치 프리모드에 떨어진다. 0926 페이폰 히트에서 목표·타이머를 유지한 채 두 번 성공했으나, 그때는 Quick Join으로 다른 작업 로비를 다녀온 뒤 지도에 작업 블립이 보이는 상태였다. 0927 Quick Join을 쓰지 않은 페이폰 히트에서는 지도 작업 블립이 사라졌다. 임무 중 항상 지도 작텔을 시작할 수 있다는 뜻은 아니다.
