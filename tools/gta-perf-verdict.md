@@ -31,7 +31,7 @@ AppData 가 아니다. Claude 앱(MSIX)에서 띄운 프로세스가 AppData 에
 - `ladder.json`: `state.phase`(measure/confirm/done), `state.stage`, `state.expected`(지금 조합), `state.kept`·`state.reverted`, `state.history`(판정마다 time, label, result, avgFps, captures, maxVramMiB, crashes, reason, action).
 - `ladder.log`: 판정·재적용·종료를 한 줄씩. 오늘 날짜 줄이 있으면 그날 단계가 바뀐 것이다.
 - `perf.csv`: 실행마다 한 줄. `status`(capture/background/not_running/expired), `stage`(pre, S0~S4, confirm1…, waiting-apply, mismatch, done), `cooling`(cooling.txt 첫 줄 값, 아래 참고), `obs`(yes/no), `play`(user/macro/idle), 12개 설정 키, `disp_fps`, `disp_1pct_low_p99`, `span_s`, `gpu_util_pct`, `vram_max_mib`, `temp_max_c`, `temp_median_c`, `power_median_w`, `power_limit_median_w`, `clock_median_mhz`, `gpu_samples`(1초 표본 수), `thr_swpower_s`·`thr_swthermal_s`·`thr_hwthermal_s`·`thr_reliability_s`(각 제한이 걸린 초 수), `active_samples`·`samples`(사용자 입력 표본), `fg_ratio`, `macro_activity`, `gta_start`, `gta_restart`, `crash_events_new`.
-- `crashes.csv`, `applied.log`(settings.xml 을 쓴 시각·값·백업), `watch.log`, `cooling.txt`(있으면 첫 줄이 cooling 값, 아래 줄은 바뀐 시각과 이유). 값은 flat(0926 19:15 전), raised(노트북 밑에 책, 19:15~), raised_ac(책 + 에어컨, 19:33~), side_ac(책 + 에어컨 + 노트북을 옆으로 세움, 0926 23:00~)이다.
+- `crashes.csv`, `applied.log`(settings.xml 을 쓴 시각·값·백업), `watch.log`, `cooling.txt`(있으면 첫 줄이 cooling 값, 아래 줄은 바뀐 시각과 이유). 과거 값은 flat, raised, raised_ac, side_ac이며 당시 사용자가 알려 준 배치와 냉각을 나타낸다. 0927 12:29:43부터 raised_untracked는 책 받침을 뜻하며 에어컨 사용 여부는 추적하지 않는다. 사용자가 에어컨 상태를 일일이 보고하지 않겠다고 했으므로 묻거나 추정하지 않는다. 냉각 라벨로 판정 표본을 제외하지 않고 실제 FPS·GPU 온도·열 제한·부하를 함께 본다.
 - `verdict.md`·`verdict-runs.md`(종료된 Claude 루틴의 과거 보고와 실행 기록), `codex-verdict.md`(현재 Codex 확인 기록).
 
 ## 기록을 확인할 때 (Codex)
