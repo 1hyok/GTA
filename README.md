@@ -59,11 +59,13 @@ Copy-Item Main.ahk Main_check.ahk
 
 즐겨찾기한 남의 작업은 지도에 블립이 안 뜬다(내가 만든 작업만 뜬다, 0926 실측). 그런 작업은 `P` → ONLINE → Jobs → Play Job → Bookmarked 에서 골라 CONFIRM 창이 뜬 상태에서 F10 두 번(매크로가 CONFIRM 을 보면 Space 를 건너뛰고 Enter 부터 한다). F11 은 화면을 보지 않고 Space 부터 보내므로 지도에서만 쓴다.
 
+임무 진행 중에는 Jobs가 `Jobs are currently unavailable.`로 막혀 위 목록 경로를 쓸 수 없다. 0927 페이폰 히트에서 기존 웹 기록과 같은 결과를 확인했다([확인 화면](docs/evidence/2026-09-27-payphone-jobs-unavailable.png)).
+
 ### F11 두 번: Alt+F4 방식
 
 사전 설정: Online → Options → Matchmaking = Closed, 상호작용 메뉴 → Preferences → Map Blip Options → Jobs 표시.
 
-Space → CONFIRM Enter → 바로 Alt+F4 → 게임 종료 확인창에서 60초가 지나고 오른쪽 아래 No/Yes 안내가 보이면 Backspace(No). 작업 로딩이 뒤에서 튕기고 나면 작업 위치 프리모드에 떨어진다. 임무 중에도 된다(0926 실측: 페이폰 히트 중 두 번 성공, 목표·타이머 유지).
+Space → CONFIRM Enter → 바로 Alt+F4 → 게임 종료 확인창에서 60초가 지나고 오른쪽 아래 No/Yes 안내가 보이면 Backspace(No). 작업 로딩이 뒤에서 튕기고 나면 작업 위치 프리모드에 떨어진다. 0926 페이폰 히트에서 목표·타이머를 유지한 채 두 번 성공했으나, 그때는 Quick Join으로 다른 작업 로비를 다녀온 뒤 지도에 작업 블립이 보이는 상태였다. 0927 Quick Join을 쓰지 않은 페이폰 히트에서는 지도 작업 블립이 사라졌다. 임무 중 항상 지도 작텔을 시작할 수 있다는 뜻은 아니다.
 
 - No/Yes 안내는 20초쯤에 뜨지만 그때 누르면 작업 로비로 들어간다(0926 실측: 32초 실패, 60초 성공 2회). `JobWarpMinWaitMs=60000` 을 줄이지 않는다.
 - 90초까지 안내를 못 찾거나 대기 중 End 를 누르면 매크로는 Backspace 를 안 보낸다. 종료 확인창은 직접 Backspace 로 닫는다. Enter(Yes)는 게임이 꺼진다.
