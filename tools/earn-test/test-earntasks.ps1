@@ -105,30 +105,30 @@ EarnNavPlan(name, &angle, &step, &goal) {
 '@
 
 $collectDriver = @'
-global EARN_PROMPT_AREA := [], mode := "", presses := 0, walks := 0, closeReads := 0
-cases := [["MissingOpen", false, 0], ["FaceFail", false, 1], ["CloseStale", false, 1], ["Ready", true, 2]]
+global EARN_PROMPT_AREA := [], mode := "", presses := 0, walks := 0, opened := false
+cases := [["MissingOpen", false, 0, 0], ["FaceFail", false, 1, 0], ["ClosedEmpty", true, 1, 0], ["OpenEmpty", true, 0, 0], ["OpenMoney", true, 0, 1]]
 for c in cases {
-    mode := c[1], presses := 0, walks := 0, closeReads := 0
+    mode := c[1], presses := 0, walks := 0, opened := InStr(mode, "Open") = 1
     result := EarnSafeCollect()
-    if (result != c[2] || presses != c[3] || walks != 0) {
+    if (result != c[2] || presses != c[3] || walks != c[4]) {
         FileAppend("FAIL " mode ": result=" result " presses=" presses " walks=" walks Chr(10), "*", "UTF-8")
         ExitApp(1)
     }
 }
-FileAppend("PASS SafeCollect cases=4" Chr(10), "*", "UTF-8")
+FileAppend("PASS SafeCollect cases=5" Chr(10), "*", "UTF-8")
 ExitApp(0)
 EarnSeen(name, area := "") {
-    global mode, closeReads
+    global mode, opened, walks
     if (name = "safe_prompt")
-        return mode != "MissingOpen"
+        return !opened && mode != "MissingOpen"
     if (name = "hud_safe_zero")
-        return mode != "FaceFail"
-    closeReads += 1
-    return mode != "CloseStale" || closeReads = 1
+        return mode != "FaceFail" && (mode != "OpenMoney" || walks > 0)
+    return name = "safe_close_prompt" && opened
 }
 EarnPress(*) {
-    global presses
+    global presses, opened
     presses += 1
+    opened := !opened
     return true
 }
 EarnWalk(*) {
@@ -136,7 +136,7 @@ EarnWalk(*) {
     walks += 1
     return true
 }
-EarnFace(*) => false
+EarnFace(*) => mode != "FaceFail"
 EarnFail(*) => false
 EarnSleep(*) => true
 EarnLog(*) => true
@@ -172,17 +172,25 @@ EarnMenuClose() {
 '@
 
 $homeDriver = @'
-global config := Map("Settings", Map("EarnWalkRetry", 3)), atMCT := false, inArcade := false, walkFirst := true, walkCalls := 0, order := ""
-cases := [[true, false, true, ""], [false, true, true, "IW"], [false, false, true, "IGW"], [false, true, false, "IWGW"]]
+global config := Map("Settings", Map("EarnWalkRetry", 3)), atMCT := false, inArcade := false, walkFirst := true, walkCalls := 0, order := "", laptopSeated := false, standOk := true, reloadOk := true
+; Existing MCT, inside success/failure, outside success/failure, session entry failure.
+cases := [[true,false,true,true,"",true], [false,true,true,true,"IW",true], [false,true,false,true,"IW",false],
+    [false,false,true,true,"IRW",true], [false,false,false,true,"IRW",false], [false,false,true,false,"IR",false]]
 for c in cases {
-    atMCT := c[1], inArcade := c[2], walkFirst := c[3], walkCalls := 0, order := ""
+    atMCT := c[1], inArcade := c[2], walkFirst := c[3], reloadOk := c[4], walkCalls := 0, order := ""
     result := EarnGoHome()
-    if (!result || order != c[4]) {
+    if (result != c[6] || order != c[5] || walkCalls > 1) {
         FileAppend("FAIL Home order=" order Chr(10), "*", "UTF-8")
         ExitApp(1)
     }
 }
-FileAppend("PASS GoHome cases=4" Chr(10), "*", "UTF-8")
+laptopSeated := true, standOk := true, atMCT := false, inArcade := true, walkFirst := true, order := ""
+if (!EarnGoHome() || order != "DUVIW")
+    throw Error("Laptop recovery must stand and verify before walking: " order)
+standOk := false, order := ""
+if (EarnGoHome() || order != "DUV")
+    throw Error("Failed laptop exit must not navigate: " order)
+FileAppend("PASS GoHome cases=8" Chr(10), "*", "UTF-8")
 ExitApp(0)
 EarnAtMCT() {
     global atMCT
@@ -196,17 +204,38 @@ EarnInPlace(*) {
 EarnWalkToMCT() {
     global walkFirst, walkCalls, order
     order .= "W", walkCalls += 1
-    return walkFirst || walkCalls > 1
+    return walkFirst
 }
 EarnGoTo(*) {
+    FileAppend("FAIL GoHome must not use repeated destination search`n", "*")
+    ExitApp(1)
+}
+EarnReloadInto(place, direction) {
     global order
-    order .= "G"
-    return true
+    if (place != "Arcade" || direction != "Right")
+        throw Error("Unexpected session destination")
+    order .= "R"
+    return reloadOk
 }
 EarnAborted() => false
 EarnFail(*) => false
 EarnLog(*) => true
-EarnRejoin(*) => false
+EarnRejoin(*) {
+    FileAppend("FAIL GoHome must not rejoin after navigation failure`n", "*")
+    ExitApp(1)
+}
+EarnSeen(name,*) => name = "arcade_laptop_seated" && laptopSeated
+Click(key) {
+    global order
+    order .= key = "Right Down" ? "D" : "U"
+}
+Sleep(*) => true
+EarnSleep(*) => true
+EarnWaitGone(*) {
+    global order
+    order .= "V"
+    return standOk
+}
 '@
 
 $safeDriver = @'
@@ -252,10 +281,97 @@ $previousInputEncoding = [Console]::InputEncoding
 try {
     [Console]::InputEncoding = New-Object Text.UTF8Encoding($false)
     Invoke-EarnOfflineCheck 'SpawnRoute' 'EarnSpawnRoute' $spawnDriver 8
-    Invoke-EarnOfflineCheck 'SafeCollect' 'EarnSafeCollect' $collectDriver 4
+    Invoke-EarnOfflineCheck 'SafeCollect' 'EarnSafeCollect' $collectDriver 5
     Invoke-EarnOfflineCheck 'InPlace' 'EarnInPlace' $placeDriver 4
-    Invoke-EarnOfflineCheck 'GoHome' 'EarnGoHome' $homeDriver 4
+    Invoke-EarnOfflineCheck 'GoHome' 'EarnGoHome' $homeDriver 8
     Invoke-EarnOfflineCheck 'SafeTask' 'EarnSafeTask' $safeDriver 3
+    $atMCTDriver = @'
+global EARN_PROMPT_AREA := [], visible := ""
+for c in [["mct_sit",false],["arcade_laptop_seated",false],["mct_seated",true],["mct_title",true]] {
+    visible := c[1]
+    if (EarnAtMCT() != c[2])
+        throw Error("MCT identity mismatch: " visible)
+}
+FileAppend("PASS AtMCT cases=4`n", "*")
+ExitApp(0)
+EarnSeen(name,*) => name = visible
+'@
+    Invoke-EarnOfflineCheck 'AtMCT' 'EarnAtMCT' $atMCTDriver 4
+    $seatDriver = @'
+global EARN_PROMPT_AREA := [], prompt := true, mctSeated := true, presses := 0
+for c in [[true,true,true,1],[true,false,false,1],[false,false,false,0]] {
+    prompt := c[1], mctSeated := c[2], presses := 0
+    if (EarnConfirmMCTSeat() != c[3] || presses != c[4])
+        throw Error("Generic sit prompt cannot confirm MCT arrival")
+}
+FileAppend("PASS MCTSeat cases=3`n", "*")
+ExitApp(0)
+EarnSeen(*) => prompt
+EarnPress(key) {
+    global presses
+    if (key != "e")
+        throw Error("Unexpected input")
+    presses++
+    return true
+}
+EarnWaitSeen(name,*) => name = "mct_seated" && mctSeated
+EarnFail(*) => false
+'@
+    Invoke-EarnOfflineCheck 'MCTSeat' 'EarnConfirmMCTSeat' $seatDriver 3
+    $basementDriver = @'
+global mode := "", order := ""
+for c in [["spawn",false,"S"],["walk",false,"SW"],["sleep",false,"SWL"],
+    ["blip",false,"SWLB"],["edge",false,"SWLB"],["plan",false,"SWLBP"],
+    ["goal",false,"SWLBP"],["nav",false,"SWLBPN"],["seat",false,"SWLBPNC"],["ok",true,"SWLBPNC"]] {
+    mode := c[1], order := ""
+    if (EarnArcadeBasementToMCT() != c[2] || order != c[3]) {
+        FileAppend("FAIL Basement route " mode " order=" order "`n", "*")
+        ExitApp(1)
+    }
+}
+FileAppend("PASS BasementRoute cases=10`n", "*")
+ExitApp(0)
+EarnSeen(name,*) {
+    global order
+    order .= "S"
+    return name = "arcade_basement_spawn" && mode != "spawn"
+}
+EarnWalk(path) {
+    global order
+    order .= "W"
+    if (!RegExMatch(path, "^w:\d+$"))
+        throw Error("Basement traversal must use the guarded forward segment")
+    return mode != "walk"
+}
+EarnSleep(*) {
+    global order
+    order .= "L"
+    return mode != "sleep"
+}
+EarnBlip(name, &a, &d) {
+    global order
+    order .= "B", a := 0, d := mode = "edge" ? 999 : 62
+    return name = "mct" && mode != "blip"
+}
+EarnNavPlan(name, &t, &s, &g) {
+    global order
+    order .= "P", t := 0, s := 10, g := mode = "goal" ? 15 : 14
+    return name = "mct" && mode != "plan"
+}
+EarnNavTo(name, prompt) {
+    global order
+    order .= "N"
+    return name = "mct" && prompt = "mct_sit" && mode != "nav"
+}
+EarnConfirmMCTSeat() {
+    global order
+    order .= "C"
+    return mode != "seat"
+}
+EarnFail(*) => false
+EarnLog(*) => true
+'@
+    Invoke-EarnOfflineCheck 'BasementRoute' 'EarnArcadeBasementToMCT' $basementDriver 10
     $djDriver = @'
 cases := [[-1,95,false],[0,95,true],[80,95,true],[86,95,true],[90,95,true],[90.1,95,true],[94,95,true],[95,95,false],[100,95,false],[80,80,false]]
 for c in cases {
@@ -351,7 +467,120 @@ EarnSafeTask() => true
 EarnDispatchTask() => true
 '@
     Invoke-EarnOfflineCheck 'MCTTaskList' 'EarnTaskList' $listDriver 2
-    Write-Output 'PASS EarnTasks: 45 cases; no game input'
+    $sourceText = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnCore.ahk') -Raw -Encoding UTF8
+    $safeNavDriver = @'
+global EARN_PROMPT_AREA := [], config := Map("Settings", Map("EarnTurnUnitsPerDeg",29))
+; Open-safe prompt succeeds before navigation and at the final arrival check.
+if (!EarnNavTo("safe", "safe_prompt", 12, 1) || !EarnNavTo("safe", "safe_prompt", 12, 0)
+    || EarnNavTo("laptop", "laptop_prompt", 12, 0))
+    throw Error("Open safe arrival must not start navigation or satisfy other prompts")
+FileAppend("PASS OpenSafeNav cases=3`n", "*")
+ExitApp(0)
+EarnSeen(name,*) => name = "safe_close_prompt"
+EarnAborted() => false
+EarnFail(*) => false
+EarnNavPlan(*) {
+    throw Error("Already at open safe: navigation forbidden")
+}
+EarnBlip(*) => false
+EarnWalk(*) => false
+EarnTurn(*) => false
+EarnFace(*) => false
+EarnLog(*) => true
+'@
+    Invoke-EarnOfflineCheck 'OpenSafeNav' 'EarnNavTo' $safeNavDriver 3
+    $mctNavDriver = @'
+global EARN_PROMPT_AREA := [], config := Map("Settings", Map("EarnTurnUnitsPerDeg",29)), distance := 20, planCalls := 0
+; Edge distance 999 with gp=0 must not become nearby after walking, in either final or next-loop check.
+for c in [[20,1,true,0],[20,0,true,0],[100,1,false,1],[100,0,false,0],[999,1,false,1],[999,2,false,2]] {
+    distance := c[1], planCalls := 0
+    if (EarnNavTo("mct", "mct_sit", 12, c[2]) != c[3] || planCalls != c[4]) {
+        FileAppend("FAIL Generic sit prompt must require nearby MCT; distance=" distance " steps=" c[2] "`n", "*")
+        ExitApp(1)
+    }
+}
+FileAppend("PASS MCTNav cases=6`n", "*")
+ExitApp(0)
+EarnSeen(name,*) => name = "mct_sit"
+EarnAborted() => false
+EarnFail(*) => false
+EarnNavPlan(name, &a, &s, &g) {
+    global planCalls
+    planCalls++
+    a := 0, s := 10, g := 0
+    return true
+}
+EarnBlip(name, &a, &d) {
+    a := 0, d := distance
+    return true
+}
+EarnWalk(*) => distance = 999
+EarnTurn(*) => false
+EarnFace(*) => false
+EarnLog(*) => true
+Sleep(*) => true
+'@
+    Invoke-EarnOfflineCheck 'MCTNav' 'EarnNavTo' $mctNavDriver 6
+    $faceDriver = @'
+global config := Map("Settings", Map("EarnTurnUnitsPerDeg",29)), EARN_PROMPT_AREA := []
+global sensitivity := 29, angle := 0, mode := "ok", turns := 0, walks := 0
+for value in [14.5,29,40] {
+    sensitivity := value, angle := 110, mode := "ok", turns := 0, walks := 0
+    Check(EarnFace("mct") && Abs(angle) <= 5 && turns > 0 && turns < 8 && walks = 0, "sensitivity " value)
+}
+for c in [[179,-179],[-179,179]] {
+    sensitivity := 29, angle := c[1], turns := 0
+    Check(EarnFace("mct", c[2], 0.5) && Abs(Wrap(angle-c[2])) <= 0.5 && turns = 1, "angle boundary")
+}
+for testMode in ["blip-initial","blip-after","abort-initial","abort-after"] {
+    sensitivity := 29, angle := 110, mode := testMode, turns := 0, walks := 0
+    expectedTurns := InStr(mode,"initial") ? 0 : 1
+    Check(!EarnFace("mct") && turns = expectedTurns && walks = 0, mode)
+}
+; Run the real navigation function with the real facing function. A lost sensor or
+; cancellation during facing must stop before the first walking command.
+for testMode in ["blip-after","abort-after"] {
+    sensitivity := 29, angle := 30, mode := testMode, turns := 0, walks := 0
+    Check(!EarnNavTo("mct", "", 12, 1) && turns = 1 && walks = 0, "navigation " mode)
+}
+FileAppend("PASS FaceControl cases=11`n", "*")
+ExitApp(0)
+Check(ok, label) {
+    if (!ok) {
+        FileAppend("FAIL FaceControl " label " angle=" angle " turns=" turns " walks=" walks "`n", "*")
+        ExitApp(1)
+    }
+}
+Wrap(value) => Mod(Mod(value + 180, 360) + 360, 360) - 180
+EarnAborted() => mode = "abort-initial" || (mode = "abort-after" && turns > 0)
+EarnBlip(name, &a, &d) {
+    a := angle, d := 80
+    return mode != "blip-initial" && !(mode = "blip-after" && turns > 0)
+}
+EarnTurn(units) {
+    global angle, turns
+    angle := Wrap(angle - units / sensitivity)
+    turns++
+    return true
+}
+EarnSleep(*) => true
+EarnSeen(*) => false
+EarnNavPlan(name, &a, &s, &g) {
+    a := 20, s := 10, g := 5
+    return true
+}
+EarnWalk(*) {
+    global walks
+    walks++
+    return true
+}
+EarnFail(*) => false
+EarnLog(*) => true
+Sleep(*) => true
+'@
+    $faceDriver += "`n" + [regex]::Match($sourceText, '(?ms)^EarnNavTo\([^\r\n]*\) \{.*?^\}').Value
+    Invoke-EarnOfflineCheck 'FaceControl' 'EarnFace' $faceDriver 11
+    Write-Output 'PASS EarnTasks: 87 cases; no game input'
 } finally {
     [Console]::InputEncoding = $previousInputEncoding
 }

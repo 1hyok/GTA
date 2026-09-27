@@ -5,13 +5,15 @@ $ErrorActionPreference = 'Stop'
 $source = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\Earner.ahk') -Raw -Encoding UTF8
 $tick = [regex]::Match($source, '(?ms)^EarnTick\(\) \{.*?^\}').Value
 if (-not $tick) { throw 'EarnTick missing' }
+$guards = @('EarnInputGuardStart', 'EarnInputGuardStop', 'EarnInputWatch', 'EarnInputAllowed') | ForEach-Object { [regex]::Match($source, ('(?ms)^' + $_ + '\(\) \{.*?^\}')).Value }
+$production = ($tick + "`n" + ($guards -join "`n")).Replace('A_TimeIdlePhysical', 'idleMs')
 $driver = @'
 #Requires AutoHotkey v2.0
 #SingleInstance Off
 #NoTrayIcon
 #Warn All, StdOut
 global gEarnOn, gEarnBusy, gEarnDue, gEarnDone, gEarnTasks, gEarnCurrent, gEarnFail, gEarnNextDue, gEarnSoftFails, gEarnRetryIn, gAbort, config, GTA_WIN, afkOn
-global calls, releaseCount, stopped, mode, windowExists, focused, otherBusy, activationCount
+global calls, releaseCount, stopped, mode, windowExists, focused, otherBusy, activationCount, idleMs, gEarnGuardArmed, timers
 Reset()
 gEarnOn := false
 EarnTick()
@@ -72,12 +74,31 @@ Check(calls.Length = 1 && releaseCount = 1, "reentry blocked")
 Reset()
 focused := false
 EarnTick()
-Check(calls.Length = 0 && activationCount = 1 && gEarnDue["bunker"] > A_TickCount + 29000, "activation failure postpones")
-FileAppend("PASS Earner: 16 cases; no game input`n", "*")
+Check(calls.Length = 0 && activationCount = 0 && gEarnDue["bunker"] > A_TickCount + 29000, "focus loss postpones without activation")
+Reset()
+mode := "physical"
+EarnTick()
+Check(!gEarnOn && gAbort && stopped = 1 && !gEarnGuardArmed && gEarnDone["bunker"] = 0 && gEarnRetryIn = 0, "physical input stops instead of retry")
+Reset()
+mode := "focus"
+EarnTick()
+Check(!gEarnOn && gAbort && !gEarnGuardArmed && gEarnDone["bunker"] = 0, "focus loss stops")
+Reset()
+mode := "idle-zero"
+EarnTick()
+Check(!gEarnOn && gAbort, "physical guard still enabled with zero start wait")
+Reset()
+EarnInputGuardStart()
+gAbort := true
+Check(!EarnInputAllowed(), "abort stays latched")
+EarnInputGuardStop()
+Check(!gEarnGuardArmed && timers[timers.Length] = 0, "watch removed")
+FileAppend("PASS Earner: 21 cases; no game input`n", "*")
 ExitApp(0)
 
 Reset() {
     global
+    idleMs := 60000, gEarnGuardArmed := false, timers := []
     gEarnOn := true, gEarnBusy := false, gEarnCurrent := "", gEarnFail := "", gEarnRetryIn := 0, gAbort := false, afkOn := false
     gEarnDue := Map("bunker", A_TickCount - 1, "dj", A_TickCount - 1)
     gEarnDone := Map("bunker", 0, "dj", 0), gEarnNextDue := Map(), gEarnSoftFails := Map()
@@ -86,8 +107,19 @@ Reset() {
     GTA_WIN := "fake", calls := [], releaseCount := 0, stopped := 0, mode := "ok", windowExists := true, focused := true, otherBusy := false, activationCount := 0
 }
 RunTask(id) {
-    global calls, mode, gEarnNextDue, gEarnRetryIn
+    global calls, mode, gEarnNextDue, gEarnRetryIn, idleMs, focused
     calls.Push(id)
+    if (mode = "physical" || mode = "idle-zero") {
+        idleMs := 0
+        EarnInputWatch()
+        gEarnRetryIn := 60000
+        return true
+    }
+    if (mode = "focus") {
+        focused := false
+        EarnInputWatch()
+        return true
+    }
     if (mode = "override")
         gEarnNextDue[id] := A_TickCount + 300000
     if (mode = "retry") {
@@ -133,6 +165,10 @@ SetEarner(on, *) {
 SetAntiAFK(*) {
     throw Error("unexpected AFK call")
 }
+SetTimer(fn, period) {
+    global timers
+    timers.Push(period)
+}
 EarnLog(*) {
 }
 ShowTooltip(*) {
@@ -151,12 +187,12 @@ try {
     $info.RedirectStandardError = $true
     $p = [Diagnostics.Process]::Start($info)
     try {
-        $p.StandardInput.WriteLine($driver + "`n" + $tick)
+        $p.StandardInput.WriteLine($driver + "`n" + $production)
         $p.StandardInput.Close()
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 16 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 21 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout
