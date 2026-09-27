@@ -89,7 +89,7 @@ EarnGoHome() {
     return true
 }
 
-; 지금 자리에서 MCT 앞까지. MCT 블립이 보이면 바로, 아니면 노트북까지 간 뒤 MCT. 둘 다 안 보이면 false (EarnFail 없이, 다시 들어갈지는 부르는 쪽이 정한다)
+; 지금 자리에서 MCT 앞까지. MCT 블립이 보이면 바로, 아니면 노트북까지 간 뒤 MCT.
 EarnWalkToMCT() {
     ; 차고 스폰은 정면 계단을 먼저 오른다. 다른 층의 블립 방향으로 꺾지 않는다.
     if (EarnSeen("arcade_basement_spawn", [0.48,0.45,0.64,0.68]))
@@ -97,7 +97,7 @@ EarnWalkToMCT() {
     if (EarnBlip("mct", &a, &d))
         return EarnNavTo("mct", "mct_sit") && EarnConfirmMCTSeat()
     if (!EarnBlip("laptop", &a, &d))
-        return false
+        return EarnFail("아케이드: 지하 출발 화면과 MCT·노트북 블립을 확인하지 못함")
     EarnLog("MCT 블립이 안 보여 기획실 노트북(" Round(a) "도 " Round(d) "px)까지 먼저 감")
     if (!EarnNavTo("laptop", "", 18))
         return false

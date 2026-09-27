@@ -25,6 +25,7 @@ global gAbort := false
 global gEarnNextDue := Map()
 global gEarnBusy := false
 global gTestArmed := false
+global gTestInputMutex := 0
 global gEarnInputGuard := EarnTestInputAllowed
 global gSessionInputGuard := EarnTestSessionAllowed
 OnExit(EarnTestExit)
@@ -87,6 +88,28 @@ MCTSmoke() {
     return EarnDJSwapLoop(EarnPopularityMCTPct())
 }
 
+; 복귀 경로 시험: 아케이드로 한 번 이동한 뒤 실제 MCT 전용 안내까지 확인한다.
+; 경로 실패로 다시 접속하지 않으며 Main/AFK를 실행하지 않는다.
+ArcadeReturnSmoke() {
+    return EarnReloadInto("Arcade", "Right") && EarnWalkToMCT()
+}
+
+RecoverIdleKick() {
+    if (!EarnSeen("idle_kick", [0.30,0.50,0.70,0.60]))
+        return EarnFail("AFK 복구: 유휴 추방 안내가 아님")
+    if (!EarnPress("Enter") || !EarnSleep(8000))
+        return false
+    deadline := A_TickCount + 180000
+    while (A_TickCount < deadline) {
+        if (EarnAborted())
+            return false
+        if (EarnHudVisible())
+            return true
+        Sleep(1000)
+    }
+    return EarnFail("AFK 복구: 온라인 HUD 대기 시간 초과")
+}
+
 MCTTasksSmoke() {
     global config
     if (!EarnUIClearCursor())
@@ -128,7 +151,7 @@ GuardedTap(key, guard) {
 
 ; Main.ahk/AFK를 실행하지 않는다. 사용자가 PC를 쓰면 전면화도 하지 않고 기다린다.
 EarnTestPrepare() {
-    global GTA_WIN, gAbort, gTestArmed, gTestIdleMs
+    global GTA_WIN, gAbort, gTestArmed, gTestIdleMs, gTestInputMutex
     deadline := A_TickCount + 120000
     EarnLog("시험 준비: " gTestIdleMs // 1000 "초 물리 입력 유휴 대기")
     while (A_TimeIdlePhysical < gTestIdleMs || Idle() < gTestIdleMs) {
@@ -140,6 +163,10 @@ EarnTestPrepare() {
     }
     if (!WinExist(GTA_WIN))
         return EarnFail("시험 준비: GTA 실행 창 없음")
+    gTestInputMutex := DllCall("CreateMutexW", "ptr",0,"int",0,"str","Local\GtaMacroInput", "ptr")
+    acquired := gTestInputMutex ? DllCall("WaitForSingleObject", "ptr",gTestInputMutex,"uint",5000,"uint") : -1
+    if (acquired != 0 && acquired != 0x80)
+        return EarnFail("시험 준비: 다른 매크로가 입력 중")
     gTestArmed := true
     SetTimer(EarnTestTimeout, -25 * 60 * 1000)
     if (!IsGTAActive()) {
@@ -182,9 +209,13 @@ EarnTestTimeout() {
 }
 
 EarnTestExit(*) {
-    global gTestArmed
+    global gTestArmed, gTestInputMutex
     if (gTestArmed)
         ReleaseHeldKeys()
+    if (gTestInputMutex) {
+        DllCall("ReleaseMutex", "ptr",gTestInputMutex)
+        DllCall("CloseHandle", "ptr",gTestInputMutex)
+    }
 }
 
 EarnTestError(err, mode) {
