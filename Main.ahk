@@ -29,6 +29,9 @@ A_MenuMaskKey := "vkE8"
 #Include Features\Snack.ahk
 #Include Features\RegisterCEO.ahk
 #Include Features\RegisterMC.ahk
+#Include Features\Earn\EarnCore.ahk
+#Include Features\Earn\EarnTasks.ahk
+#Include Features\Earn\Earner.ahk
 #Include Features\StopAll.ahk
 #Include Features\Help.ahk
 #Include Features\Overlay.ahk

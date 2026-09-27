@@ -1,0 +1,826 @@
+; === 수익 자동화 공통: 화면 확인 · 상호작용 메뉴 · 스폰 위치 · 세션 재접속 ===
+; 이 파일의 함수는 게임에 키를 하나 보낼 때마다 "지금 화면에 무엇이 보이는지" 를 템플릿(Images\Earn\<가로>x<세로>\*.png)으로 확인한다.
+; 확인이 안 되면 그 자리에서 false 를 돌려주고 더 누르지 않는다. 되돌리는 키는 Backspace·M 만 쓴다(Esc 금지: 런처 종료창).
+; 템플릿은 1920x1080 테두리 없는 창에서 뜬 것이다. 해상도가 다르면 그 해상도 폴더에 같은 이름으로 떠 넣어야 동작한다(없으면 멈춘다).
+global gEarnBusy := false        ; 수익 자동화가 게임에 키를 보내는 중. AFK 방지가 이 동안 쉰다
+global gEarnFail := ""           ; 마지막으로 멈춘 까닭 (오버레이·설정 창·로그에 보인다)
+global gEarnRetryIn := 0          ; 작업이 "이번엔 못 했으니 N ms 뒤에 다시" 로 끝낼 때 채운다. 0 이면 스케줄러가 꺼진다
+
+; 상호작용 메뉴가 차지하는 영역(클라이언트 비율). 제목·줄 템플릿은 여기서만 찾는다
+global EARN_MENU_AREA := [0, 0, 0.27, 0.55]
+; 체력 막대(왼쪽 아래 초록 0x4C8F4C, 1920x1080 에서 y 1049~1057) 확인 영역과 색. 로딩 끝 판정에 쓴다 (0926 실측)
+global EARN_HUD_BAR := [0.021, 0.972, 0.05, 0.978]
+global EARN_HUD_GREEN := 0x4C8F4C
+; 왼쪽 위 도움말 안내(Press E to ...) 영역
+global EARN_PROMPT_AREA := [0, 0, 0.3, 0.1]
+
+EarnLog(msg) {
+    try FileAppend(FormatTime(, "yyyy-MM-dd HH:mm:ss") " " msg "`n", A_Temp "\gta-earn.log", "UTF-8")
+}
+
+; 멈춘 까닭을 남기고 false 를 돌려준다. 호출한 쪽은 그대로 return 하면 된다.
+EarnFail(reason) {
+    global gEarnFail
+    gEarnFail := reason
+    EarnLog("멈춤: " reason)
+    return false
+}
+
+; 전체 멈춤(End) 또는 GTA 가 앞이 아님
+; 길찾기·재접속처럼 위험하지 않은 실패: 스케줄러를 끄지 않고 retryMin 분 뒤에 같은 작업을 다시 하게 한다 (캐릭터는 그 자리에 서 있을 뿐이다)
+EarnSoftFail(reason, retryMin) {
+    global gEarnRetryIn
+    gEarnRetryIn := retryMin * 60000
+    return EarnFail(reason)
+}
+
+; 전체 멈춤(End)·GTA 가 앞이 아님·스케줄러가 꺼짐(F9 두 번). 시험 스크립트(earntest.ahk)는 gEarnOn 이 없어 IsSet 으로 본다
+EarnAborted() {
+    global gAbort, gEarnOn
+    return gAbort || !IsGTAActive() || (IsSet(gEarnOn) && !gEarnOn)
+}
+
+; name 템플릿(Images\Earn\<해상도>\<name>.png)이 area(클라이언트 비율 [x1, y1, x2, y2]) 안에 보이면 true. 찾은 자리(화면 좌표)는 &fx, &fy.
+EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
+    return TemplateSeen("Earn", name, area, &fx, &fy, variation)
+}
+; timeoutMs 안에 name 이 보이면 true. 전체 멈춤·포커스 이탈이면 바로 false.
+EarnWaitSeen(name, area, timeoutMs) {
+    deadline := A_TickCount + timeoutMs
+    Loop {
+        if (EarnAborted())
+            return false
+        if (EarnSeen(name, area))
+            return true
+        if (A_TickCount >= deadline)
+            return false
+        Sleep(200)
+    }
+}
+
+; timeoutMs 안에 name 이 사라지면 true.
+EarnWaitGone(name, area, timeoutMs) {
+    deadline := A_TickCount + timeoutMs
+    Loop {
+        if (EarnAborted())
+            return false
+        if (!EarnSeen(name, area))
+            return true
+        if (A_TickCount >= deadline)
+            return false
+        Sleep(200)
+    }
+}
+
+; 키 하나. 보내기 전에 전체 멈춤·포커스를 보고, 보낸 뒤 EarnKeyDelay 만큼 기다린다.
+EarnPress(key) {
+    global config
+    if (EarnAborted())
+        return false
+    PressKey(key)
+    Sleep(config["Settings"]["EarnKeyDelay"])
+    return true
+}
+
+; ms 동안 기다리되 전체 멈춤·포커스 이탈이면 false
+EarnSleep(ms) {
+    deadline := A_TickCount + ms
+    while (A_TickCount < deadline) {
+        if (EarnAborted())
+            return false
+        Sleep(Min(100, Max(1, deadline - A_TickCount)))
+    }
+    return true
+}
+
+; key 를 한 번씩 누르며 name(선택된 줄 템플릿)이 보일 때까지 최대 maxPress 번. 처음부터 보이면 누르지 않는다.
+; 메뉴에 들어간 직후 첫 키가 씹히는 일이 잦아(0926 실측) 몇 번 눌렀는지가 아니라 화면으로 판정한다.
+EarnSelectRow(name, area, key, maxPress) {
+    if (EarnSeen(name, area))
+        return true
+    Loop maxPress {
+        if (!EarnPress(key))
+            return false
+        if (EarnSeen(name, area))
+            return true
+    }
+    return false
+}
+
+; === 상호작용 메뉴 ===
+; 제목 줄 템플릿: m_title = "INTERACTION MENU", m_pref_title = "PREFERENCES"
+EarnMenuIsOpen() {
+    global EARN_MENU_AREA
+    return EarnSeen("m_title", EARN_MENU_AREA) || EarnSeen("m_pref_title", EARN_MENU_AREA)
+}
+
+EarnMenuOpen() {
+    global EARN_MENU_AREA
+    if (EarnSeen("m_title", EARN_MENU_AREA))
+        return true
+    if (EarnMenuIsOpen())
+        return false          ; 하위 메뉴에 들어가 있는 상태는 모른 채 이어 가지 않는다
+    if (!EarnPress("m"))
+        return false
+    return EarnWaitSeen("m_title", EARN_MENU_AREA, 2500)
+}
+
+; 열려 있으면 M 으로 닫고 닫혔는지 본다. 하위 메뉴에서도 M 한 번에 전체가 닫힌다.
+EarnMenuClose() {
+    if (!EarnMenuIsOpen())
+        return true
+    if (!EarnPress("m"))
+        return false
+    deadline := A_TickCount + 2500
+    while (A_TickCount < deadline) {
+        if (!EarnMenuIsOpen())
+            return true
+        Sleep(150)
+    }
+    return false
+}
+
+; 상호작용 메뉴 → Preferences → Spawn Location 을 place 로 바꾼다. place 는 템플릿 이름 뒷부분(spawn_<place>).
+; 값은 dir(Left/Right) 로 한 칸씩 넘기며 화면의 값 글자를 확인한다. 목록은 약 35개이고 한 방향으로 45번이면 한 바퀴를 넘는다.
+EarnSetSpawn(place, dir := "Left") {
+    global EARN_MENU_AREA
+    ok := false
+    try {
+        if (!EarnMenuOpen())
+            return EarnFail("스폰 변경: 상호작용 메뉴가 열리지 않음")
+        if (!EarnSelectRow("m_pref_sel", EARN_MENU_AREA, "Up", 18))
+            return EarnFail("스폰 변경: Preferences 줄을 찾지 못함")
+        if (!EarnPress("Enter"))
+            return false
+        if (!EarnWaitSeen("m_pref_title", EARN_MENU_AREA, 2500))
+            return EarnFail("스폰 변경: Preferences 하위 메뉴가 안 열림")
+        if (!EarnSelectRow("m_spawn_sel", EARN_MENU_AREA, "Up", 10))
+            return EarnFail("스폰 변경: Spawn Location 줄을 찾지 못함")
+        if (!EarnSelectRow("spawn_" place, EARN_MENU_AREA, dir, 45))
+            return EarnFail("스폰 변경: 값 " place " 을(를) 찾지 못함")
+        ok := true
+        EarnLog("스폰 위치 = " place)
+    } finally {
+        if (!EarnMenuClose() && ok)
+            ok := EarnFail("스폰 변경: 메뉴가 닫히지 않음")
+    }
+    return ok
+}
+
+; === 세션 재접속과 도착 확인 ===
+; 초대 전용 세션으로 다시 들어가면(세션 이동 매크로) 로딩 한 번에 스폰 위치의 부동산 안에서 시작한다.
+; 도착 판정: 체력 막대(화면 왼쪽 아래 초록)가 두 번 연달아 보이면 상호작용 메뉴를 열어 맨 윗줄 "<부동산> Management" 를 확인한다.
+EarnReloadInto(place, dir := "Left") {
+    if (!EarnSetSpawn(place, dir))
+        return false
+    if (!EarnSleep(800))
+        return false
+    EarnLog("세션 재접속 시작 → " place)
+    return EarnRejoin(place)
+}
+; 상호작용 메뉴 맨 윗줄로 지금 있는 부동산을 확인한다. 선택 여부에 따라 줄 바탕이 달라 두 템플릿(_sel / 없음)을 본다.
+EarnCheckPlace(place) {
+    global EARN_MENU_AREA
+    if (!EarnMenuOpen())
+        return EarnFail("위치 확인: 상호작용 메뉴가 열리지 않음")
+    here := EarnSeen("mgmt_" place, EARN_MENU_AREA) || EarnSeen("mgmt_" place "_sel", EARN_MENU_AREA)
+    if (!EarnMenuClose())
+        return EarnFail("위치 확인: 메뉴가 닫히지 않음")
+    if (!here)
+        return EarnFail("위치 확인: " place " 안이 아님 (메뉴 맨 윗줄 불일치)")
+    EarnLog("도착 확인: " place)
+    return true
+}
+
+; 체력 막대(왼쪽 아래 미니맵 밑 초록 막대)가 보이면 true. 로딩 화면·일시정지 메뉴·전화기 화면에서는 안 보인다.
+EarnHudVisible() {
+    hwnd := IsGTAActive()
+    if (!hwnd)
+        return false
+    WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
+    CoordMode("Pixel", "Screen")
+    return PixelSearch(&fx, &fy, cx + Round(cw * EARN_HUD_BAR[1]), cy + Round(ch * EARN_HUD_BAR[2]),
+        cx + Round(cw * EARN_HUD_BAR[3]), cy + Round(ch * EARN_HUD_BAR[4]), EARN_HUD_GREEN, 30)
+}
+
+; "w:1800,d:600" 처럼 적은 순서대로 키를 누르고 있다가 뗀다. 이동 중에도 전체 멈춤·포커스를 본다.
+EarnWalk(path) {
+    for step in StrSplit(path, ",", " `t") {
+        if (step = "")
+            continue
+        parts := StrSplit(step, ":")
+        key := parts[1], ms := parts.Length > 1 ? Integer(parts[2]) : 300
+        if (EarnAborted())
+            return false
+        Send("{" key " down}")
+        ok := EarnSleep(ms)
+        Send("{" key " up}")
+        if (!ok)
+            return false
+        Sleep(250)
+    }
+    return true
+}
+; === 미니맵 길찾기 ===
+; 미니맵은 카메라 방향이 위다. 블립(아이콘)을 색 덩어리로 찾아 플레이어 화살표 기준 각도(0=정면, +=오른쪽)·거리(px)를 낸다.
+; 아이콘은 그릴 때마다 가장자리·크기가 1px 씩 달라 템플릿이 안 맞는다(0926 실측: 노트북 화면 6줄/7줄). safe = 빨간 $ 덩어리,
+; laptop = 흰 화면 덩어리 높이 5~7줄(사무실·기획실 노트북), mct = 높이 8~10줄(마스터 컨트롤 터미널 모니터). 테두리 12px 안쪽만 보고 화살표 둘레 10px 은 뺀다.
+; W 는 카메라 방향으로 걷기 때문에 "블립을 각도 a 에 두고 W" = 블립 기준으로 정한 방향으로 걷기다. 부동산 안의 고정 블립(사무실 노트북·금고·MCT)을 기준으로 쓴다.
+; 1920x1080 에서 미니맵은 (20, 860) 290x190, 화살표 가운데는 (164, 1005) (0926 실측).
+global EARN_MINIMAP := [20, 860, 310, 1050]
+global EARN_ARROW := [164, 1005]
+
+EarnBlip(name, &ang, &dist) {
+    global EARN_MINIMAP, EARN_ARROW
+    ang := 0, dist := 0
+    hwnd := IsGTAActive()
+    if (!hwnd)
+        return false
+    prev := DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
+    try {
+        WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
+    } finally {
+        if (prev)
+            DllCall("SetThreadDpiAwarenessContext", "ptr", prev, "ptr")
+    }
+    sx := cw / 1920, sy := ch / 1080
+    mx := cx + Round(EARN_MINIMAP[1] * sx), my := cy + Round(EARN_MINIMAP[2] * sy)
+    w := Round((EARN_MINIMAP[3] - EARN_MINIMAP[1]) * sx), h := Round((EARN_MINIMAP[4] - EARN_MINIMAP[2]) * sy)
+    buf := EarnGrab(mx, my, w, h)
+    ax := (EARN_ARROW[1] - EARN_MINIMAP[1]) * sx, ay := (EARN_ARROW[2] - EARN_MINIMAP[2]) * sy
+    ; 테두리 3px 은 뺀다(둥근 모서리·프레임). 아래쪽은 8px: 체력 막대(초록)가 미니맵 바닥 줄에 걸친다(0927 실측)
+    margin := Round(3 * sx), bottom := Round((name = "safe" ? 8 : 3) * sy)   ; 초록 판정만 체력 막대에 걸린다
+    ; 후보 픽셀 표시
+    mark := Buffer(w * h, 0)
+    Loop h {
+        y := A_Index - 1
+        if (y < margin || y >= h - bottom)
+            continue
+        Loop w {
+            x := A_Index - 1
+            ; 플레이어 화살표(흰색)는 흰 아이콘을 찾을 때만 뺀다. $ 는 색이 달라 화살표 바로 옆(닿기 직전)에서도 잡혀야 한다(0927 실측)
+            if (x < margin || x >= w - margin || (name != "safe" && Abs(x - ax) <= 10 && Abs(y - ay) <= 10))
+                continue
+            off := (y * w + x) * 4
+            b := NumGet(buf, off, "uchar"), g := NumGet(buf, off + 1, "uchar"), r := NumGet(buf, off + 2, "uchar")
+            if (name = "safe")   ; $ 아이콘은 금고가 가득 차면 빨강(0xDE3030), 아니면 초록(0x72CC72) (0926~0927 실측)
+                hit := (r > 150 && g < 90 && b < 90) || (g > 130 && g > r + 40 && g > b + 40)
+            else
+                hit := r >= 200 && g >= 200 && b >= 200
+            if (hit)
+                NumPut("uchar", 1, mark, y * w + x)
+        }
+    }
+    ; 덩어리(4방향 연결)마다 테두리 상자를 잰다
+    stack := Buffer(w * h * 4)
+    best := 0, bestScore := 0
+    Loop h {
+        y0 := A_Index - 1
+        Loop w {
+            x0 := A_Index - 1
+            if (NumGet(mark, y0 * w + x0, "uchar") != 1)
+                continue
+            minX := x0, maxX := x0, minY := y0, maxY := y0, n := 0
+            NumPut("int", y0 * w + x0, stack, 0)
+            sp := 1
+            NumPut("uchar", 2, mark, y0 * w + x0)
+            while (sp) {
+                sp -= 1
+                i := NumGet(stack, sp * 4, "int")
+                px := Mod(i, w), py := i // w
+                n += 1
+                minX := Min(minX, px), maxX := Max(maxX, px), minY := Min(minY, py), maxY := Max(maxY, py)
+                for d in [[1, 0], [-1, 0], [0, 1], [0, -1]] {
+                    nx := px + d[1], ny := py + d[2]
+                    if (nx < 0 || ny < 0 || nx >= w || ny >= h)
+                        continue
+                    if (NumGet(mark, ny * w + nx, "uchar") = 1) {
+                        NumPut("uchar", 2, mark, ny * w + nx)
+                        NumPut("int", ny * w + nx, stack, sp * 4)
+                        sp += 1
+                    }
+                }
+            }
+            bw := maxX - minX + 1, bh := maxY - minY + 1
+            ; 미니맵 범위 밖의 아이콘은 가장자리에 붙어 그려진다(잘릴 수 있다). 그때는 방향만 믿고 거리는 모름(999)으로 준다
+            atEdge := minX <= 14 || maxX >= w - 15 || minY <= 14 || maxY >= h - 15
+            if (name = "safe")
+                ok := n >= 12 && bw <= 16 && bh <= 20
+            else if (atEdge)
+                ok := bw >= 6 && bw <= 16 && bh >= 3 && bh <= 11 && n >= bw * bh * 0.7
+            else if (name = "laptop")
+                ok := bw >= 9 && bw <= 14 && bh >= 5 && bh <= 7 && n >= bw * bh * 0.8
+            else
+                ok := bw >= 9 && bw <= 14 && bh >= 8 && bh <= 10 && n >= bw * bh * 0.8
+            ; 안쪽에 온전한 아이콘이 있으면 그것을, 없으면 가장자리 것을 쓴다
+            score := n + (atEdge ? 0 : 10000)
+            if (ok && score > bestScore) {
+                bestScore := score
+                best := [(minX + maxX) / 2, (minY + maxY) / 2, atEdge]
+            }
+        }
+    }
+    if (!IsObject(best))
+        return false
+    dx := best[1] - ax, dy := best[2] - ay
+    ang := ATan2Deg(dx, -dy)
+    dist := best[3] ? 999 : Sqrt(dx * dx + dy * dy)
+    return true
+}
+ATan2Deg(x, y) {
+    ; atan2(x, y) 을 도로 (y 가 위쪽 양수). AHK 에는 ATan2 가 없다
+    if (y > 0)
+        a := ATan(x / y)
+    else if (y < 0)
+        a := ATan(x / y) + (x >= 0 ? 3.14159265 : -3.14159265)
+    else
+        a := x > 0 ? 1.5707963 : x < 0 ? -1.5707963 : 0
+    return a * 180 / 3.14159265
+}
+
+; 카메라를 가로로 units 만큼 돌린다(양수 = 오른쪽). GTA 는 원시 입력을 읽으므로 상대 이동이 카메라를 돌린다. 한 번에 크게 움직이면 가속이 붙어 작게 나눠 보낸다.
+; 천천히 돌린다: 60단위/10ms(≈200도/초) 이상으로 돌리면 게임이 미니맵을 축소해 아이콘이 가장자리에 붙어 몇 초 동안 위치를 못 읽는다.
+; 20단위/15ms(≈46도/초)에서는 그대로다(0927 실측: 20u/15ms 정상, 40u/12ms·60u/10ms 축소). 90도에 약 2초 걸린다
+; 돌리는 동안에도 전체 멈춤·포커스를 본다. GTA 가 뒤로 가면 상대 이동이 바탕화면 커서를 날린다
+EarnTurn(units) {
+    if (EarnAborted())
+        return false
+    n := Max(1, Round(Abs(units) / 20))
+    step := Round(units / n)
+    Loop n {
+        if (EarnAborted())
+            return false
+        DllCall("mouse_event", "uint", 1, "int", step, "int", 0, "uint", 0, "uptr", 0)
+        Sleep(15)
+    }
+    return true
+}
+
+; 블립이 target 각도(±tol)에 올 때까지 카메라를 돌린다. 못 찾거나 maxIter 번 안에 못 맞추면 false.
+EarnFace(name, target := 0, tol := 5, maxIter := 8) {
+    global config
+    k := config["Settings"]["EarnTurnUnitsPerDeg"]
+    Loop maxIter {
+        if (EarnAborted())
+            return false
+        if (!EarnBlip(name, &a, &d))
+            return false
+        err := a - target
+        if (err > 180)
+            err -= 360
+        if (err < -180)
+            err += 360
+        if (Abs(err) <= tol)
+            return true
+        if (!EarnTurn(Round(err * k)))
+            return false
+        Sleep(450)
+    }
+    return false
+}
+
+; 블립을 향해(각도 target) 한 번에 stepMs 씩 걷는다. 거리가 stopDist 이하가 되거나 prompt 템플릿(왼쪽 위 안내)이 보이면 true.
+; 두 번 연달아 거리가 줄지 않으면 막힌 것으로 보고 false (벽에 비비지 않는다).
+EarnWalkTo(name, stopDist, prompt := "", stepMs := 600, maxSteps := 12, target := 0) {
+    global EARN_PROMPT_AREA
+    last := 9999, stuck := 0
+    Loop maxSteps {
+        if (EarnAborted())
+            return false
+        if (prompt != "" && EarnSeen(prompt, EARN_PROMPT_AREA))
+            return true
+        if (!EarnFace(name, target))
+            return false
+        EarnBlip(name, &a, &d)
+        if (d <= stopDist && prompt = "")
+            return true
+        stuck := d > last - 2 ? stuck + 1 : 0
+        if (stuck >= 2)
+            return false
+        last := d
+        if (!EarnWalk("w:" stepMs))
+            return false
+        Sleep(300)
+    }
+    return prompt != "" && EarnSeen(prompt, EARN_PROMPT_AREA)
+}
+
+; 걷기 경로: "face:laptop:120,w:900,face:laptop:-40,w:700" 처럼 적는다. face 는 블립을 그 각도에 두기, 나머지는 EarnWalk 와 같은 키:ms.
+EarnRoute(route) {
+    for step in StrSplit(route, ",", " `t") {
+        if (step = "")
+            continue
+        p := StrSplit(step, ":")
+        if (p[1] = "face") {
+            if (!EarnFace(p[2], p.Length > 2 ? Number(p[3]) : 0))
+                return EarnFail("경로: " p[2] " 블립을 " (p.Length > 2 ? p[3] : 0) "도에 맞추지 못함 (" step ")")
+        } else if (!EarnWalk(step)) {
+            return false
+        }
+        Sleep(200)
+    }
+    return true
+}
+; === 미니맵 지도로 길 찾기 ===
+; 실내 미니맵은 지금 층의 바닥이 밝은 회색(밝기 85~145), 벽·다른 층·바깥은 더 어둡다(0926 나이트클럽·아케이드 실측).
+; 미니맵을 3px 칸으로 나눠 바닥 칸만 지나는 최단 경로를 찾고(너비 우선 탐색), 경로 위에서 벽에 안 걸리고 곧게 보이는 가장 먼 점을 향해
+; 카메라를 돌려 조금 걷는다. 이것을 목표 블립에 닿거나(prompt 안내가 보이거나) 한도에 이를 때까지 되풀이한다.
+; 블립이 벽에 붙어 있어도(금고) 닿을 수 있는 바닥 칸 중 블립에 가장 가까운 칸으로 간다. 블립이 미니맵 밖이거나 다른 층이면 false.
+global EARN_NAV_CELL := 3
+
+EarnGrab(x, y, w, h) {
+    hdc := DllCall("GetDC", "ptr", 0, "ptr")
+    mdc := DllCall("CreateCompatibleDC", "ptr", hdc, "ptr")
+    bi := Buffer(40, 0)
+    NumPut("uint", 40, bi, 0), NumPut("int", w, bi, 4), NumPut("int", -h, bi, 8), NumPut("ushort", 1, bi, 12), NumPut("ushort", 32, bi, 14)
+    bits := 0
+    hbm := DllCall("CreateDIBSection", "ptr", mdc, "ptr", bi, "uint", 0, "ptr*", &bits, "ptr", 0, "uint", 0, "ptr")
+    old := DllCall("SelectObject", "ptr", mdc, "ptr", hbm, "ptr")
+    DllCall("BitBlt", "ptr", mdc, "int", 0, "int", 0, "int", w, "int", h, "ptr", hdc, "int", x, "int", y, "uint", 0x00CC0020)
+    buf := Buffer(w * h * 4)
+    DllCall("RtlMoveMemory", "ptr", buf, "ptr", bits, "uptr", w * h * 4)
+    DllCall("SelectObject", "ptr", mdc, "ptr", old)
+    DllCall("DeleteObject", "ptr", hbm)
+    DllCall("DeleteDC", "ptr", mdc)
+    DllCall("ReleaseDC", "ptr", 0, "ptr", hdc)
+    return buf
+}
+
+; 블립 name 쪽으로 가는 다음 걸음의 각도(도, 0=정면)와 그 점까지 거리(px), 블립까지 남은 거리(px). 길이 없으면 false.
+EarnNavPlan(name, &turnAng, &stepPx, &goalPx) {
+    global EARN_MINIMAP, EARN_ARROW, EARN_NAV_CELL
+    turnAng := 0, stepPx := 0, goalPx := 0
+    hwnd := IsGTAActive()
+    if (!hwnd)
+        return false
+    if (!EarnBlip(name, &ba, &bd))
+        return false
+    prev := DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
+    try {
+        WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
+    } finally {
+        if (prev)
+            DllCall("SetThreadDpiAwarenessContext", "ptr", prev, "ptr")
+    }
+    sx := cw / 1920, sy := ch / 1080
+    mx := cx + Round(EARN_MINIMAP[1] * sx), my := cy + Round(EARN_MINIMAP[2] * sy)
+    w := Round((EARN_MINIMAP[3] - EARN_MINIMAP[1]) * sx), h := Round((EARN_MINIMAP[4] - EARN_MINIMAP[2]) * sy)
+    buf := EarnGrab(mx, my, w, h)
+    c := EARN_NAV_CELL
+    gw := w // c, gh := h // c
+    ; 바닥 칸 표시 (1 = 걸을 수 있음). 아이콘(흰색·빨강)은 바닥 위에 그려진 것으로 친다
+    raw := Buffer(gw * gh, 0)
+    Loop gh {
+        gy := A_Index - 1
+        Loop gw {
+            gx := A_Index - 1
+            off := ((gy * c + c // 2) * w + gx * c + c // 2) * 4
+            b := NumGet(buf, off, "uchar"), g := NumGet(buf, off + 1, "uchar"), r := NumGet(buf, off + 2, "uchar")
+            v := (r + g + b) // 3
+            ok := (v >= 85 && v < 150) || v >= 190 || (r > 150 && g < 90 && b < 90)
+            NumPut("uchar", ok ? 1 : 0, raw, gy * gw + gx)
+        }
+    }
+    ; 벽에서 한 칸 떨어지게 막힌 칸을 한 칸씩 넓힌다. 화살표 둘레 2칸은 늘 열어 둔다(화살표 테두리가 검다)
+    grid := Buffer(gw * gh, 0)
+    sgx := Round((EARN_ARROW[1] - EARN_MINIMAP[1]) * sx / c), sgy := Round((EARN_ARROW[2] - EARN_MINIMAP[2]) * sy / c)
+    Loop gh {
+        gy := A_Index - 1
+        Loop gw {
+            gx := A_Index - 1
+            open := NumGet(raw, gy * gw + gx, "uchar")
+            if (open) {
+                for d in [[1, 0], [-1, 0], [0, 1], [0, -1]] {
+                    nx := gx + d[1], ny := gy + d[2]
+                    if (nx >= 0 && ny >= 0 && nx < gw && ny < gh && !NumGet(raw, ny * gw + nx, "uchar")) {
+                        open := 0
+                        break
+                    }
+                }
+            }
+            if (Abs(gx - sgx) <= 2 && Abs(gy - sgy) <= 2)
+                open := 1
+            NumPut("uchar", open, grid, gy * gw + gx)
+        }
+    }
+    ; 블립 위치(칸)
+    rad := ba * 3.14159265 / 180
+    ; 가장자리에 붙은 블립(거리 999)은 그 방향으로 미니맵 끝까지를 목표로 삼는다
+    reach := Min(bd, Max(w, h) / 2 + 20)
+    tgx := sgx + (reach * Sin(rad)) / c, tgy := sgy - (reach * Cos(rad)) / c
+    ; 너비 우선 탐색 (8방향)
+    n := gw * gh
+    par := Buffer(n * 4, 0xFF)   ; -1 = 방문 안 함
+    q := Buffer(n * 4)
+    start := sgy * gw + sgx
+    NumPut("int", start, par, start * 4)
+    NumPut("int", start, q, 0)
+    head := 0, tail := 1
+    best := start, bestD := 1e9
+    while (head < tail) {
+        cur := NumGet(q, head * 4, "int"), head += 1
+        ux := Mod(cur, gw), uy := cur // gw
+        dd := (ux - tgx) ** 2 + (uy - tgy) ** 2
+        if (dd < bestD)
+            bestD := dd, best := cur
+        for d in [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]] {
+            nx := ux + d[1], ny := uy + d[2]
+            if (nx < 0 || ny < 0 || nx >= gw || ny >= gh)
+                continue
+            ni := ny * gw + nx
+            if (!NumGet(grid, ni, "uchar") || NumGet(par, ni * 4, "int") != -1)
+                continue
+            ; 대각선은 양옆 칸이 둘 다 열려 있을 때만 (벽 모서리를 깎지 않게)
+            if (d[1] && d[2] && (!NumGet(grid, uy * gw + nx, "uchar") || !NumGet(grid, ny * gw + ux, "uchar")))
+                continue
+            NumPut("int", cur, par, ni * 4)
+            NumPut("int", ni, q, tail * 4), tail += 1
+        }
+    }
+    goalPx := Sqrt(bestD) * c
+    if (best = start) {
+        EarnLog("길찾기: 출발 칸에서 더 가까워질 칸이 없음 (블립 " Round(ba) "도 " Round(bd) "px)")
+        return false
+    }
+    ; 경로를 거꾸로 따라가며 출발점에서 곧게 보이는 가장 먼 점을 고른다
+    path := []
+    cur := best
+    while (cur != start) {
+        path.InsertAt(1, cur)
+        cur := NumGet(par, cur * 4, "int")
+    }
+    pick := path[1]
+    for i, cell in path {
+        if (i > 16)
+            break
+        if (EarnNavLine(grid, gw, sgx, sgy, Mod(cell, gw), cell // gw))
+            pick := cell
+    }
+    dx := (Mod(pick, gw) - sgx) * c, dy := (pick // gw - sgy) * c
+    turnAng := ATan2Deg(dx, -dy)
+    stepPx := Sqrt(dx * dx + dy * dy)
+    return true
+}
+
+; 칸 (x0,y0)→(x1,y1) 직선이 열린 칸만 지나면 true
+EarnNavLine(grid, gw, x0, y0, x1, y1) {
+    steps := Max(Abs(x1 - x0), Abs(y1 - y0))
+    if (steps = 0)
+        return true
+    Loop steps {
+        t := A_Index / steps
+        x := Round(x0 + (x1 - x0) * t), y := Round(y0 + (y1 - y0) * t)
+        if (!NumGet(grid, y * gw + x, "uchar"))
+            return false
+    }
+    return true
+}
+
+; 블립 name 까지 미니맵 지도로 걸어간다. prompt(왼쪽 위 안내 템플릿)가 보이면 성공. prompt 가 없으면 블립까지 stopPx 안이면 성공.
+; 걸음마다 남은 거리를 보고, 세 번 연달아 줄지 않으면 옆걸음으로 비켜 본 뒤 다시 한다(최대 3번).
+EarnNavTo(name, prompt := "", stopPx := 12, maxSteps := 40) {
+    global EARN_PROMPT_AREA, config
+    k := config["Settings"]["EarnTurnUnitsPerDeg"]
+    last := 9999, flat := 0, dodges := 0
+    Loop maxSteps {
+        if (EarnAborted())
+            return EarnFail("길찾기: 멈춤·포커스 이탈")
+        if (prompt != "" && EarnSeen(prompt, EARN_PROMPT_AREA))
+            return true
+        ; 카메라가 돌거나 걷는 동안 미니맵이 다시 그려져(축소·회전 애니메이션) 한두 프레임은 블립이 안 잡힌다(0927 실측). 잠깐 쉬고 몇 번 더 본다
+        planned := false
+        Loop 8 {
+            if (EarnAborted())
+                return EarnFail("길찾기: 멈춤·포커스 이탈")
+            if (planned := EarnNavPlan(name, &ta, &sp, &gp))
+                break
+            Sleep(500)
+        }
+        if (!planned)
+            return EarnFail("길찾기: " name " 블립까지 길이 안 보임")
+        ; 진척은 블립까지 실제 거리(bd)로 잰다. gp 는 길 끝에서 블립까지 남는 거리라 걷는 동안 줄지 않는다(0927 실측: 26걸음 내내 4~11px)
+        EarnBlip(name, &ba, &bd)
+        if (prompt = "" && bd <= stopPx)
+            return true
+        EarnLog("길찾기 " name ": 걸음 " A_Index " 방향 " Round(ta) "도 " Round(sp) "px, 블립까지 " Round(bd) "px (길 끝 " Round(gp) "px)")
+        ; 가장자리에 붙은 블립(거리 999)은 실제 거리를 모르니 길 끝까지 남은 거리(gp)로 진척을 잰다
+        prog := bd >= 999 ? gp : bd
+        flat := prog > last - 1.5 ? flat + 1 : 0
+        last := prog
+        if (flat >= 3) {
+            if (dodges >= 3)
+                return EarnFail("길찾기: " name " 쪽으로 더 못 감 (블립까지 " Round(bd) "px)")
+            dodges += 1, flat := 0
+            EarnWalk((Mod(dodges, 2) ? "a" : "d") ":450,s:300")
+            continue
+        }
+        if (Abs(ta) > 4 && !EarnTurn(Round(ta * k)))
+            return EarnFail("길찾기: 카메라 돌리는 중 멈춤")
+        Sleep(250)
+        ; 곧게 보이는 점(sp)까지 걷는다. 미니맵 20px ≈ 1초 걷기(0926 실측)이고, 블립 바로 앞에서는 짧게 끊는다
+        ms := Round(Min(900, Max(250, Min(sp, Max(bd - stopPx, 6)) * 45)))
+        if (!EarnWalk("w:" ms))
+            return EarnFail("길찾기: 걷는 중 멈춤")
+        Sleep(1300)   ; 걷는 동안 미니맵이 축소됐다가 멈춘 뒤 1초 넘게 걸려 되돌아온다(0927 실측). 그 전에 읽으면 블립이 가장자리에 붙어 안 잡힌다
+    }
+    if (prompt != "" && EarnSeen(prompt, EARN_PROMPT_AREA))
+        return true
+    return EarnFail("길찾기: " name " 에 " maxSteps "걸음 안에 못 닿음")
+}
+; === 마스터 컨트롤 터미널(MCT) ===
+; 앞에 서면 "Press E to sit down" → E 로 앉으면 "Press Enter to access the Master Control Terminal" → Enter 로 화면이 열린다.
+; 화면 안은 마우스 커서로 고른다: 커서를 버튼 위에 두고 Enter(0926 실측: 클릭은 안 먹고 Enter 가 먹는다). 뒤로는 Backspace, 일어서기는 마우스 오른쪽.
+EarnMCTOpen() {
+    global EARN_PROMPT_AREA
+    if (EarnSeen("mct_title", [0.3, 0, 0.7, 0.1]))
+        return true
+    if (!EarnSeen("mct_seated", EARN_PROMPT_AREA)) {
+        if (!EarnSeen("mct_sit", EARN_PROMPT_AREA))
+            return EarnFail("MCT: 앞에 서 있지 않음 (Press E to sit down 안내 없음)")
+        if (!EarnPress("e"))
+            return false
+        if (!EarnWaitSeen("mct_seated", EARN_PROMPT_AREA, 8000))
+            return EarnFail("MCT: 앉았다는 안내가 안 뜸")
+    }
+    if (!EarnPress("Enter"))
+        return false
+    if (!EarnWaitSeen("mct_title", [0.3, 0, 0.7, 0.1], 8000))
+        return EarnFail("MCT: 화면이 안 열림")
+    Sleep(800)
+    return true
+}
+
+; MCT 화면에서 빠져나와 일어선다. 화면 안 어디에 있든 Backspace 를 눌러 앉은 상태 안내가 보일 때까지(최대 5번), 그다음 마우스 오른쪽.
+EarnMCTClose() {
+    global EARN_PROMPT_AREA
+    Loop 5 {
+        if (EarnSeen("mct_seated", EARN_PROMPT_AREA))
+            break
+        if (!EarnPress("Backspace"))
+            return false
+        EarnSleep(900)
+    }
+    if (!EarnSeen("mct_seated", EARN_PROMPT_AREA))
+        return EarnFail("MCT: 화면이 닫히지 않음")
+    if (EarnAborted())
+        return false
+    Click("Right Down")
+    Sleep(120)
+    Click("Right Up")
+    if (!EarnWaitSeen("mct_sit", EARN_PROMPT_AREA, 8000))
+        return EarnFail("MCT: 일어서지 못함")
+    return true
+}
+
+; MCT 화면의 (x, y)(1920x1080 기준 좌표) 위에 커서를 두고, hover 템플릿이 area 안에 보이면 Enter. hover 가 "" 이면 확인 없이 Enter 하지 않는다.
+EarnMCTPress(x, y, hover, area) {
+    hwnd := IsGTAActive()
+    if (!hwnd)
+        return false
+    WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
+    DllCall("SetCursorPos", "int", cx + Round(x * cw / 1920) - 3, "int", cy + Round(y * ch / 1080) - 3)
+    Sleep(80)
+    DllCall("SetCursorPos", "int", cx + Round(x * cw / 1920), "int", cy + Round(y * ch / 1080))
+    Sleep(500)
+    if (!EarnSeen(hover, area))
+        return EarnFail("MCT: 커서 아래 버튼(" hover ")을 확인하지 못함")
+    return EarnPress("Enter")
+}
+; MCT 첫 화면 카드의 막대가 얼마나 찼는지(0~1). 막대 한 줄(1920x1080 기준 x1~x2, y)을 3px 간격으로 읽어 kind 색인 칸 비율을 낸다.
+;   green = 재고(0x399167 계열), blue = 보급(0x395E91 계열), pop = 나이트클럽 인기도(빈 칸 0x383138 보다 밝은 칸)
+; 0926 실측 위치: 벙커 카드 재고 x 766~1154 y 555, 보급 y 577 / 나이트클럽 카드 인기도 x 340~708 y 471, 상품 재고 x 330~718 y 555
+EarnBarFill(x1, x2, y, kind) {
+    hwnd := IsGTAActive()
+    if (!hwnd)
+        return -1
+    WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
+    CoordMode("Pixel", "Screen")
+    sx := cw / 1920, sy := ch / 1080
+    total := 0, full := 0
+    x := x1
+    while (x <= x2) {
+        c := PixelGetColor(cx + Round(x * sx), cy + Round(y * sy))
+        r := (c >> 16) & 0xFF, g := (c >> 8) & 0xFF, b := c & 0xFF
+        if (kind = "green")
+            hit := g > 100 && g > r + 30
+        else if (kind = "blue")
+            hit := b > 110 && b > r + 30
+        else
+            hit := Max(r, g, b) > 110
+        full += hit ? 1 : 0
+        total += 1
+        x += 3
+    }
+    return total ? full / total : -1
+}
+
+; 진단용: 미니맵 영역을 %TEMP%\gta-earn-<tag>.png 로 저장한다 (스폰 자리 조사). 실패해도 흐름을 막지 않는다
+EarnSnapMinimap(tag) {
+    global EARN_MINIMAP
+    try {
+        hwnd := IsGTAActive()
+        if (!hwnd)
+            return
+        WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
+        sx := cw / 1920, sy := ch / 1080
+        x := cx + Round(EARN_MINIMAP[1] * sx), y := cy + Round(EARN_MINIMAP[2] * sy)
+        w := Round((EARN_MINIMAP[3] - EARN_MINIMAP[1]) * sx), h := Round((EARN_MINIMAP[4] - EARN_MINIMAP[2]) * sy)
+        ; 동기로 찍는다: 비동기(Run)로 하면 다음 단계(재접속의 P)가 먼저 눌려 일시정지 메뉴의 흐린 배경이 찍힌다(0927 실측)
+        RunWait(A_ComSpec ' /c powershell -NoProfile -ExecutionPolicy Bypass -File "' A_Temp '\claude\capscreen.ps1" -Name gta-earn-' tag ' -X ' x ' -Y ' y ' -W ' w ' -H ' h ' -Scale 1', , "Hide")
+    }
+}
+
+; === CEO 등록·해제 ===
+; MCT 에서 벙커 보급·DJ 교체를 하려면 CEO(또는 MC 회장)여야 한다(0926 실측: "You need to be a CEO ... to manage this business").
+; 사업장 습격을 피하려고 평소에는 해제해 두고, 작업 직전에 등록했다가 끝나면 바로 해제한다. 등록·해제 모두 상호작용 메뉴에서 줄 템플릿을 보고 고른다.
+;   등록: M → Register as a Boss(m_boss_sel) → SecuroServ CEO(m_ceo_sel) → Enter → Start an Organization(m_start_org_sel) → Enter. 게임이 메뉴를 닫는다
+;   해제: M → SecuroServ(m_securo_sel, 맨 위) → Enter → Retire(m_retire_sel, 맨 아래) → Enter. 확인창은 없다(0926 실측 예정)
+;   확인: M 을 열어 맨 위 두 줄에 Register as a Boss 가 보이면 해제 상태, SecuroServ 가 보이면 등록 상태
+EarnCEO(on) {
+    global EARN_MENU_AREA
+    ok := false
+    try {
+        if (!EarnMenuOpen())
+            return EarnFail("CEO " (on ? "등록" : "해제") ": 상호작용 메뉴가 열리지 않음")
+        if (on) {
+            if (EarnSeen("m_securo_sel", EARN_MENU_AREA) || EarnSeen("m_securo", EARN_MENU_AREA)) {
+                ok := true
+                return true          ; 이미 CEO
+            }
+            if (!EarnSelectRow("m_boss_sel", EARN_MENU_AREA, "Down", 4))
+                return EarnFail("CEO 등록: Register as a Boss 줄을 찾지 못함")
+            if (!EarnPress("Enter"))
+                return false
+            if (!EarnSelectRow("m_ceo_sel", EARN_MENU_AREA, "Down", 3))
+                return EarnFail("CEO 등록: SecuroServ CEO 줄을 찾지 못함")
+            if (!EarnPress("Enter"))
+                return false
+            if (!EarnSelectRow("m_start_org_sel", EARN_MENU_AREA, "Down", 3))
+                return EarnFail("CEO 등록: Start an Organization 줄을 찾지 못함")
+            if (!EarnPress("Enter"))
+                return false
+            EarnSleep(2500)
+            ok := EarnCEOIs(true)
+            if (!ok)
+                return EarnFail("CEO 등록: 등록 뒤 메뉴에 SecuroServ 가 안 보임")
+            EarnLog("CEO 등록")
+            return true
+        }
+        if (EarnSeen("m_boss_sel", EARN_MENU_AREA) || EarnSeen("m_boss", EARN_MENU_AREA)) {
+            ok := true
+            return true              ; 이미 해제
+        }
+        if (!EarnSelectRow("m_securo_sel", EARN_MENU_AREA, "Up", 4))
+            return EarnFail("CEO 해제: SecuroServ 줄을 찾지 못함")
+        if (!EarnPress("Enter"))
+            return false
+        if (!EarnSelectRow("m_retire_sel", EARN_MENU_AREA, "Up", 12))
+            return EarnFail("CEO 해제: Retire 줄을 찾지 못함")
+        if (!EarnPress("Enter"))
+            return false
+        EarnSleep(2500)
+        ok := EarnCEOIs(false)
+        if (!ok)
+            return EarnFail("CEO 해제: 해제 뒤 메뉴에 Register as a Boss 가 안 보임")
+        EarnLog("CEO 해제")
+        return true
+    } finally {
+        EarnMenuClose()
+    }
+}
+
+; 상호작용 메뉴를 열어 등록 상태를 본다. want=true 면 SecuroServ 줄, false 면 Register as a Boss 줄이 보여야 true. 메뉴는 열어 둔 채 돌려준다(부르는 쪽이 닫는다)
+EarnCEOIs(want) {
+    global EARN_MENU_AREA
+    if (!EarnMenuOpen())
+        return false
+    if (want)
+        return EarnSeen("m_securo_sel", EARN_MENU_AREA) || EarnSeen("m_securo", EARN_MENU_AREA)
+    return EarnSeen("m_boss_sel", EARN_MENU_AREA) || EarnSeen("m_boss", EARN_MENU_AREA)
+}
+
+; === 나이트클럽 인기도 읽기 ===
+; 나이트클럽 안에서는 오른쪽 아래 HUD 에 POPULARITY 막대(칸 5개, 1920x1080 기준 x 1751~1880, y 1048)가 뜬다. 빈 칸은 어두운 회색(0x404040), 찬 칸은 밝다.
+; 칸마다 찬 비율을 재서 평균 × 100 = %. 칸 안에서 조금씩 차는지(연속) 20% 단위로만 바뀌는지(계단)는 첫 교체 때 값으로 가린다(0926 실측 예정).
+; MCT 첫 화면의 나이트클럽 카드에도 같은 막대(x 340~708, y 471)가 있다. HUD 가 없는 아케이드에서는 그것을 읽는다.
+; 돌려주는 값: 0~100, 못 읽으면(HUD 없음·GTA 뒤) -1
+EarnPopularityPct() {
+    if (!EarnSeen("hud_safe_label", [0.82, 0.9, 0.95, 0.97]))
+        return -1
+    segs := [[1751, 1774], [1777, 1800], [1804, 1827], [1831, 1854], [1858, 1880]]
+    sum := 0
+    for s in segs {
+        v := EarnBarFill(s[1], s[2], 1048, "pop")
+        if (v < 0)
+            return -1
+        sum += v
+    }
+    return Round(sum / segs.Length * 100)
+}
+
+EarnPopularityMCTPct() {
+    if (!EarnSeen("mct_title", [0.3, 0, 0.7, 0.1]))
+        return -1
+    v := EarnBarFill(340, 708, 471, "pop")
+    return v < 0 ? -1 : Round(v * 100)
+}

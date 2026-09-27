@@ -193,5 +193,7 @@ RunningItems() {
         items.Push("MC 텔레포트 진행 중")
     if (gMenuBusy)
         items.Push("메뉴 매크로 진행 중")
+    if (IsSet(gEarnOn) && (earn := EarnStatusText()) != "")
+        items.Push(earn)
     return items
 }

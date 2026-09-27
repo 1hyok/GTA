@@ -28,6 +28,9 @@ AntiAFKTick() {
         return
     if (IsSet(clawLoopRunning) && clawLoopRunning)
         return
+    ; 수익 자동화가 메뉴·터미널을 조작하는 동안 W/S 가 끼어들면 선택 줄이 움직인다
+    if (IsSet(gEarnBusy) && gEarnBusy)
+        return
     if (AnyInputToggleOn())
         return
     if (A_TimeIdle < config["Settings"]["AFKUserIdleSec"] * 1000)

@@ -27,7 +27,7 @@ RegisterActions() {
     gActions.Push({id: "ClawAttempt", label: "인형 1판", fn: (*) => ClawAttempt(), feature: "ClawMachine"})
     gActions.Push({id: "ClawLoop", label: "인형 반복", fn: (*) => ToggleClawLoop(), feature: "ClawMachine", state: (*) => clawLoopRunning ? "켜짐 " clawTries "판" : ""})
     gActions.Push({id: "AntiAFK", label: "AFK 방지", fn: (*) => ToggleAntiAFK(), feature: "AntiAFK", state: (*) => afkOn ? "켜짐" : "꺼짐"})
-    gActions.Push({id: "InviteOnlySession", label: "초대 전용 세션", fn: (*) => JoinInviteOnlySession(), feature: "SessionSwitch", confirm: true})
+    gActions.Push({id: "InviteOnlySession", label: "초대 전용 세션", fn: (*) => (IsSet(gEarnBusy) && gEarnBusy) ? ShowTooltip("초대 전용 세션: 수익 자동화가 진행 중", 1500) : JoinInviteOnlySession(), feature: "SessionSwitch", confirm: true})
     gActions.Push({id: "Walk", label: "걷기", fn: (*) => ToggleWalk(), feature: "Movement", state: (*) => wRunning ? "켜짐" : ""})
     gActions.Push({id: "Run", label: "달리기", fn: (*) => ToggleRun(), feature: "Movement", state: (*) => shiftWRunning ? "켜짐" : ""})
     gActions.Push({id: "AutoClick", label: "자동 클릭", fn: (*) => ToggleAutoClick(), feature: "AutoClick", state: (*) => clickRunning ? "켜짐" : ""})
@@ -36,6 +36,7 @@ RegisterActions() {
     gActions.Push({id: "RegisterMC", label: "MC 등록", fn: (*) => RegisterMC(), feature: "MenuMacros"})
     gActions.Push({id: "CayoPericoTimer", label: "카요 타이머", fn: (*) => ToggleCayoPericoTimer(), feature: "Timer", state: (*) => cayoTimerRunning ? "켜짐" : ""})
     gActions.Push({id: "Snack", label: "스낵", fn: (*) => EatSnack(), feature: "MenuMacros"})
+    gActions.Push({id: "Earner", label: "수익 자동화", fn: (*) => ToggleEarner(), feature: "Earner", confirm: true, state: (*) => gEarnOn ? "켜짐" : ""})
     gActions.Push({id: "Help", label: "도움말", fn: (*) => HelpKey()})   ; 두 번 누르면 설정 창
     gActions.Push({id: "StopAll", label: "전체 멈춤", fn: (*) => StopAll("hotkey")})
     gActions.Push({id: "Exit", label: "종료", fn: (*) => ExitAll(), global: true, confirm: true})   ; 전역이라 노트북 Fn+P/Fn+B(Pause) 오타로 꺼지지 않게 두 번 누름

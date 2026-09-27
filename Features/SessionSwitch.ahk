@@ -11,13 +11,17 @@
 global SESSION_TITLE_AREA := [0.38, 0.24, 0.84, 0.36]
 global SESSION_DIALOG_AREA := [0.33, 0.50, 0.67, 0.57]
 
-JoinInviteOnlySession() {
+; resetAbort: 단축키·설정 창에서 부를 때는 새 시퀀스라 전체 멈춤 신호를 지우고 시작한다. 수익 자동화가 이동 중에 부를 때는 false 로 넘겨 End 를 삼키지 않는다
+JoinInviteOnlySession(resetAbort := true) {
     global config, gAbort
 
     if (!IsGTAActive())
         return false
 
-    gAbort := false
+    if (resetAbort)
+        gAbort := false
+    else if (gAbort)
+        return false
     delay := config["Settings"]["SessionMenuDelay"]
 
     ok := SessionStep("p", 1, delay * 3)
