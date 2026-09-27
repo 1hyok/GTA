@@ -44,6 +44,23 @@ EarnAborted() {
 
 ; name 템플릿(Images\Earn\<해상도>\<name>.png)이 area(클라이언트 비율 [x1, y1, x2, y2]) 안에 보이면 true. 찾은 자리(화면 좌표)는 &fx, &fy.
 EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
+    ; MCT 웹 화면의 고정 위치만 검색한다. 투명 글자 템플릿의 전체 화면 검색은 매우 느리다.
+    static mctAreas := Map(
+        "mct_bunker_card", [0.42,0.20,0.58,0.25],
+        "mct_nightclub_card", [0.23,0.20,0.32,0.25],
+        "bunker_page", [0.15,0.01,0.35,0.12],
+        "bunker_entry", [0.42,0.56,0.56,0.62],
+        "bunker_resupply", [0.16,0.43,0.25,0.49],
+        "bunker_buy", [0.41,0.70,0.51,0.75],
+        "bunker_confirm", [0.36,0.42,0.64,0.47],
+        "bunker_pending", [0.35,0.43,0.65,0.49],
+        "nc_dj_menu", [0.16,0.68,0.26,0.73],
+        "nc_home", [0.16,0.53,0.23,0.58],
+        "dj_solomun", [0.45,0.22,0.54,0.27],
+        "dj_confirm_solomun", [0.30,0.46,0.69,0.53],
+        "dj_confirm_tale", [0.30,0.46,0.70,0.53])
+    if (!IsObject(area) && mctAreas.Has(name))
+        area := mctAreas[name]
     return TemplateSeen("Earn", name, area, &fx, &fy, variation)
 }
 ; timeoutMs 안에 name 이 보이면 true. 전체 멈춤·포커스 이탈이면 바로 false.

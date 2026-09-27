@@ -38,6 +38,7 @@ if (!A_Args.Length) {
     ExitApp(2)
 }
 fn := A_Args[1], arg := A_Args.Length > 1 ? A_Args[2] : "", arg2 := A_Args.Length > 2 ? A_Args[3] : "", arg3 := A_Args.Length > 3 ? A_Args[4] : ""
+global gTestIdleMs := fn = "MCTTasksSmoke" ? 8000 : 45000
 t0 := A_TickCount
 if (fn != "MCTStatus" && fn != "Idle" && fn != "Status" && fn != "SessionInfo" && fn != "BlipInfo" && fn != "NavInfo" && fn != "EarnSpawnRoute" && !EarnTestPrepare()) {
     FileAppend(fn " = not started fail=" gEarnFail "`n", "*", "UTF-8")
@@ -86,6 +87,31 @@ MCTSmoke() {
     return EarnDJSwapLoop(EarnPopularityMCTPct())
 }
 
+MCTTasksSmoke() {
+    global config
+    if (!EarnUIClearCursor())
+        return false
+    config["Settings"]["EarnMCTOnly"] := 1
+    config["Settings"]["EarnDJPopularityPct"] := 95
+    config["Settings"]["EarnBunkerIntervalSec"] := 1645
+    if (EarnSeen("nc_home")) {
+        EarnLog("DJ 복귀: Tale Resident=" EarnSeen("dj_resident_right", [0.61,0.50,0.835,0.58]))
+        if (!EarnUIClick("nc_home", 495, 596) || !EarnUIBackToMCT("nc_dj_menu", 1))
+            return false
+    }
+    if (EarnSeen("bunker_confirm")) {
+        if (!EarnUIClick("bunker_confirm", 850, 619)
+            || !EarnWaitGone("bunker_confirm", "", 3000)
+            || !EarnUIBackToMCT("bunker_page", 2))
+            return false
+    }
+    if (EarnSeen("bunker_entry") && !EarnUIBackToMCT("bunker_entry", 1))
+        return false
+    if (EarnSeen("bunker_page") && !EarnUIBackToMCT("bunker_page", 2))
+        return false
+    return EarnBunkerTask() && EarnDJTask()
+}
+
 SessionInfo() {
     global SESSION_TABS_AREA, SESSION_LIST_AREA
     return "map=" SessionScreenSeen("pause_map_selected", SESSION_TABS_AREA)
@@ -102,10 +128,10 @@ GuardedTap(key, guard) {
 
 ; Main.ahk/AFK를 실행하지 않는다. 사용자가 PC를 쓰면 전면화도 하지 않고 기다린다.
 EarnTestPrepare() {
-    global GTA_WIN, gAbort, gTestArmed
+    global GTA_WIN, gAbort, gTestArmed, gTestIdleMs
     deadline := A_TickCount + 120000
-    EarnLog("시험 준비: 45초 물리 입력 유휴 대기")
-    while (A_TimeIdlePhysical < 45000 || Idle() < 45000) {
+    EarnLog("시험 준비: " gTestIdleMs // 1000 "초 물리 입력 유휴 대기")
+    while (A_TimeIdlePhysical < gTestIdleMs || Idle() < gTestIdleMs) {
         if (gAbort)
             return EarnFail("시험 준비: End로 중단")
         if (A_TickCount >= deadline)
@@ -121,7 +147,7 @@ EarnTestPrepare() {
         if (!WinWaitActive(GTA_WIN, , 2))
             return EarnFail("시험 준비: GTA 전면화 실패, 키를 보내지 않음")
     }
-    if (gAbort || A_TimeIdlePhysical < 45000 || Idle() < 45000)
+    if (gAbort || A_TimeIdlePhysical < gTestIdleMs || Idle() < gTestIdleMs)
         return EarnFail("시험 준비: 사용자 입력 재개, 키를 보내지 않음")
     SetTimer(EarnTestWatch, 25)
     EarnLog("시험 시작: pid=" WinGetPID(GTA_WIN) " idleMs=" A_TimeIdlePhysical)
@@ -134,10 +160,10 @@ EarnTestWatch() {
 }
 
 EarnTestInputAllowed() {
-    global gAbort, gTestArmed
+    global gAbort, gTestArmed, gTestIdleMs
     if (!gTestArmed)
         return !gAbort
-    if (!gAbort && (A_TimeIdlePhysical < 45000 || !IsGTAActive())) {
+    if (!gAbort && (A_TimeIdlePhysical < gTestIdleMs || !IsGTAActive())) {
         gAbort := true
         EarnFail("시험 중단: 사용자 입력 또는 GTA 포커스 이탈")
         ReleaseHeldKeys()

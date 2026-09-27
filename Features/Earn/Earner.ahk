@@ -18,8 +18,8 @@ EarnTaskList() {
     return [
         {id: "bunker", label: "벙커 보급", on: s["EarnBunker"], every: s["EarnBunkerIntervalSec"] * 1000, fn: EarnBunkerTask},
         {id: "dj", label: "DJ 교체", on: s["EarnDJ"], every: s["EarnDJIntervalMin"] * 60000, fn: EarnDJTask},
-        {id: "safe", label: "나이트클럽 금고", on: s["EarnSafe"], every: s["EarnSafeIntervalMin"] * 60000, fn: EarnSafeTask},
-        {id: "dispatch", label: "현장 파견", on: s["EarnDispatch"], every: s["EarnDispatchIntervalMin"] * 60000, fn: EarnDispatchTask}
+        {id: "safe", label: "나이트클럽 금고", on: s["EarnSafe"] && !s.Get("EarnMCTOnly", 0), every: s["EarnSafeIntervalMin"] * 60000, fn: EarnSafeTask},
+        {id: "dispatch", label: "현장 파견", on: s["EarnDispatch"] && !s.Get("EarnMCTOnly", 0), every: s["EarnDispatchIntervalMin"] * 60000, fn: EarnDispatchTask}
     ]
 }
 
