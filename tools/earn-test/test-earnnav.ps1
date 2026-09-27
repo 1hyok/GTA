@@ -57,6 +57,8 @@ $info.RedirectStandardOutput = $true
 $info.RedirectStandardError = $true
 $info.StandardOutputEncoding = New-Object Text.UTF8Encoding($false)
 $info.StandardErrorEncoding = New-Object Text.UTF8Encoding($false)
+$previousInputEncoding = [Console]::InputEncoding
+[Console]::InputEncoding = New-Object Text.UTF8Encoding($false)
 $testProcess = [Diagnostics.Process]::Start($info)
 try {
     $testProcess.StandardInput.WriteLine($driver + "`n" + $functions[0].Value)
@@ -78,4 +80,5 @@ try {
         $testProcess.WaitForExit()
     }
     $testProcess.Dispose()
+    [Console]::InputEncoding = $previousInputEncoding
 }
