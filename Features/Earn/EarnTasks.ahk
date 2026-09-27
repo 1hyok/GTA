@@ -69,7 +69,7 @@ EarnGoHome() {
     if (EarnAtMCT())
         return true
     ; 이미 아케이드 안이면 다시 들어가지 않고 걸어가 본다
-    if (EarnWalkToMCT())
+    if (EarnInPlace("Arcade") && EarnWalkToMCT())
         return true
     ; 아케이드 스폰은 나이트클럽에서 Right 두 칸 (스폰 목록 순서)
     if (!EarnGoTo("Arcade", "Right", "mct", "laptop"))
@@ -107,15 +107,15 @@ EarnWalkToMCT() {
 ; 나이트클럽에 들어가 금고까지 걸어가 E → 판넬이 열리면 안으로 걸어 들어가 줍고 → 오른쪽 아래 WALL SAFE 가 $0 인지 확인 → E 로 닫는다. 그다음 아케이드 MCT 앞으로 돌아온다.
 ; 0926 17:43 수동 실측: 금고 $250,000 → $0, 현금 +$250,000. 0927 00:48 매크로(EarnSafeCollect) 실측: $12,000 → $0.
 ; 스폰 자리는 매번 다르다(1층 바·댄스 플로어·화장실, 2층 난간·뒷방, 침대 옆). 미니맵은 지금 층만 그려서 1층에서는 2층 사무실까지 길이 안 이어진다(0927 실측: 3번 중 1번만 닿음).
-; 그래서 들어간 자리에서 금고($ 블립)나 사무실 노트북(같은 층일 때만 미니맵 안에 보임)까지 길이 보일 때만 걷고, 아니면 다시 들어간다. 자리는 같은 곳이 몇 번씩 이어지므로
+; 그래서 들어간 자리에서 금고($ 블립)나 사무실 노트북 쪽으로 길이 보일 때 걷는다. 가장자리 노트북은 방향을 따라가며 길을 다시 찾고, 길이 없으면 다시 들어간다. 자리는 같은 곳이 몇 번씩 이어지므로
 ; EarnRerollMax 번 안에 못 만나면 EarnSafeRetryMin 분 뒤에 다시 한다(스케줄러는 끄지 않는다).
 ; 미니맵 $ 블립은 금고에 돈이 있을 때만 뜬다($0 이면 사라짐). HUD 가 $0 이면 갈 필요가 없어 건너뛴다.
-global gSafeCollectedTick := 0   ; 마지막으로 금고를 비운 시각. 그 뒤 복귀에 실패해 다시 돌 때 금고를 또 찾지 않게
+global gSafeCollectedTick := 0   ; 마지막으로 금고가 비었음을 확인한 시각. 그 뒤 복귀에 실패해 다시 돌 때 금고를 또 찾지 않게
 
 EarnSafeTask() {
     global config, gEarnFail, gSafeCollectedTick
     s := config["Settings"]
-    ; 방금(한 시간 안에) 비웠는데 복귀만 못 한 경우: 복귀부터
+    ; 방금(한 시간 안에) 비었음을 확인했는데 복귀만 못 한 경우: 복귀부터
     if (gSafeCollectedTick && A_TickCount - gSafeCollectedTick < 3600000)
         return EarnGoHome() ? true : EarnSoftFail(gEarnFail, s["EarnSafeRetryMin"])
     if (!EarnInPlace("Nightclub") && !EarnReloadInto("Nightclub", "Left"))
@@ -125,7 +125,8 @@ EarnSafeTask() {
             return EarnFail("금고: 멈춤·포커스 이탈")
         if (EarnSeen("hud_safe_label", [0.82, 0.9, 0.95, 0.97]) && EarnSeen("hud_safe_zero", [0.93, 0.9, 1, 0.97])) {
             EarnLog("금고: WALL SAFE $0 이라 이번엔 건너뜀")
-            return true
+            gSafeCollectedTick := A_TickCount
+            return EarnGoHome() ? true : EarnSoftFail(gEarnFail, s["EarnSafeRetryMin"])
         }
         r := EarnSpawnRoute()
         if (r != "" && EarnWalkToSafeVia(r))
@@ -144,12 +145,13 @@ EarnSafeTask() {
     return EarnGoHome() ? true : EarnSoftFail(gEarnFail, s["EarnSafeRetryMin"])
 }
 
-; 지금 자리에서 금고로 가는 길이 미니맵에 보이는지. "safe" = $ 블립까지 길이 있음, "laptop" = 사무실 노트북이 미니맵 안(같은 층)이고 길이 있음, "" = 못 감(1층 등)
+; 지금 자리에서 금고로 가는 길이 미니맵에 보이는지. "safe" = $ 블립까지 길이 있음, "laptop" = 노트북까지 또는 가장자리 노트북 방향으로 길이 있음, "" = 길 없음
 EarnSpawnRoute() {
     global config
     if (EarnBlip("safe", &a, &d) && d < 999 && EarnNavPlan("safe", &ta, &sp, &gp) && gp <= config["Settings"]["EarnReachPx"])
         return "safe"
-    if (EarnBlip("laptop", &a, &d) && d < 999 && EarnNavPlan("laptop", &ta, &sp, &gp) && gp <= 30)
+    ; 가장자리 노트북(거리 999)은 위치를 모르므로 gp 로 도착 가능성을 가르지 않는다. EarnNavTo 가 걸음마다 길 끝 거리로 진척을 확인한다.
+    if (EarnBlip("laptop", &a, &d) && EarnNavPlan("laptop", &ta, &sp, &gp) && (d >= 999 || gp <= 30))
         return "laptop"
     return ""
 }
@@ -170,8 +172,7 @@ EarnInPlace(place) {
     if (!EarnMenuOpen())
         return false
     here := EarnSeen("mgmt_" place, EARN_MENU_AREA) || EarnSeen("mgmt_" place "_sel", EARN_MENU_AREA)
-    EarnMenuClose()
-    return here
+    return EarnMenuClose() && here
 }
 ; "Press E to open your Safe" 가 보이는 자리에서: E → 판넬이 열리는 동작(약 4초) → 금고 쪽을 보고 걸어 들어가 줍는다.
 ; 주우면 "Press E to close your Safe" 가 뜨고 오른쪽 아래 WALL SAFE 가 $0 이 된다 → E 로 닫는다.
@@ -189,14 +190,18 @@ EarnSafeCollect() {
             collected := true
             break
         }
-        EarnFace("safe", 0, 8)
+        if (!EarnFace("safe", 0, 8))
+            return EarnFail("금고: 금고 방향을 확인하지 못해 걷지 않음")
         if (!EarnWalk("w:600"))
             return false
-        EarnSleep(1200)
+        if (!EarnSleep(1200))
+            return false
     }
     if (!collected)
         return EarnFail("금고: 판넬을 연 뒤 WALL SAFE $0 과 닫기 안내를 확인하지 못함")
     EarnLog("금고 비움 (WALL SAFE $0 확인)")
+    if (!EarnSeen("hud_safe_zero") || !EarnSeen("safe_close_prompt", EARN_PROMPT_AREA))
+        return EarnFail("금고: 닫기 전 WALL SAFE $0 과 닫기 안내를 다시 확인하지 못함")
     if (!EarnPress("e"))
         return false
     if (!EarnWaitGone("safe_close_prompt", EARN_PROMPT_AREA, 6000))
