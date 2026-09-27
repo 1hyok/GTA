@@ -231,6 +231,10 @@ ClawAttempt() {
 ToggleClawLoop() {
     global clawLoopRunning, clawLastReason, gAbort
 
+    if (IsSet(gEarnBusy) && gEarnBusy) {
+        ShowTooltip("인형 뽑기: 수익 자동화가 진행 중", 1500)
+        return
+    }
     if (!IsGTAActive()) {
         ClawTrace("toggle-ignored", "focus-lost", "loop-toggle-ignored")
         return

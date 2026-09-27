@@ -18,6 +18,10 @@ ExecuteAltF4Teleport() {
     ; 스팀 봇 작텔이 도는 중에 Alt+F4 를 보내면 그쪽 Enter 가 종료 확인창에 들어갈 수 있다
     if (!IsGTAActive() || IsTeleportRunning())
         return
+    if (IsSet(gEarnBusy) && gEarnBusy) {
+        ShowTooltip("작텔: 수익 자동화가 진행 중", 1500)
+        return
+    }
 
     altF4Running := true
     gAbort := false

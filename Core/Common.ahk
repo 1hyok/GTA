@@ -12,7 +12,8 @@ ShowTooltip(text, duration := 1000) {
     CoordMode("ToolTip", "Screen")
     if (hwnd := IsGTAActive()) {
         WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
-        ToolTip(text, cx + 20, cy + Max(260, ch - 100))
+        ; 미니맵(왼쪽 아래 290x190) 오른쪽에 띄운다. 그 위에 띄우면 수익 자동화의 미니맵 픽셀 판정을 가린다(0927 실측)
+        ToolTip(text, cx + Round(cw * 0.17), cy + Max(260, ch - 100))
     } else {
         ToolTip(text, 20, A_ScreenHeight - 100)
     }

@@ -39,6 +39,11 @@ RunMenuPath(label, steps, enterCount := 1, closeAfter := 1) {
         ShowTooltip(label ": 다른 메뉴 매크로가 진행 중", 1500)
         return false
     }
+    ; 수익 자동화가 메뉴·터미널을 조작하는 동안 끼어들면 서로의 선택 줄을 움직인다
+    if (IsSet(gEarnBusy) && gEarnBusy) {
+        ShowTooltip(label ": 수익 자동화가 진행 중", 1500)
+        return false
+    }
     gMenuBusy := true
     gAbort := false
     ok := false

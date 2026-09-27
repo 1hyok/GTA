@@ -10,7 +10,7 @@ config["Settings"] := Map()
 global CONFIG_DEFAULTS := Map()
 CONFIG_DEFAULTS["Features"] := Map(
     "Teleport", 1, "AltF4Teleport", 1, "Movement", 1, "AutoClick", 1, "Timer", 1,
-    "CasinoFingerprint", 0, "ClawMachine", 1, "AntiAFK", 1, "SessionSwitch", 1, "MenuMacros", 1)
+    "CasinoFingerprint", 0, "ClawMachine", 1, "AntiAFK", 1, "SessionSwitch", 1, "MenuMacros", 1, "Earner", 1)
 CONFIG_DEFAULTS["Settings"] := Map(
     "ClickInterval", 1, "ClickHoldTime", 50, "KeyHoldTime", 100,
     "ConfirmWindowMs", 2000, "HelpShowMs", 8000,
@@ -26,7 +26,10 @@ CONFIG_DEFAULTS["Settings"] := Map(
     "OverlayEnabled", 1, "OverlayXPct", 98, "OverlayYPct", 18,
     "MenuTopOffset", 0, "SnackMenuSteps", 4, "SnackSubSteps", 2, "SnackItemSteps", 0, "SnackCount", 1, "SnackCloseMenu", 1,
     "CEOMenuSteps", 1, "CEOSubSteps", 0, "CEOEnterCount", 2, "CEOCloseMenu", 0,
-    "MCMenuSteps", 1, "MCSubSteps", 1, "MCEnterCount", 2, "MCCloseMenu", 0)
+    "MCMenuSteps", 1, "MCSubSteps", 1, "MCEnterCount", 2, "MCCloseMenu", 0,
+    "EarnKeyDelay", 350, "EarnTurnUnitsPerDeg", 29, "EarnRerollMax", 12, "EarnReachPx", 14, "EarnWalkRetry", 3, "EarnUserIdleSec", 45, "EarnLoadMinSec", 8, "EarnLoadTimeoutSec", 240,
+    "EarnBunker", 0, "EarnBunkerIntervalSec", 1645, "EarnDJ", 0, "EarnDJIntervalMin", 96, "EarnDJPopularityPct", 95,
+    "EarnSafe", 1, "EarnSafeIntervalMin", 210, "EarnSafeFirstMin", 0, "EarnSafeRetryMin", 15, "EarnSoftFailMax", 12, "EarnDispatch", 0, "EarnDispatchIntervalMin", 48, "EarnDispatchFirstMin", 0)
 
 LoadConfig() {
     global config, CONFIG_DEFAULTS
@@ -45,6 +48,8 @@ LoadConfig() {
             value := IniRead(file, section, key, dflt)
             if (IsNumber(value)) {
                 config[section][key] := Number(value)
+            } else if (!IsNumber(dflt)) {
+                config[section][key] := Trim(value)   ; 기본값이 글자인 키(걷기 경로 등)는 글자 그대로
             } else {
                 config[section][key] := dflt
                 MacroLog("config", section "." key "=" value " 는 숫자가 아니라 기본값 " dflt " 사용")

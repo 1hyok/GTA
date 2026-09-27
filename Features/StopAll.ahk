@@ -29,6 +29,10 @@ StopAll(reason := "hotkey") {
         SetTimer(PressLCtrlForVellum, 0)
         stopped.Push("벨럼")
     }
+    if (IsSet(gEarnOn) && gEarnOn) {
+        SetEarner(false, "전체 멈춤")
+        stopped.Push("수익 자동화")
+    }
     if (IsSet(cayoTimerRunning) && cayoTimerRunning) {
         ToggleCayoPericoTimer()
         stopped.Push("카요 타이머")

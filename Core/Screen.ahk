@@ -15,7 +15,12 @@ TemplateSeen(folder, name, area := "", &fx := 0, &fy := 0, variation := 40) {
         WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
         img := gImageRoot "\" folder "\" cw "x" ch "\" name ".png"
         if (!FileExist(img)) {
-            MacroLog("screen", "템플릿 없음: " folder "\" cw "x" ch "\" name ".png")
+            ; 같은 템플릿은 한 번만 적는다 (선택/비선택 두 벌 중 하나만 있는 줄 템플릿처럼 없는 게 정상인 경우가 있다)
+            static missing := Map()
+            if (!missing.Has(img)) {
+                missing[img] := 1
+                MacroLog("screen", "템플릿 없음: " folder "\" cw "x" ch "\" name ".png")
+            }
             return false
         }
         a := IsObject(area) ? area : [0, 0, 1, 1]
