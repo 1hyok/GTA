@@ -18,6 +18,30 @@
 - 스토리의 ONLINE → Play GTA Online → Invite Only Session을 화면에서 확인했으나, 선택 뒤 예상하지 않은 "Are you sure you want to quit Grand Theft Auto V?" 창이 나타났다. 원인은 미확정이다. Esc·Enter·Yes는 보내지 않았으며, 문구를 템플릿으로 확인한 뒤 하네스가 Backspace를 보냈다. 11:46 후속 판정은 `onlineTab=1 onlineList=1 quitGame=0 hud=0`으로 취소를 확인했다. 추가 접속 조작은 중단했다.
 - 현재 확인 지점은 스토리의 ONLINE 메뉴다. 초대 전용 온라인 접속, 금고 왕복 실측, CEO·벙커·DJ 실측은 남아 있다. 현장 파견 가치 판단도 아직 하지 않았다. 거점 계획은 기존 아케이드 MCT이며 테러바이트 MCT는 미확인이다.
 
+### Codex GUI 실측 (2026-09-27 12:03)
+
+- 앞선 접속 중단 후 GUI 작업에서 Invite Only Session 선택과 온라인 로딩을 확인했다. 11:58 상호작용 메뉴의 `Register as a Boss`로 CEO·MC 해제 상태를 확인했다. `Main.ahk`와 AFK는 실행하지 않았다.
+- 12:03:02~12:03:52에 `EarnNavTo laptop`을 단독 실행했다. 출발점은 나이트클럽 2층 침실 옆이며 사무실 입구까지 움직였다. 1층에서 계단을 올라가는 시험은 아니었다.
+- 16걸음 뒤 `길찾기: laptop 쪽으로 더 못 감 (블립까지 77px)`으로 멈췄다. 첫 걸음의 블립 거리는 68px, 마지막은 77px였다. [시작·16걸음·중단 전체 로그](evidence/2026-09-27-nav-laptop-bedroom.log)를 보존했다.
+- [12:04:05 최종 캡처](evidence/2026-09-27-nav-laptop-bedroom-failed.png)에서 캐릭터는 사무실 입구 기둥과 낮은 의자 옆에 서 있다. 노트북까지 도착하지 못했으며, 금고 왕복 성공으로 기록하지 않는다.
+
+### GUI 입력 수신기 실측 (2026-09-27 12:23~12:38, KST)
+
+- 첫 수신기 PID 18448의 연속 메뉴 조작은 부모 작업 보고이며, [첫 세션 증거](evidence/2026-09-27-gui-input-1222.txt)에서 12:23:41~12:26:57의 seq 1~7이 모두 `ok`, `tap completed`인 것을 확인했다. 12:27:28에는 `physical user input detected`로 `stopped`가 기록됐다.
+- 두 번째 수신기 PID 11848은 부모 작업에서 12:29 `ready`를 확인하고 W를 15초 연속 유지했다고 보고했다. [두 번째 세션 증거](evidence/2026-09-27-gui-input-1228.txt)의 seq 3은 12:30:34에 `ok`, `hold completed`를 기록했다. W 키·15초 유지 시간·`ready` 시각은 보존된 결과 파일에 없으므로 부모 실측 보고를 근거로 한다.
+- 자기 주입 입력 때문에 명령마다 8초를 다시 기다리지 않았다는 동작도 부모 실측 보고다. 상태·결과 파일에는 유휴 대기 구간이 없어 파일만으로 재검증하지 않았다.
+- 증거 보존 시점에는 두 번째 세션도 12:38:40의 seq 6 `stop command`로 `stopped`가 기록돼 있었다. 위 내용은 저장된 실측·종료 기록이며 현재 프로세스 상태를 뜻하지 않는다. 증거 파일의 원문 시각은 UTC이고 이 문단의 시각은 KST다.
+
+### Franklin 연락처 탐색·전화 연결 실측 (2026-09-27 12:49~12:59, KST)
+
+- GUI 수신기 PID 31036의 세션 디렉터리는 `gta-gui-input-20260927-1252`다. 이름의 `1252`는 실제 준비 완료 시각이 아니며, 부모 작업은 12:49:57에 최초 `ready`를 확인했다고 보고했다. [결과·navigate 로그와 캡처 원본 정보](evidence/2026-09-27-gui-input-1252-franklin.txt)를 보존했다. 원문 로그 시각은 UTC다.
+- seq 1은 부모 보고의 `Left,Left` 이동이며 12:50:20에 `keys=2/2 elapsed_ms=453`으로 완료됐다. 이어진 12:50:21 원본 캡처에서 Contacts 최상단 `DE-SSANTA`가 선택된 것을 확인했다.
+- 그 상태에서 부모가 보낸 `Right,Right,Down`은 seq 2의 `navigate-2.log`와 결과 파일에 `keys=3/3 elapsed_ms=750`으로 기록됐다. [12:50:37 Franklin 선택 캡처](evidence/2026-09-27-franklin-selected.png)도 확인했다. 0.750초는 연락처 안에서 이 세 키를 보내 선택을 이동한 시간이다.
+- 전화 연결은 별도 구간이다. 부모 보고의 seq 3 `Enter`가 12:50:53에 `tap completed`를 기록했고, [12:50:59 캡처](evidence/2026-09-27-franklin-connected.png)에 Franklin `CONNECTED`와 서비스 메뉴가 보인다. Enter 송신부터 5초 대기와 결과 캡처까지 총 5.843초라는 값은 부모 측 계측이며 결과 파일에는 저장돼 있지 않다.
+- 부모 보고에 따르면 12:51:32 임무 요청 직후에는 표식이나 활성 목표를 확인하지 못했다. 후속 캡처에서는 12:53:39 지도 알파벳 범례의 `Payphone` 선택을 확인했고, [12:54:03 지도 캡처](evidence/2026-09-27-payphone-waypoint.png)에서 중앙의 파란 전화 아이콘·`Payphone` 라벨·보라색 경로를 확인했다. 요청 후 Payphone 표식은 확인됐지만 활성 목표·타이머는 아직 확인되지 않아 임무 활성 여부는 미확인이다.
+- 부모 보고에 따르면 12:58:22 프리모드에서 `Up → Up,Right`를 보낸 경로는 Snapmatic 카메라를 열어 실패했다(2.404초). 사진을 찍지 않고 Backspace로 종료했고, 12:58:50 폰 홈의 Job List 선택을 확인했다.
+- 확인된 Job List 홈에서 `Right,Up → Enter → Right,Right,Down`을 보낸 뒤 [12:59:39 캡처](evidence/2026-09-27-franklin-no-double-up.png)에서 Franklin 선택을 확인했다. 키 경로는 부모 실측 보고이며, 수정한 전체 경로를 처음 프리모드 상태부터 실행하는 시험은 아직 하지 않았다.
+
 ## 요청 (요청자: 사용자 일혁)
 
 `Main.ahk` 안에 스케줄러 하나를 두고 아래를 돌린다. 단축키는 F9 두 번(`Features/Earn/Earner.ahk`).
