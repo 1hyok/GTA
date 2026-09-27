@@ -82,9 +82,9 @@ F11 두 번을 두 단계로 쓴다. prep 을 시작하기 전(보스 해제가 
 2. 직접: prep 을 시작하고, 지도에서 작업 아이콘에 커서를 올려 "Start Job (Space)" 가 보이게 한다.
 3. F11 두 번: 아래 Alt+F4 작텔. 성공하면 준비 상태가 풀린다. 준비 상태는 `JobWarpArmMaxMin`(30분)이 지나도 풀린다.
 
-옛 재등록 텔레포트와 순서는 같지만 칸 수를 세지 않는다. 폰 앱·목록 줄·상호작용 메뉴 줄을 누르기 전마다 `Images\JobWarp\1920x1080\` 템플릿으로 선택된 줄을 확인하고, 안 보이면 더 누르지 않고 멈춘다(까닭은 툴팁과 `gta-macro.log` 의 `[jobwarp]` 줄). 템플릿 목록은 `Features/Teleport/QuickJoinPrep.ahk` 맨 위. 템플릿을 다 뜨기 전에는 `JobWarpQuickJoin=0` 이라 F11 은 예전처럼 바로 작텔한다.
+옛 재등록 텔레포트와 순서는 같지만 칸 수를 세지 않는다. 폰 앱·목록 줄·상호작용 메뉴 줄을 누르기 전마다 `Images\JobWarp\1920x1080\` 템플릿으로 선택된 줄을 확인하고, 안 보이면 더 누르지 않고 멈춘다(까닭은 툴팁과 `gta-macro.log` 의 `[jobwarp]` 줄). 템플릿 목록은 `Features/Teleport/QuickJoinPrep.ahk` 맨 위. 1920x1080 CEO 템플릿은 0927 에 떠서 `JobWarpQuickJoin=1` 로 켜 두었다. 0927 저택 안 실제 시험에서 F11 두 번 뒤 약 18초에 "작텔 준비됨" 이 됐고(Yes 뒤 폰은 저절로 닫히고, 약 3.5초 뒤 CEO 등록), 그 뒤 95초 동안 작업 로비로 끌려가지 않았다. MC(`JobWarpBossRole=MC` 나 MC 상태)와 다른 해상도는 템플릿이 없어 그 단계에서 멈추니, 그때는 템플릿을 더 뜨거나 `JobWarpQuickJoin=0` 으로 두면 F11 이 예전처럼 바로 작텔한다.
 
-템플릿은 `tools/jobwarp-capture.ps1` 로 뜬다. 백그라운드로 띄워 두면 App menu 키(오른쪽 클릭 메뉴 키)를 한 번 눌러 켠 동안, 또는 ScrollLock 이 켜진 동안만 게임 모니터를 찍고 앞 장과 달라진 화면만 `%TEMP%\claude\jobwarp\` 에 남긴다(게임에 키를 보내지 않는다). 켜고 손으로 한 번 보스 해제 → Quick Join → Random → Alone → Yes → 보스 등록을 한 뒤 App menu 키를 다시 눌러 끄면, 남은 장에서 선택된 줄을 잘라 템플릿을 만든다.
+1920x1080 템플릿은 `tools/build-jobwarp-templates.ps1` 이 `docs/evidence/2026-09-27-jobwarp/` 의 실측 화면(코드가 찾는 영역 그대로 자른 무손실 PNG, 전체 화면은 같은 이름 JPG)에서 잘라 만들고, 같은 스크립트가 모든 원본에 코드와 같은 영역·옵션으로 대 보아 맞는 상태에서만 찾히는지 표로 확인한다(`-TestOnly` 는 시험만). 새로 뜰 때는 `tools/jobwarp-capture.ps1` 로 찍는다. 백그라운드로 띄워 두면 App menu 키(오른쪽 클릭 메뉴 키)를 한 번 눌러 켠 동안, 또는 ScrollLock 이 켜진 동안만 게임 모니터를 찍고 앞 장과 달라진 화면만 `%TEMP%\claude\jobwarp\` 에 남긴다(게임에 키를 보내지 않는다). 켜고 손으로 한 번 보스 해제 → Quick Join → Random → Alone → Yes → 보스 등록을 한 뒤 App menu 키를 다시 눌러 끄면, 남은 장에서 선택된 줄을 잘라 템플릿을 만든다.
 
 ```powershell
 Start-Process powershell -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File tools\jobwarp-capture.ps1' -WindowStyle Hidden
