@@ -43,7 +43,7 @@ Register-ScheduledTask -TaskName 'GTA Perf Watch' -Action $a -Trigger $t -Settin
    - 평균 FPS = Σ(disp_fps × span_s) ÷ Σ span_s, 캡처 수, 최대 vram_max_mib.
    - temp_median_c·power_median_w·clock_median_mhz 의 중앙값, temp_max_c 의 최댓값.
    - 제한 비율 = Σ thr_* ÷ Σ gpu_samples 를 SW Power Cap·SW Thermal·HW Thermal·Reliability 각각 %로.
-   - 오늘 cooling 값이 둘 이상이면 같은 표를 cooling 값마다 나누고, 온도 중앙값·클럭 중앙값·열 제한 비율(thr_swthermal_s ÷ gpu_samples)을 값별로 비교한다. 이 노트북 GPU(RTX 4060 Laptop)는 86도쯤에서 열 제한을 걸므로 냉각이 좋아지면 온도보다 열 제한 시간과 클럭이 먼저 바뀐다(0926 실측: 평평 45~60초·2235~2400 MHz, 책 받침 36초·2520 MHz, 에어컨 뒤 0초·2580~2610 MHz). 열 제한이 0초가 된 뒤에는 병목이 전력 한도(약 99 W)다.
+   - 오늘 cooling 값이 둘 이상이면 같은 표를 cooling 값마다 나누고, 온도 중앙값·클럭 중앙값·열 제한 비율(thr_swthermal_s ÷ gpu_samples)을 값별로 비교한다. 0926 실측에서는 평평할 때 열 제한45~60초·2235~2400 MHz, 책 받침36초·2520 MHz, 에어컨 뒤0초·2580~2610 MHz가 관측됐다. 당시 높은 GPU 부하의 일부 캡처에는 약99 W 전력 한도가 기록됐다. 이 과거 관측이나 cooling.txt 라벨만으로 현재 에어컨·기기 배치·병목을 확정하지 않고, 최신 GPU 사용률·열 제한·전력 기록과 알려진 냉각 상태를 함께 적는다.
 3. `C:\Users\rlfjr\gta-perf\verdict.md` 맨 위에 오늘 절을 더한다(이전 절은 아래에 남긴다): 날짜, 지금 phase·단계·조합, 오늘 ladder.log 줄, 단계별 표, 되돌린 단계와 이유, 비정상 종료, 작업 상태.
 4. 메일은 오늘 단계가 바뀌었을 때(ladder.log 에 오늘 날짜의 판정 줄이 있을 때)와 사다리가 끝났을 때만 Gmail 커넥터 `send_message` 로 `dnfjddk2@gmail.com` 에 보낸다. 그 밖의 날은 보내지 않는다. `PushNotification` 은 예약 실행에서 폰에 가지 않으니 쓰지 않는다.
    - subject: `[GTA 그래픽] <n>단계 <통과|실패, 되돌림> → 지금 <단계>` 또는 끝난 날은 `[GTA 그래픽] 사다리 끝: <남은 조합 요약>`
