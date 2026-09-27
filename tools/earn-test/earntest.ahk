@@ -38,7 +38,7 @@ if (!A_Args.Length) {
     ExitApp(2)
 }
 fn := A_Args[1], arg := A_Args.Length > 1 ? A_Args[2] : "", arg2 := A_Args.Length > 2 ? A_Args[3] : "", arg3 := A_Args.Length > 3 ? A_Args[4] : ""
-global gTestIdleMs := fn = "MCTTasksSmoke" ? 8000 : 45000
+global gTestIdleMs := 8000
 t0 := A_TickCount
 if (fn != "MCTStatus" && fn != "Idle" && fn != "Status" && fn != "SessionInfo" && fn != "BlipInfo" && fn != "NavInfo" && fn != "EarnSpawnRoute" && !EarnTestPrepare()) {
     FileAppend(fn " = not started fail=" gEarnFail "`n", "*", "UTF-8")

@@ -1,9 +1,9 @@
 ; === 수익 자동화 스케줄러 (벙커 보급 · DJ 교체 · 나이트클럽 금고 · 현장 파견) ===
 ; 단축키(기본 F9) 두 번으로 켜고 끈다. End(전체 멈춤)도 끈다. 켜 두면 5초마다 할 일을 보고, 때가 된 것 하나를 끝까지 한 뒤 다음으로 넘어간다.
 ; 한 번에 하나만 한다: 금고 가느라 부동산을 떠나 있는 동안 벙커 보급은 멈췄다가, 돌아와 터미널이 열리는 것을 확인한 뒤 이어서 한다.
-; 사용자가 키보드·마우스를 만지는 동안(EarnUserIdleSec 초 안)은 시작하지 않는다. 다른 도구가 게임에 키를 보내는 동안도 같다.
+; 사용자 물리 입력이 EarnUserIdleSec 동안 없고 GTA가 앞일 때만 시작한다. 진행 중 사용자 입력·포커스 이탈 시 중단한다.
 ; 어느 단계든 화면 확인이 안 되면 자동화 전체를 끄고(멈춤 까닭은 %TEMP%\gta-earn.log·오버레이·설정 창) AFK 방지는 켜 둔다.
-; 거점은 아케이드 지하 마스터 컨트롤 터미널(MCT) 앞이다. 켜기 전에 캐릭터를 MCT 앞("Press E" 안내가 보이는 자리)에 세워 둔다.
+; EarnMCTOnly=1이면 현재 열린 MCT 목록에서 벙커·DJ만 처리한다. 이동 모드의 거점은 아케이드 MCT 앞이다.
 global gEarnOn := false
 global gEarnDue := Map()        ; 작업 id → 다음 실행 시각(A_TickCount)
 global gEarnDone := Map()       ; 작업 id → 켠 뒤 성공 횟수
@@ -11,6 +11,8 @@ global gEarnCurrent := ""       ; 지금 하는 작업 이름
 global gEarnTasks := []
 global gEarnNextDue := Map()   ; 작업이 스스로 정한 다음 실행 시각(A_TickCount). 없으면 시작 시각 + 간격
 global gEarnSoftFails := Map()   ; 작업별 연속 "다시 하기" 횟수. EarnSoftFailMax 를 넘으면 그때 끈다
+global gEarnGuardArmed := false
+global gEarnInputGuard := EarnInputAllowed
 
 EarnTaskList() {
     global config
@@ -32,6 +34,8 @@ SetEarner(on, reason := "") {
     global gEarnOn, gEarnDue, gEarnDone, gEarnFail, gEarnTasks, gEarnNextDue, gEarnSoftFails, gEarnRetryIn, gEarnBusy, gAbort, gBunkerFullSince, config, afkOn
     gEarnOn := on
     if (on) {
+        InstallKeybdHook()
+        InstallMouseHook()
         gEarnFail := ""
         gEarnTasks := EarnTaskList()
         gEarnDue := Map(), gEarnDone := Map(), gEarnNextDue := Map(), gEarnSoftFails := Map()
@@ -75,8 +79,8 @@ EarnTick() {
         return
     if (!WinExist(GTA_WIN))
         return
-    ; 사람이 쓰는 중이면 기다린다 (다른 도구가 보내는 키도 여기에 잡힌다)
-    if (A_TimeIdle < config["Settings"]["EarnUserIdleSec"] * 1000)
+    ; 실제 사용자 입력을 기다린다. 자동 입력은 물리 유휴 시간을 초기화하지 않는다.
+    if (A_TimeIdlePhysical < config["Settings"]["EarnUserIdleSec"] * 1000)
         return
     ; 다른 매크로가 게임에 키를 보내는 중이면 기다린다
     if (EarnOtherMacroBusy())
@@ -91,8 +95,8 @@ EarnTick() {
     }
     if (!IsObject(task))
         return
-    if (!IsGTAActive() && !BringGTAToFront()) {
-        EarnLog(task.label ": GTA 를 앞으로 가져오지 못해 30초 뒤 다시")
+    if (!IsGTAActive()) {
+        EarnLog(task.label ": GTA 포커스가 돌아오면 다시 (30초 대기)")
         gEarnDue[task.id] := now + 30000
         return
     }
@@ -103,10 +107,18 @@ EarnTick() {
     ok := false
     EarnLog("시작: " task.label)
     try {
-        ok := task.fn.Call()
+        EarnInputGuardStart()
+        if (EarnInputAllowed())
+            ok := task.fn.Call()
+        ; 마지막 단계에서 사용자가 개입한 경우 성공/자동 재시도로 덮지 않는다.
+        if (!EarnInputAllowed()) {
+            ok := false
+            gEarnRetryIn := 0
+        }
     } catch as e {
         ok := EarnFail(task.label " 오류: " e.Message " (" e.File ":" e.Line ")")
     } finally {
+        EarnInputGuardStop()
         ReleaseHeldKeys()
         gEarnBusy := false
         gEarnCurrent := ""
@@ -142,10 +154,41 @@ EarnTick() {
     ShowTooltip("⚠ 수익 자동화 멈춤: " why, 8000)
 }
 
+; 물리 키보드/마우스 입력만 본다. 자동 클릭·카메라 입력은 유휴 시간을 초기화하지 않는다.
+EarnInputGuardStart() {
+    global gEarnGuardArmed
+    gEarnGuardArmed := true
+    SetTimer(EarnInputWatch, 25)
+}
+
+EarnInputGuardStop() {
+    global gEarnGuardArmed
+    gEarnGuardArmed := false
+    SetTimer(EarnInputWatch, 0)
+}
+
+EarnInputWatch() {
+    EarnInputAllowed()
+}
+
+EarnInputAllowed() {
+    global gEarnGuardArmed, gAbort, gEarnRetryIn, config
+    if (!gEarnGuardArmed)
+        return !gAbort
+    if (!gAbort && (A_TimeIdlePhysical < Max(1, config["Settings"]["EarnUserIdleSec"]) * 1000 || !IsGTAActive())) {
+        gAbort := true
+        gEarnRetryIn := 0
+        EarnFail("사용자 입력 또는 GTA 포커스 이탈로 중단")
+        ReleaseHeldKeys()
+    }
+    return !gAbort
+}
+
 ; 다른 매크로가 게임에 키를 보내는 중이면 true. 작텔(Alt+F4·MC·스팀 봇)은 IsTeleportRunning 이 묶어서 본다
 EarnOtherMacroBusy() {
-    global clawLoopRunning, gMenuBusy
+    global clawLoopRunning, gMenuBusy, gAFKBusy
     return (IsSet(clawLoopRunning) && clawLoopRunning) || (IsSet(gMenuBusy) && gMenuBusy)
+        || (IsSet(gAFKBusy) && gAFKBusy)
         || IsTeleportRunning() || AnyInputToggleOn()
 }
 

@@ -57,42 +57,45 @@ EarnRejoin(place) {
     return EarnCheckPlace(place)
 }
 
-; MCT 앞("Press E to sit down" 안내)에 서 있는지. 아니면 아케이드로 다시 들어가 MCT 까지 걸어간다.
+; MCT 전용 접근 안내나 사업장 목록으로 도착을 확인한다. 일반 앉기 안내는 공통이라 쓰지 않는다.
 EarnAtMCT() {
     global EARN_PROMPT_AREA
-    return EarnSeen("mct_sit", EARN_PROMPT_AREA)
+    return EarnSeen("mct_seated", EARN_PROMPT_AREA)
+        || EarnSeen("mct_title", [0.3,0,0.7,0.1])
 }
 
-; MCT 아이콘은 같은 층에서만 미니맵에 뜬다. 안 보이면 같은 방의 기획실 노트북(laptop)부터 찾아가고 거기서 다시 MCT 를 찾는다(0926 실측: 지하 차고 스폰에서는 노트북만 보임).
+; 다른 부동산에서만 아케이드로 한 번 이동한다. 아케이드 안의 경로 실패로 다시 접속하지 않는다.
 EarnGoHome() {
-    global config
-    if (EarnAtMCT())
-        return true
-    ; 이미 아케이드 안이면 다시 들어가지 않고 걸어가 본다
-    if (EarnInPlace("Arcade") && EarnWalkToMCT())
-        return true
-    ; 아케이드 스폰은 나이트클럽에서 Right 두 칸 (스폰 목록 순서)
-    if (!EarnGoTo("Arcade", "Right", "mct", "laptop"))
-        return false
-    Loop config["Settings"]["EarnWalkRetry"] {
-        if (EarnWalkToMCT())
-            break
+    if (EarnSeen("arcade_laptop_seated", [0,0,0.3,0.1])) {
         if (EarnAborted())
-            return EarnFail("MCT: 멈춤·포커스 이탈")
-        if (A_Index = config["Settings"]["EarnWalkRetry"])
-            return EarnFail("MCT: " A_Index "번 다시 들어가도 MCT 앞에 못 닿음")
-        EarnLog("MCT: 걸어서 못 닿아 다시 들어감 (" A_Index "/" config["Settings"]["EarnWalkRetry"] ")")
-        if (!EarnRejoin("Arcade"))
+            return false
+        Click("Right Down")
+        try Sleep(100)
+        finally Click("Right Up")
+        if (!EarnWaitGone("arcade_laptop_seated", [0,0,0.3,0.1], 5000))
+            return EarnFail("복귀: 일반 노트북에서 일어서지 못함")
+        if (!EarnSleep(1000))
             return false
     }
-    EarnLog("MCT 앞 도착")
+    if (EarnAtMCT())
+        return true
+    ; 아케이드에 도착한 뒤 길찾기 실패를 스폰 실패로 취급하지 않는다.
+    ; 다른 층의 MCT까지 미니맵 길이 이어질 때까지 재접속해도 계단 경로는 해결되지 않는다.
+    if (!EarnInPlace("Arcade") && !EarnReloadInto("Arcade", "Right"))
+        return false
+    if (!EarnWalkToMCT())
+        return false
+    EarnLog("MCT 복귀 완료 (전용 접근 안내 확인)")
     return true
 }
 
 ; 지금 자리에서 MCT 앞까지. MCT 블립이 보이면 바로, 아니면 노트북까지 간 뒤 MCT. 둘 다 안 보이면 false (EarnFail 없이, 다시 들어갈지는 부르는 쪽이 정한다)
 EarnWalkToMCT() {
+    ; 차고 스폰은 정면 계단을 먼저 오른다. 다른 층의 블립 방향으로 꺾지 않는다.
+    if (EarnSeen("arcade_basement_spawn", [0.48,0.45,0.64,0.68]))
+        return EarnArcadeBasementToMCT()
     if (EarnBlip("mct", &a, &d))
-        return EarnNavTo("mct", "mct_sit")
+        return EarnNavTo("mct", "mct_sit") && EarnConfirmMCTSeat()
     if (!EarnBlip("laptop", &a, &d))
         return false
     EarnLog("MCT 블립이 안 보여 기획실 노트북(" Round(a) "도 " Round(d) "px)까지 먼저 감")
@@ -100,11 +103,35 @@ EarnWalkToMCT() {
         return false
     if (!EarnBlip("mct", &a, &d))
         return EarnFail("노트북 옆까지 갔는데 MCT 블립이 안 보임")
-    return EarnNavTo("mct", "mct_sit")
+    return EarnNavTo("mct", "mct_sit") && EarnConfirmMCTSeat()
+}
+
+; 아케이드 차고의 고정 스폰에서 정면 계단으로 간다. 시작 화면이 같은 경우에만 실행한다.
+EarnArcadeBasementToMCT() {
+    if (!EarnSeen("arcade_basement_spawn", [0.48,0.45,0.64,0.68]))
+        return EarnFail("아케이드: 지하 고정 스폰 화면이 아님")
+    EarnLog("아케이드 지하: 정면 계단까지 직진")
+    if (!EarnWalk("w:6500") || !EarnSleep(1300))
+        return false
+    if (!EarnBlip("mct", &angle, &distance) || distance >= 999
+        || !EarnNavPlan("mct", &turn, &step, &goal) || goal > 14)
+        return EarnFail("아케이드: 계단을 오른 뒤 MCT 층의 경로를 확인하지 못함")
+    EarnLog("아케이드 지하: 계단 통과, MCT까지 " Round(distance) "px")
+    return EarnNavTo("mct", "mct_sit") && EarnConfirmMCTSeat()
+}
+
+; 일반 노트북도 같은 앉기 안내를 쓴다. MCT 전용 접근 안내까지 확인해야 복귀 성공이다.
+EarnConfirmMCTSeat() {
+    global EARN_PROMPT_AREA
+    if (!EarnSeen("mct_sit", EARN_PROMPT_AREA) || !EarnPress("e"))
+        return false
+    return EarnWaitSeen("mct_seated", EARN_PROMPT_AREA, 8000)
+        || EarnFail("복귀: MCT 전용 접근 안내가 아님")
 }
 
 ; --- 나이트클럽 금고 ---
-; 나이트클럽에 들어가 금고까지 걸어가 E → 판넬이 열리면 안으로 걸어 들어가 줍고 → 오른쪽 아래 WALL SAFE 가 $0 인지 확인 → E 로 닫는다. 그다음 아케이드 MCT 앞으로 돌아온다.
+; 나이트클럽 금고를 열어 수거하고 WALL SAFE $0을 확인한다. 금고는 열어 둔 채 아케이드 MCT로 돌아온다.
+; 보스 등록·해제는 포함하지 않는다. 사용자가 시작 전에 해제할 수 있다.
 ; 0926 17:43 수동 실측: 금고 $250,000 → $0, 현금 +$250,000. 0927 00:48 매크로(EarnSafeCollect) 실측: $12,000 → $0.
 ; 스폰 자리는 매번 다르다(1층 바·댄스 플로어·화장실, 2층 난간·뒷방, 침대 옆). 미니맵은 지금 층만 그려서 1층에서는 2층 사무실까지 길이 안 이어진다(0927 실측: 3번 중 1번만 닿음).
 ; 그래서 들어간 자리에서 금고($ 블립)나 사무실 노트북 쪽으로 길이 보일 때 걷는다. 가장자리 노트북은 방향을 따라가며 길을 다시 찾고, 길이 없으면 다시 들어간다. 자리는 같은 곳이 몇 번씩 이어지므로
@@ -175,15 +202,18 @@ EarnInPlace(place) {
     return EarnMenuClose() && here
 }
 ; "Press E to open your Safe" 가 보이는 자리에서: E → 판넬이 열리는 동작(약 4초) → 금고 쪽을 보고 걸어 들어가 줍는다.
-; 주우면 "Press E to close your Safe" 가 뜨고 오른쪽 아래 WALL SAFE 가 $0 이 된다 → E 로 닫는다.
+; 열린 금고에서는 E를 다시 누르지 않는다. 닫기 안내와 WALL SAFE $0으로 수거 완료를 확인한다.
 EarnSafeCollect() {
     global EARN_PROMPT_AREA
-    if (!EarnSeen("safe_prompt", EARN_PROMPT_AREA))
-        return EarnFail("금고: Press E to open your Safe 안내가 안 보임")
-    if (!EarnPress("e"))
-        return false
-    if (!EarnSleep(4500))
-        return false
+    ; 열린 금고에 다시 왔으면 E를 누르지 않는다. E는 열린 판넬을 닫는다.
+    if (!EarnSeen("safe_close_prompt", EARN_PROMPT_AREA)) {
+        if (!EarnSeen("safe_prompt", EARN_PROMPT_AREA))
+            return EarnFail("금고: 열기·닫기 안내가 안 보임")
+        if (!EarnPress("e"))
+            return false
+        if (!EarnSleep(4500))
+            return false
+    }
     collected := false
     Loop 4 {
         if (EarnSeen("hud_safe_zero") && EarnSeen("safe_close_prompt", EARN_PROMPT_AREA)) {
@@ -200,13 +230,7 @@ EarnSafeCollect() {
     if (!collected)
         return EarnFail("금고: 판넬을 연 뒤 WALL SAFE $0 과 닫기 안내를 확인하지 못함")
     EarnLog("금고 비움 (WALL SAFE $0 확인)")
-    if (!EarnSeen("hud_safe_zero") || !EarnSeen("safe_close_prompt", EARN_PROMPT_AREA))
-        return EarnFail("금고: 닫기 전 WALL SAFE $0 과 닫기 안내를 다시 확인하지 못함")
-    if (!EarnPress("e"))
-        return false
-    if (!EarnWaitGone("safe_close_prompt", EARN_PROMPT_AREA, 6000))
-        return EarnFail("금고: 닫기 안내가 사라지지 않음")
-    return EarnSleep(2000)
+    return true
 }
 
 ; --- 벙커 보급 (규칙은 사용자 지시 0926) ---

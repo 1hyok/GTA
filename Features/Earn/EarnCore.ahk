@@ -387,11 +387,17 @@ EarnTurn(units) {
 EarnFace(name, target := 0, tol := 5, maxIter := 8) {
     global config
     k := config["Settings"]["EarnTurnUnitsPerDeg"]
+    previousAngle := 0, previousUnits := 0
     Loop maxIter {
         if (EarnAborted())
             return false
         if (!EarnBlip(name, &a, &d))
             return false
+        if (previousUnits) {
+            turned := Mod(previousAngle - a + 540, 360) - 180
+            if (Abs(turned) >= 2 && turned * previousUnits > 0)
+                k := Min(60, Max(8, Abs(previousUnits / turned)))
+        }
         err := a - target
         if (err > 180)
             err -= 360
@@ -399,9 +405,13 @@ EarnFace(name, target := 0, tol := 5, maxIter := 8) {
             err += 360
         if (Abs(err) <= tol)
             return true
-        if (!EarnTurn(Round(err * k)))
+        ; 시점별 마우스 감도가 다르다. 작게 돌린 뒤 실제 블립 각도로 보정한다.
+        previousAngle := a
+        previousUnits := Round(Max(-45, Min(45, err)) * k)
+        if (!EarnTurn(previousUnits))
             return false
-        Sleep(450)
+        if (!EarnSleep(1300))
+            return false
     }
     return false
 }
@@ -614,11 +624,13 @@ EarnNavLine(grid, gw, x0, y0, x1, y1) {
 EarnNavTo(name, prompt := "", stopPx := 12, maxSteps := 40) {
     global EARN_PROMPT_AREA, config
     k := config["Settings"]["EarnTurnUnitsPerDeg"]
-    last := 9999, flat := 0, dodges := 0
+    last := 9999, lastBlipDistance := 9999, flat := 0, dodges := 0
     Loop maxSteps {
         if (EarnAborted())
             return EarnFail("길찾기: 멈춤·포커스 이탈")
-        if (prompt != "" && EarnSeen(prompt, EARN_PROMPT_AREA))
+        if (prompt != "" && (prompt != "mct_sit" || lastBlipDistance <= 24 || (EarnBlip("mct", &ma, &md) && md <= 24))
+            && (EarnSeen(prompt, EARN_PROMPT_AREA)
+            || (prompt = "safe_prompt" && EarnSeen("safe_close_prompt", EARN_PROMPT_AREA))))
             return true
         ; 카메라가 돌거나 걷는 동안 미니맵이 다시 그려져(축소·회전 애니메이션) 한두 프레임은 블립이 안 잡힌다(0927 실측). 잠깐 쉬고 몇 번 더 본다
         planned := false
@@ -634,6 +646,7 @@ EarnNavTo(name, prompt := "", stopPx := 12, maxSteps := 40) {
         ; 진척은 블립까지 실제 거리(bd)로 잰다. gp 는 길 끝에서 블립까지 남는 거리라 걷는 동안 줄지 않는다(0927 실측: 26걸음 내내 4~11px)
         if (!EarnBlip(name, &ba, &bd))
             return EarnFail("길찾기: 이동 전 " name " 블립을 확인하지 못함")
+        lastBlipDistance := bd
         if (prompt = "" && bd <= stopPx)
             return true
         EarnLog("길찾기 " name ": 걸음 " A_Index " 방향 " Round(ta) "도 " Round(sp) "px, 블립까지 " Round(bd) "px (길 끝 " Round(gp) "px)")
@@ -649,8 +662,8 @@ EarnNavTo(name, prompt := "", stopPx := 12, maxSteps := 40) {
                 return false
             continue
         }
-        if (Abs(ta) > 4 && !EarnTurn(Round(ta * k)))
-            return EarnFail("길찾기: 카메라 돌리는 중 멈춤")
+        if (Abs(ta) > 4 && !EarnFace(name, ba - ta))
+            return EarnFail("길찾기: 경로 방향을 확인하지 못함")
         Sleep(250)
         ; 곧게 보이는 점(sp)까지 걷는다. 미니맵 20px ≈ 1초 걷기(0926 실측)이고, 블립 바로 앞에서는 짧게 끊는다
         ms := Round(Min(900, Max(250, Min(sp, Max(bd - stopPx, 6)) * 45)))
@@ -658,7 +671,9 @@ EarnNavTo(name, prompt := "", stopPx := 12, maxSteps := 40) {
             return EarnFail("길찾기: 걷는 중 멈춤")
         Sleep(1300)   ; 걷는 동안 미니맵이 축소됐다가 멈춘 뒤 1초 넘게 걸려 되돌아온다(0927 실측). 그 전에 읽으면 블립이 가장자리에 붙어 안 잡힌다
     }
-    if (prompt != "" && EarnSeen(prompt, EARN_PROMPT_AREA))
+    if (prompt != "" && (prompt != "mct_sit" || lastBlipDistance <= 24 || (EarnBlip("mct", &ma, &md) && md <= 24))
+        && (EarnSeen(prompt, EARN_PROMPT_AREA)
+        || (prompt = "safe_prompt" && EarnSeen("safe_close_prompt", EARN_PROMPT_AREA))))
         return true
     return EarnFail("길찾기: " name " 에 " maxSteps "걸음 안에 못 닿음")
 }
