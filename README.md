@@ -61,6 +61,17 @@ Copy-Item Main.ahk Main_check.ahk
 
 임무 진행 중에는 Jobs가 `Jobs are currently unavailable.`로 막혀 위 목록 경로를 쓸 수 없다. 0927 페이폰 히트에서 기존 웹 기록과 같은 결과를 확인했다([확인 화면](docs/evidence/2026-09-27-payphone-jobs-unavailable.png)).
 
+### 준비 작업 전 Quick Join 적용 순서
+
+아래는 2026-09-27 대조한 웹 원문의 절차다. 로컬에서 Quick Join 없이 시작한 페이폰 히트는 Jobs 접근 불가까지 확인됐으며, 그 시험은 완료됐다.
+
+1. Online → Options에서 `Matchmaking=Closed`, `Filter Quick Join Content=User Created Only`로 설정하고 필요한 지도 작업 표식을 표시한다.
+2. 보스 미등록 상태에서 전화 `Quick Join → Random → Alone → Yes`로 검색한다. `Looking For Job`을 확인한 뒤 CEO/MC 등록으로 검색을 끝내고 prep를 시작한다.
+3. 이미 보스라면 검색 → prep 시작 → 전화 Quick Join에 다시 접근 → 폰 닫기로 검색을 취소하는 순서를 쓴다. 두 경로 중 현재 상태에 맞는 하나를 적용한다.
+4. 지도 작업 블립에서 시작한 뒤 아래 F11 절차를 쓴다. 이 준비는 prep마다 필요하며, 필터는 검색을 늦출 뿐 매칭을 막지는 않는다.
+
+출처는 [2024-12-30 작성자 절차](https://www.reddit.com/r/gtaglitches/comments/1hpoqk9/job_warping_during_missions_update/)와 기존 조사에서 인용한 [한국어 가이드의 작업 텔레포트 절](https://www.namu.moe/w/Grand%20Theft%20Auto%20Online/가이드)다. 원문의 2025-03-08 댓글은 PC 카지노 prep에서 Alt+F4 후 60초 대기로 성공했다고 보고한다(Legacy/Enhanced 구분·세부 버전 미기재). 일부 임무의 취소·운반물 유실도 원문에 명시돼 있어 모든 prep의 유지 보장은 아니다. 이 계정의 유지 성공 실측은 아래 페이폰 히트 두 건이며, 웹 보고와 구분한다. 조사 원자료와 과거 invalid 작업 경로는 dotfiles의 `claude/skills/gta-online-research/SKILL.md`에 정리했다.
+
 ### F11 두 번: Alt+F4 방식
 
 사전 설정: Online → Options → Matchmaking = Closed, 상호작용 메뉴 → Preferences → Map Blip Options → Jobs 표시.
@@ -75,6 +86,8 @@ Space → CONFIRM Enter → 바로 Alt+F4 → 게임 종료 확인창에서 60�
 ### F10 두 번: 스팀 봇 방식
 
 작업 시작 → 로딩 중 스팀 그룹 채팅 "CCYXJ差传" 의 봇(`BotWarpBotRow` 1: 差传CCYXJ01, 2: 差传CCYXJ03)에 Join Game → "join a different session" Enter → (조준 모드가 다르면 경고 Enter) → "incompatible assets" Enter → 약 20초 뒤 출발점. 60초 대기가 없어 F11 보다 빠르다.
+
+이 방식의 로컬 성공은 새 세션의 프리모드 도착이다. 진행 중인 prep가 유지됐다는 실측은 없으며, [2026년 PC Enhanced 봇 가이드](https://www.reddit.com/r/gtaglitches/comments/1qaewlg/pc_enhanced_gtav_job_teleport_guide_3_easy/)도 prep 유지 여부는 설명하지 않는다. 따라서 Steam 봇의 prep 유지·소실은 미확정이며, Alt+F4의 임무 유지 결과를 봇 방식에 적용하지 않는다.
 
 - 준비: 스팀 그룹 채팅 창을 열어 둔다(매크로가 노트북 화면 오른쪽 위로 옮긴다. 필터 칸은 좌표로, 봇 줄과 Join Game 은 `Images\BotWarp\steam\` 참조 이미지로 찾은 자리를 누른다). 노트북 화면 배율 175%, 게임 16:9. `join_game.png` 가 없으면 시작하지 않는다. 봇이 게임 중(멤버 목록에서 초록 글자)이어야 한다.
 - 채팅 창이 없으면 `open_in_steam.png`·`join_group_chat.png` 가 있을 때만 초대 링크로 자동으로 연다(친구 목록 창이 없으면 매크로가 먼저 띄운다. 0926 실측: 친구 목록이 한 번도 안 뜬 상태에서는 Open in Steam 이 무반응). 두 장이 없으면 채팅 창을 직접 열어 두라고 알리고 멈춘다.
@@ -116,7 +129,11 @@ F7 자동 클릭은 커서가 게임 화면 안에 있을 때만 왼쪽 클릭�
 
 ## 수익 자동화 (F9 두 번)
 
-수익 자동화는 진행 중이며, 실제 완료 범위는 `docs/earner-handoff.md`에 기록한다. 아케이드 지하 MCT 앞에 세우고 CEO·MC 를 해제한 뒤 켜면 5초마다 때가 된 일(벙커 보급·DJ 교체·나이트클럽 금고) 하나를 화면 템플릿(`Images\Earn\1920x1080\`)으로 확인하며 한다. 부동산 사이 이동은 스폰 위치를 바꾸고 초대 전용 세션으로 다시 들어가는 방식이라 세션이 바뀐다. 어느 단계든 확인이 안 되면 자동화 전체를 끄고 AFK 방지는 켜 둔다. 까닭은 `%TEMP%\gta-earn.log`, 오버레이, 설정 창. 작업은 마지막 키보드·마우스 입력에서 45초가 지나야 시작하고 5초마다 다시 보므로 손을 떼면 저절로 이어진다. 벙커 구매 화면과 DJ 교체 화면은 아직 자리표시자라 기본값 `EarnBunker=0`, `EarnDJ=0`으로 꺼 두었다. 현장 파견도 `EarnDispatch=0`이다.
+실내 길찾기의 직선 지름길은 BFS와 동일하게 벽 모서리 양옆 칸을 검사한다. 0927에 막힌 모서리를 대각선으로 가로지르던 결함을 수정했으며, 화면에만 보이고 미니맵에는 없는 가구를 인식하는 기능은 아니다. 입력 없는 검사는 `tools/earn-test/test-earnnav.ps1`로 실행한다.
+
+수익 자동화는 진행 중이며, 실제 완료 범위는 `docs/earner-handoff.md`에 기록한다. 아케이드 지하 MCT 앞에 세우고 CEO·MC 를 해제한 뒤 켜면 5초마다 때가 된 일(벙커 보급·DJ 교체·나이트클럽 금고) 하나를 화면 템플릿(`Images\Earn\1920x1080\`)으로 확인하며 한다. 부동산 사이 이동은 스폰 위치를 바꾸고 초대 전용 세션으로 다시 들어가는 방식이라 세션이 바뀐다. 어느 단계든 확인이 안 되면 자동화 전체를 끄고 AFK 방지는 켜 둔다. 까닭은 `%TEMP%\gta-earn.log`, 오버레이, 설정 창. 작업은 마지막 키보드·마우스 입력에서 45초가 지나야 시작하고 5초마다 다시 보므로 손을 떼면 저절로 이어진다. 벙커 구매·DJ 교체 함수는 1920x1080 저택 MCT 화면으로 구현했다. 거점 이동·CEO 등록·전체 왕복과의 통합 검증은 남아 기본값 `EarnBunker=0`, `EarnDJ=0`을 유지한다. 현장 파견도 `EarnDispatch=0`이다.
+
+열려 있는 MCT에서 `EarnBunkerBuy`는 재고가 가득하거나 보급이 81%를 넘으면 구매하지 않고, 배송 중 안내가 있으면 중복 결제하지 않는다. `EarnDJSwapLoop`는 기존 Solomun/Tale Of Us의 $10,000 재고용만 허용하며, 매번 MCT로 돌아와 인기도 증가를 확인한다. 기본 목표는 수입 최고 구간인 95%다. 95% 이상에서는 교체하지 않으며, 90% 초과를 일률적으로 금지하지 않는다. 재고용의 +10%p 중 일부가 잘리더라도 향후 금고 수입과 비용을 함께 판단해야 하기 때문이다. 금고 포화와 남은 플레이 시간을 반영한 수익 최적화는 아직 구현하지 않았다. 캡처와 템플릿 재생성 도구는 `docs/evidence/2026-09-27-mct`와 `tools/earn-test/build-mct-templates.ps1`에 있다.
 
 금고 경로는 가장자리에 걸린 노트북 아이콘도 후보로 받는다. 실제 사무실까지 갈 수 있는지는 이동하며 다시 확인한다. 금고가 이미 $0이어도 아케이드로 복귀하며, 다른 부동산의 노트북을 아케이드 MCT 경로로 취급하지 않는다. 방향·블립·게임 HUD 확인에 실패하면 다음 이동 입력을 보내지 않는다.
 

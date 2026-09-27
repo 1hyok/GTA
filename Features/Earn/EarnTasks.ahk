@@ -261,13 +261,58 @@ EarnBunkerTask() {
     return EarnMCTClose()
 }
 
-; MCT 벙커 카드 → 관리 화면 → 보급 구매. CEO 여야 한다. 화면 좌표·템플릿은 0926 실측으로 채운다
+; MCT에서 시작해 MCT로 복귀한다. 0927 저택 MCT 화면 기준.
 EarnBunkerBuy() {
-    return EarnFail("벙커 구매 화면: 아직 실측 전")
+    if (!EarnUIReady("mct_bunker_card"))
+        return EarnFail("벙커: MCT 카드 없음")
+    stock := EarnBarFill(766, 1154, 555, "green")
+    supply := EarnBarFill(766, 1154, 577, "blue")
+    if (stock < 0 || supply < 0)
+        return EarnFail("벙커: 막대 판독 실패")
+    if (stock >= 0.97 || supply > 0.81)
+        return true
+    if (!EarnUIClick("mct_bunker_card", 960, 525))
+        return false
+    deadline := A_TickCount + 8000
+    while (!EarnSeen("bunker_page", [0.15,0,0.35,0.12])) {
+        if (EarnSeen("bunker_entry", [0.34,0.54,0.64,0.64])) {
+            if (!EarnUIClick("bunker_entry", 940, 635))
+                return false
+            break
+        }
+        if (!EarnSleep(100) || A_TickCount >= deadline)
+            return EarnFail("벙커: 시작 화면 미확인")
+    }
+    if (!EarnWaitSeen("bunker_page", [0.15,0,0.35,0.12], 5000)
+        || !EarnUIClick("bunker_resupply", 460, 490)
+        || !EarnWaitSeen("bunker_buy", "", 3000)
+        || !EarnUIClick("bunker_buy", 930, 783))
+        return EarnFail("벙커: 구매 화면 이동 실패")
+    ; 이미 배송 중이면 결제하지 않는다. 확인창 불명확시 재시도하지 않는다.
+    deadline := A_TickCount + 5000
+    while (!EarnSeen("bunker_pending") && !EarnSeen("bunker_confirm")) {
+        if (!EarnSleep(100) || A_TickCount >= deadline)
+            return EarnFail("벙커: 구매/배송 안내 없음")
+    }
+    if (EarnSeen("bunker_confirm")) {
+        if (!EarnUIClick("bunker_confirm", 1065, 619)
+            || !EarnWaitGone("bunker_confirm", "", 15000)
+            || !EarnWaitSeen("bunker_buy", "", 5000))
+            return EarnFail("벙커: 거래 결과 미확인, 재구매 금지")
+        ; 재진입해서 배송 중 안내를 확인한다. 새 결제 확인창은 확정하지 않는다.
+        if (!EarnUIClick("bunker_buy", 930, 783)
+            || !EarnWaitSeen("bunker_pending", "", 5000))
+            return EarnFail("벙커: 배송 접수 미확인, 재구매 금지")
+    }
+    if (!EarnUIClick("bunker_pending", 960, 619)
+        || !EarnWaitGone("bunker_pending", "", 3000))
+        return false
+    EarnLog("벙커: 보급 배송 중 확인")
+    return EarnUIBackToMCT("bunker_page", 2)
 }
 
 ; --- 나이트클럽 DJ 교체 (규칙은 사용자 지시 0926) ---
-; 인기도가 EarnDJPopularityPct(95) 미만이면 이미 불렀던 DJ 둘을 번갈아 골라($10,000, +10%) 95% 이상이 될 때까지, 한 번 실행에 최대 10회.
+; 수입 최고 구간(95% 이상)을 목표로 기존 DJ를 $10,000에 교체(+10%p).
 ; 교체마다 인기도가 올랐는지 화면으로 확인하고, 한 번이라도 오르지 않았거나 못 읽으면 즉시 멈춘다. 처음 부르는 DJ($100,000) 줄은 절대 고르지 않는다.
 EarnDJTask() {
     global config
@@ -282,8 +327,8 @@ EarnDJTask() {
         EarnMCTClose()
         return EarnFail("DJ: 인기도를 읽지 못함")
     }
-    if (pop >= s["EarnDJPopularityPct"]) {
-        EarnLog("DJ: " s["EarnDJPopularityPct"] "% 이상이라 교체 안 함")
+    if (!EarnDJNeedsRebook(pop, s["EarnDJPopularityPct"])) {
+        EarnLog("DJ: 목표 인기도 도달로 교체 안 함")
         return EarnMCTClose()
     }
     ok := EarnDJSwapLoop(pop)
@@ -292,7 +337,85 @@ EarnDJTask() {
 }
 
 EarnDJSwapLoop(pop) {
-    return EarnFail("DJ 교체 화면: 아직 실측 전")
+    global config
+    Loop 10 {
+        pop := EarnPopularityMCTPct()
+        if (pop < 0)
+            return EarnFail("DJ: MCT 인기도 미확인")
+        if (!EarnDJNeedsRebook(pop, config["Settings"]["EarnDJPopularityPct"]))
+            return true
+        if (!EarnUIClick("mct_nightclub_card", 520, 525)
+            || !EarnWaitSeen("nc_dj_menu", "", 5000)
+            || !EarnUIClick("nc_dj_menu", 495, 759)
+            || !EarnWaitSeen("dj_solomun", "", 5000))
+            return EarnFail("DJ: 목록 이동 실패")
+        ; 캡처로 확인한 $10,000 Rebook만 클릭. 신규 고용은 선택하지 않는다.
+        area := [0.38, 0.50, 0.603, 0.58]
+        targetX := 940, confirmation := "dj_confirm_solomun"
+        if (!EarnSeen("dj_rebook_10k", area)) {
+            area := [0.61, 0.50, 0.835, 0.58]
+            targetX := 1385, confirmation := "dj_confirm_tale"
+        }
+        if (!EarnSeen("dj_rebook_10k", area))
+            return EarnFail("DJ: 기존 DJ $10,000 재고용 버튼 없음")
+        if (!EarnUIClick("dj_rebook_10k", targetX, 584, area)
+            || !EarnWaitSeen(confirmation, "", 3000)
+            || !EarnUIClick(confirmation, 1160, 628)
+            || !EarnWaitGone(confirmation, "", 15000)
+            || !EarnWaitSeen("dj_resident", area, 5000))
+            return EarnFail("DJ: 교체 결과 미확인")
+        if (!EarnUIClick("nc_home", 495, 596)
+            || !EarnSleep(500) || !EarnUIBackToMCT("nc_dj_menu", 1))
+            return false
+        updated := EarnPopularityMCTPct()
+        EarnLog("DJ: 인기도 " pop " → " updated)
+        if (updated <= pop)
+            return EarnFail("DJ: 교체 후 인기도 증가 미확인")
+    }
+    return EarnFail("DJ: 교체 10회 제한")
+}
+
+EarnUIReady(name, area := "") {
+    return !EarnAborted() && EarnSeen(name, area)
+}
+
+EarnDJNeedsRebook(pop, target := 95) {
+    return pop >= 0 && pop < target
+}
+
+; 현재 확인된 웹 화면에서만 클릭. 해상도가 달라지면 템플릿 확인에서 중단.
+EarnUIClick(guard, x, y, area := "") {
+    if (!EarnUIReady(guard, area))
+        return EarnFail("MCT 클릭 전 확인 실패: " guard)
+    hwnd := IsGTAActive()
+    previous := DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
+    try {
+        WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
+        if (cw != 1920 || ch != 1080)
+            return EarnFail("MCT: 미지원 해상도")
+        DllCall("SetCursorPos", "int", cx+x, "int", cy+y)
+        if (!EarnSleep(80) || !EarnUIReady(guard, area))
+            return false
+        SendEvent("{Blind}{LButton down}")
+        try {
+            Sleep(100)
+        } finally {
+            SendEvent("{Blind}{LButton up}")
+        }
+        return EarnSleep(450)
+    } finally {
+        DllCall("SetThreadDpiAwarenessContext", "ptr", previous, "ptr")
+    }
+}
+
+EarnUIBackToMCT(guard, maxPress) {
+    Loop maxPress {
+        if (EarnSeen("mct_title", [0.3, 0, 0.7, 0.1]))
+            return true
+        if (!EarnUIReady(guard) || !EarnPress("Backspace") || !EarnSleep(650))
+            return false
+    }
+    return EarnWaitSeen("mct_title", [0.3, 0, 0.7, 0.1], 3000)
 }
 
 EarnDispatchTask() {

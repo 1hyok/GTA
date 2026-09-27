@@ -577,11 +577,17 @@ EarnNavLine(grid, gw, x0, y0, x1, y1) {
     steps := Max(Abs(x1 - x0), Abs(y1 - y0))
     if (steps = 0)
         return true
+    previousX := x0, previousY := y0
     Loop steps {
         t := A_Index / steps
         x := Round(x0 + (x1 - x0) * t), y := Round(y0 + (y1 - y0) * t)
         if (!NumGet(grid, y * gw + x, "uchar"))
             return false
+        ; BFS와 같은 모서리 조건을 지킨다. 지름길도 막힌 칸의 모서리를 가로지를 수 없다.
+        if (x != previousX && y != previousY
+            && (!NumGet(grid, previousY * gw + x, "uchar") || !NumGet(grid, y * gw + previousX, "uchar")))
+            return false
+        previousX := x, previousY := y
     }
     return true
 }
