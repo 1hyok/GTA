@@ -120,6 +120,64 @@ F7 자동 클릭은 커서가 게임 화면 안에 있을 때만 왼쪽 클릭�
 
 시험은 `tools/earn-test/earntest.ahk`로 Main 없이 실행한다. 사용자가 꺼 둔 Main과 AFK를 시험 때문에 켜지 않는다. 하네스는 45초 입력 유휴를 최대 2분 기다리고, 시험 도중 사용자 입력·포커스 이탈·End가 감지되면 중단한다. 실행 제한은 25분이고 오류는 창 대신 로그와 표준 출력에 남긴다. `Status`·`Idle`은 전면화나 입력 없이 상태를 읽는다. 시험 하네스의 세션 전환에는 추가 화면 검사(`SessionGuard.ahk`)가 적용되므로 필요한 메뉴 템플릿이 없으면 해당 키 전에 멈춘다.
 
+GUI 작업에서 확인한 구간을 직접 조작할 때는 `tools/earn-test/gui-input.ahk`와 `gui-input.ps1`을 쓴다. GTA가 이미 앞에 있어야 하며 Main·AFK를 켜거나 창을 전면화하지 않는다. 처음 시작할 때만 실제 사용자 입력 유휴 8초를 확보한다(최대 60초 대기). 이후 자기 입력 때문에 유휴 시간을 다시 기다리지 않는다. 실제 사용자 입력·GTA 포커스 이탈·End를 감지하면 보유 키를 놓고 종료하며, 전체 실행 제한은 25분이다. 다른 작업·매크로·Computer Use와의 조작권 직렬화는 계속 필요하다.
+
+아래 PowerShell은 현재 디렉터리가 이 저장소 루트이고 AutoHotkey v2가 현재 사용자의 기본 위치에 설치됐다고 가정한다. 실행마다 새 빈 TEMP 디렉터리와 토큰을 만든다.
+
+```powershell
+$gtaRepo = (Get-Location).Path
+$guiToken = [Guid]::NewGuid().ToString('N')
+$guiSession = Join-Path $env:TEMP ('gta-gui-' + $guiToken)
+New-Item -ItemType Directory -Path $guiSession | Out-Null
+$guiAhk = Join-Path $env:LOCALAPPDATA 'Programs\AutoHotkey\v2\AutoHotkey64.exe'
+$guiArgs = '/ErrorStdOut "' + (Join-Path $gtaRepo 'tools\earn-test\gui-input.ahk') + '" "' + $guiSession + '" "' + $guiToken + '"'
+Start-Process -FilePath $guiAhk -ArgumentList $guiArgs -WindowStyle Hidden -PassThru
+```
+
+`Get-Content (Join-Path $guiSession 'state.txt')`의 상태가 `ready`인 것을 확인한 뒤 명령 하나를 보내고 `result-N.txt`를 확인한다. 입력을 묶는 범위와 화면 확인 시점은 스킬 정본 `~/dotfiles/codex/skills/gta-macro-ops/SKILL.md`의 메뉴·이동 규칙을 따른다. 확인한 시작 상태에서 고정된 탐색 구간을 한 호출로 보내고, 의미 있는 분기·실행 확정·구간 결과에서 캡처를 확인한다. 전송 성공은 화면 전환의 증거가 아니다. 아래 예시는 각각 별도로 실행하며 `hold`는 화면에서 확인한 장애물 없는 직선 구간에서 W/A/S/D 중 한 키를 최대 15,000ms 유지한다.
+
+```powershell
+& .\tools\earn-test\gui-input.ps1 -SessionDir $guiSession -Action tap -Key Backspace
+```
+
+```powershell
+& .\tools\earn-test\gui-input.ps1 -SessionDir $guiSession -Action hold -Key W -HoldMs 6000
+```
+
+`navigate`는 `Up`·`Down`·`Left`·`Right`·`PgUp`·`PgDn` 1~20개를 한 번에 보낸다. `-InterKeyMs`는 150~500ms이며 기본값은 200ms다. Enter·Backspace 등 실행 확정·뒤로 키는 넣을 수 없다. 결과와 `navigate-N.log`에 완료 키 수와 `elapsed_ms`가 남는다.
+
+프리모드에서 전화는 `tap -Key Up` 한 번으로 연다. Up을 빠르게 두 번 누르면 Snapmatic 카메라가 열리므로, 전화 열기 다음 탐색은 `Right` → `Up` 순서를 쓴다. 먼저 전화 홈의 `Job List`가 선택된 상태를 확인한 뒤 아래 구간으로 Contacts에 이동하고, 선택 결과를 확인한 뒤 별도 `tap -Key Enter`로 목록을 연다. 2026-09-27 수정 경로의 성공 실측은 이미 열린 Job List 홈에서 시작했으며, 프리모드부터 수정한 전체 경로는 아직 재검증하지 않았다.
+
+```powershell
+& .\tools\earn-test\gui-input.ps1 -SessionDir $guiSession -Action navigate -Keys @('Right','Up') -InterKeyMs 200
+```
+
+다음 연락처 구간은 Contacts 목록 최상단 `DE-SSANTA`가 선택된 화면에서 쓴다. 실행 뒤 `Franklin`이 선택된 화면이 종료 조건이다. 다른 이름이 선택돼 있으면 Enter를 이어 보내지 않고 현재 상태를 다시 확인한다.
+
+```powershell
+& .\tools\earn-test\gui-input.ps1 -SessionDir $guiSession -Action navigate -Keys @('Right','Right','Down') -InterKeyMs 200
+```
+
+Franklin 선택을 확인한 뒤 별도 `tap -Key Enter`로 전화를 건다. 연결 완료는 화면의 `Franklin CONNECTED`와 서비스 메뉴로 확인한다. 2026-09-27 실측에서 위 연락처 탐색 3키는 750ms였고, Enter·5초 대기·연결 화면 캡처는 별도로 5,843ms였다. 임무 요청의 접수·진행 여부는 그 다음 화면 증거로 판정한다([실측 기록](docs/earner-handoff.md)).
+
+지도 확대·축소는 화면의 키 안내를 확인한 뒤 `-Action tap -Key PgUp` 또는 `PgDn`을 쓴다. `click`은 현재 캡처에서 읽은 물리 화면 좌표를 지정한다. GTA 클라이언트 영역 밖이면 거부하고, 영역 안에서는 커서 위치를 확인한 뒤 좌클릭을 100ms 누른다. 축소 캡처의 좌표를 그대로 넣지 않는다. DPI 처리를 포함한 실제 좌표 일치는 현장 화면으로 검증하며, 선택·실행 결과는 위 구간 기준에 맞춰 확인한다. 다음 좌표는 형식 예시다.
+
+```powershell
+& .\tools\earn-test\gui-input.ps1 -SessionDir $guiSession -Action click -X 960 -Y 540
+```
+
+범례 스크롤은 현재 커서가 범례 위에 있는 것을 확인한 뒤 `wheel`을 쓴다. 커서를 옮기지 않으며 매 틱마다 게임 포커스·사용자 입력·GTA 영역 안 커서 위치를 확인한다. `-Ticks`는 -5~5 중 0을 제외하며 양수는 위, 음수는 아래다. 탐색 구간 결과에서 캡처로 범례를 확인한다.
+
+```powershell
+& .\tools\earn-test\gui-input.ps1 -SessionDir $guiSession -Action wheel -Ticks -3
+```
+
+도구는 다음 행동을 자동으로 선택하거나 반복하지 않는다. 마지막 명령이 끝나면 `stop`으로 수신기를 종료한다. 진행 중인 이동의 즉시 중단은 End를 쓴다.
+
+```powershell
+& .\tools\earn-test\gui-input.ps1 -SessionDir $guiSession -Action stop
+```
+
 ## 전체 멈춤 (End) · 종료 (Pause 두 번)
 
 End 는 도는 것을 전부 멈추고(카요 타이머 포함) 누른 키를 뗀다. AFK 방지만 남긴다. 게임 밖에서 End 가 안 잡히면 트레이 메뉴. Pause 는 전역 키라 노트북 Fn 오타로 꺼지지 않게 두 번 눌러야 한다.
