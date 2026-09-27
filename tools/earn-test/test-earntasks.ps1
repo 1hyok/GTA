@@ -266,7 +266,92 @@ FileAppend("PASS DJRebook cases=10`n", "*")
 ExitApp(0)
 '@
     Invoke-EarnOfflineCheck 'DJRebook' 'EarnDJNeedsRebook' $djDriver 10
-    Write-Output 'PASS EarnTasks: 33 cases; no game input'
+    $mctDriver = @'
+global config := Map("Settings", Map("EarnMCTOnly",1)), visible := true, order := ""
+for c in [[1,true,true,"VR"],[1,false,false,"V"],[0,true,true,"HO"]] {
+    config["Settings"]["EarnMCTOnly"] := c[1], visible := c[2], order := ""
+    if (EarnTaskMCTBegin() != c[3] || order != c[4])
+        throw Error("MCT begin must not travel: " order)
+}
+FileAppend("PASS MCTBegin cases=3`n", "*")
+ExitApp(0)
+EarnUIReady(*) {
+    global visible, order
+    order .= "V"
+    return visible
+}
+EarnGoHome() {
+    global order
+    order .= "H"
+    return true
+}
+EarnMCTOpen() {
+    global order
+    order .= "O"
+    return true
+}
+EarnFail(*) => false
+EarnMCTRefresh() {
+    global order
+    order .= "R"
+    return true
+}
+'@
+    Invoke-EarnOfflineCheck 'MCTBegin' 'EarnTaskMCTBegin' $mctDriver 3
+    $mctEndDriver = $mctDriver.Replace('EarnTaskMCTBegin()', 'EarnTaskMCTEnd()').Replace('MCTBegin', 'MCTEnd').Replace('[0,true,true,"HO"]','[0,true,true,"O"]').Replace('[1,true,true,"VR"]','[1,true,true,"V"]').Replace('EarnMCTOpen()', 'EarnMCTClose()')
+    Invoke-EarnOfflineCheck 'MCTEnd' 'EarnTaskMCTEnd' $mctEndDriver 3
+    $djFlowDriver = @'
+global config := Map("Settings",Map("EarnDJPopularityPct",95)), popularity := 90, allowRebook := true, gain := 10, confirmations := 0
+for c in [[97,true,10,true,0],[90,true,10,true,1],[90,false,10,false,0],[90,true,0,false,1]] {
+    popularity := c[1], allowRebook := c[2], gain := c[3], confirmations := 0
+    if (EarnDJSwapLoop(popularity) != c[4] || confirmations != c[5])
+        throw Error("DJ purchase guard failed")
+}
+FileAppend("PASS DJFlow cases=4`n", "*")
+ExitApp(0)
+EarnPopularityMCTPct() {
+    global popularity
+    return popularity
+}
+EarnDJNeedsRebook(p,t) => p >= 0 && p < t
+EarnSeen(name,*) {
+    global allowRebook
+    return (name != "dj_rebook_10k" && name != "dj_rebook_10k_right") || allowRebook
+}
+EarnUIClick(name,x,y,*) {
+    global popularity, gain, confirmations
+    if (name = "dj_confirm_solomun" || name = "dj_confirm_tale") {
+        confirmations += 1
+        popularity := Min(100,popularity+gain)
+    }
+    return true
+}
+EarnWaitSeen(*) => true
+EarnWaitGone(*) => true
+EarnSleep(*) => true
+EarnUIBackToMCT(*) => true
+EarnFail(*) => false
+EarnLog(*) => true
+'@
+    Invoke-EarnOfflineCheck 'DJFlow' 'EarnDJSwapLoop' $djFlowDriver 4
+    $sourceText = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\Earner.ahk') -Raw -Encoding UTF8
+    $listDriver = @'
+global config := Map("Settings", Map("EarnMCTOnly",1,"EarnBunker",1,"EarnBunkerIntervalSec",300,"EarnDJ",1,"EarnDJIntervalMin",5,"EarnSafe",1,"EarnSafeIntervalMin",210,"EarnDispatch",1,"EarnDispatchIntervalMin",48))
+for mode in [1,0] {
+    config["Settings"]["EarnMCTOnly"] := mode
+    list := EarnTaskList()
+    if (!list[1].on || !list[2].on || list[3].on != !mode || list[4].on != !mode)
+        throw Error("MCT mode scheduled travel task")
+}
+FileAppend("PASS MCTTaskList cases=2`n", "*")
+ExitApp(0)
+EarnBunkerTask() => true
+EarnDJTask() => true
+EarnSafeTask() => true
+EarnDispatchTask() => true
+'@
+    Invoke-EarnOfflineCheck 'MCTTaskList' 'EarnTaskList' $listDriver 2
+    Write-Output 'PASS EarnTasks: 45 cases; no game input'
 } finally {
     [Console]::InputEncoding = $previousInputEncoding
 }

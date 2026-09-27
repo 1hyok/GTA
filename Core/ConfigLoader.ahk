@@ -28,7 +28,7 @@ CONFIG_DEFAULTS["Settings"] := Map(
     "CEOMenuSteps", 1, "CEOSubSteps", 0, "CEOEnterCount", 2, "CEOCloseMenu", 0,
     "MCMenuSteps", 1, "MCSubSteps", 1, "MCEnterCount", 2, "MCCloseMenu", 0,
     "EarnKeyDelay", 350, "EarnTurnUnitsPerDeg", 29, "EarnRerollMax", 12, "EarnReachPx", 14, "EarnWalkRetry", 3, "EarnUserIdleSec", 45, "EarnLoadMinSec", 8, "EarnLoadTimeoutSec", 240,
-    "EarnBunker", 0, "EarnBunkerIntervalSec", 1645, "EarnDJ", 0, "EarnDJIntervalMin", 96, "EarnDJPopularityPct", 95,
+    "EarnMCTOnly", 0, "EarnBunker", 0, "EarnBunkerIntervalSec", 1645, "EarnDJ", 0, "EarnDJIntervalMin", 96, "EarnDJPopularityPct", 95,
     "EarnSafe", 1, "EarnSafeIntervalMin", 210, "EarnSafeFirstMin", 0, "EarnSafeRetryMin", 15, "EarnSoftFailMax", 12, "EarnDispatch", 0, "EarnDispatchIntervalMin", 48, "EarnDispatchFirstMin", 0)
 
 LoadConfig() {

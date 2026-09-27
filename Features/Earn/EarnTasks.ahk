@@ -1,6 +1,6 @@
 ; === 수익 자동화 작업 ===
 ; 각 작업은 성공하면 true, 화면 확인이 안 되면 EarnFail(까닭) 으로 false 를 돌려준다.
-; 거점은 아케이드 지하 마스터 컨트롤 터미널(MCT) 앞이다. 금고처럼 다른 부동산에 다녀오는 작업은 끝에 MCT 앞으로 돌아와야 성공이다.
+; MCT 전용 모드는 열려 있는 터미널에 머문다. 이동 모드는 아케이드 MCT를 거점으로 쓴다.
 
 ; --- 부동산 오가기 ---
 ; 스폰 위치를 place 로 바꾸고 초대 전용 세션으로 다시 들어간다. 스폰 자리가 매번 달라(0926 실측: 나이트클럽 안 여러 곳·가끔 건물 밖,
@@ -219,46 +219,44 @@ global gBunkerFullSince := 0   ; 보급이 가득 찬 것을 마지막으로 본
 EarnBunkerTask() {
     global config, gEarnNextDue, gBunkerFullSince
     s := config["Settings"]
-    if (!EarnGoHome())
+    if (!EarnTaskMCTBegin())
         return false
-    if (!EarnMCTOpen())
-        return false
+    interval := s.Get("EarnMCTOnly", 0) ? Min(300, s["EarnBunkerIntervalSec"]) : s["EarnBunkerIntervalSec"]
     stock := EarnBarFill(766, 1154, 555, "green")
     supply := EarnBarFill(766, 1154, 577, "blue")
     EarnLog(Format("벙커: 재고 {:.0f}% 보급 {:.0f}%", stock * 100, supply * 100))
     if (stock < 0 || supply < 0) {
-        EarnMCTClose()
+        EarnTaskMCTEnd()
         return EarnFail("벙커: 막대를 읽지 못함")
     }
     ; 재고가 가득: 생산이 멈춘 상태. 사지 않고 다음 확인만 잡는다
     if (stock >= 0.97) {
         gBunkerFullSince := 0
         EarnLog("벙커: 재고 가득 → 생산 정지 중이라 사지 않음 (재고를 판 뒤 다시 센다)")
-        gEarnNextDue["bunker"] := A_TickCount + s["EarnBunkerIntervalSec"] * 1000
-        return EarnMCTClose()
+        gEarnNextDue["bunker"] := A_TickCount + interval * 1000
+        return EarnTaskMCTEnd()
     }
     ; 보급이 가득: 시각만 기록하고 다음 확인은 28분 뒤
     if (supply >= 0.97) {
         if (!gBunkerFullSince)
             gBunkerFullSince := A_TickCount
-        EarnLog("벙커: 보급 가득, " Round(s["EarnBunkerIntervalSec"] / 60) "분 뒤 다시 봄")
+        EarnLog("벙커: 보급 가득, " Round(interval / 60) "분 뒤 다시 봄")
         ; 가득 찬 것을 본 시각이 오래됐어도(껐다 켠 뒤) 최소 5분 뒤에 다시 본다
-        gEarnNextDue["bunker"] := Max(A_TickCount + 5 * 60000, gBunkerFullSince + s["EarnBunkerIntervalSec"] * 1000)
-        return EarnMCTClose()
+        gEarnNextDue["bunker"] := Max(A_TickCount + 5 * 60000, gBunkerFullSince + interval * 1000)
+        return EarnTaskMCTEnd()
     }
     ; 한 칸(20%) 이상 통째로 비었을 때만 산다
     if (supply > 0.81) {
         EarnLog("벙커: 보급이 한 칸 다 비지 않아(" Round(supply * 100) "%) 이번엔 사지 않음")
         gEarnNextDue["bunker"] := A_TickCount + 5 * 60000
-        return EarnMCTClose()
+        return EarnTaskMCTEnd()
     }
     if (!EarnBunkerBuy()) {
-        EarnMCTClose()
         return false
     }
     gBunkerFullSince := A_TickCount
-    gEarnNextDue["bunker"] := A_TickCount + s["EarnBunkerIntervalSec"] * 1000
-    return EarnMCTClose()
+    gEarnNextDue["bunker"] := A_TickCount + interval * 1000
+    return EarnTaskMCTEnd()
 }
 
 ; MCT에서 시작해 MCT로 복귀한다. 0927 저택 MCT 화면 기준.
@@ -276,7 +274,7 @@ EarnBunkerBuy() {
     deadline := A_TickCount + 8000
     while (!EarnSeen("bunker_page", [0.15,0,0.35,0.12])) {
         if (EarnSeen("bunker_entry", [0.34,0.54,0.64,0.64])) {
-            if (!EarnUIClick("bunker_entry", 940, 635))
+            if (!EarnUIClick("bunker_entry", 1150, 650))
                 return false
             break
         }
@@ -286,7 +284,7 @@ EarnBunkerBuy() {
     if (!EarnWaitSeen("bunker_page", [0.15,0,0.35,0.12], 5000)
         || !EarnUIClick("bunker_resupply", 460, 490)
         || !EarnWaitSeen("bunker_buy", "", 3000)
-        || !EarnUIClick("bunker_buy", 930, 783))
+        || !EarnUIClick("bunker_buy", 1150, 795))
         return EarnFail("벙커: 구매 화면 이동 실패")
     ; 이미 배송 중이면 결제하지 않는다. 확인창 불명확시 재시도하지 않는다.
     deadline := A_TickCount + 5000
@@ -300,7 +298,7 @@ EarnBunkerBuy() {
             || !EarnWaitSeen("bunker_buy", "", 5000))
             return EarnFail("벙커: 거래 결과 미확인, 재구매 금지")
         ; 재진입해서 배송 중 안내를 확인한다. 새 결제 확인창은 확정하지 않는다.
-        if (!EarnUIClick("bunker_buy", 930, 783)
+        if (!EarnUIClick("bunker_buy", 1150, 795)
             || !EarnWaitSeen("bunker_pending", "", 5000))
             return EarnFail("벙커: 배송 접수 미확인, 재구매 금지")
     }
@@ -317,23 +315,52 @@ EarnBunkerBuy() {
 EarnDJTask() {
     global config
     s := config["Settings"]
-    if (!EarnGoHome())
-        return false
-    if (!EarnMCTOpen())
+    if (!EarnTaskMCTBegin())
         return false
     pop := EarnPopularityMCTPct()
     EarnLog("DJ: 인기도 " pop "%")
     if (pop < 0) {
-        EarnMCTClose()
+        EarnTaskMCTEnd()
         return EarnFail("DJ: 인기도를 읽지 못함")
     }
     if (!EarnDJNeedsRebook(pop, s["EarnDJPopularityPct"])) {
         EarnLog("DJ: 목표 인기도 도달로 교체 안 함")
-        return EarnMCTClose()
+        return EarnTaskMCTEnd()
     }
     ok := EarnDJSwapLoop(pop)
-    EarnMCTClose()
-    return ok
+    return ok && EarnTaskMCTEnd()
+}
+
+EarnTaskMCTBegin() {
+    global config
+    if (config["Settings"].Get("EarnMCTOnly", 0)) {
+        if (!EarnUIReady("mct_title", [0.3,0,0.7,0.1]))
+            return EarnFail("MCT 전용: 먼저 사업장 목록을 열어야 함")
+        return EarnMCTRefresh()
+    }
+    return EarnGoHome() && EarnMCTOpen()
+}
+
+; MCT 막대는 화면에 재진입해 갱신한다. 사업장 진입 화면에서는 결제 없이 뒤로 돌아온다.
+EarnMCTRefresh() {
+    if (!EarnUIClick("mct_bunker_card", 960, 525))
+        return false
+    deadline := A_TickCount + 8000
+    Loop {
+        if (EarnSeen("bunker_entry", [0.34,0.54,0.64,0.64]))
+            return EarnUIBackToMCT("bunker_entry", 1)
+        if (EarnSeen("bunker_page", [0.15,0,0.35,0.12]))
+            return EarnUIBackToMCT("bunker_page", 2)
+        if (!EarnSleep(100) || A_TickCount >= deadline)
+            return EarnFail("MCT: 상태 갱신 화면 미확인")
+    }
+}
+
+EarnTaskMCTEnd() {
+    global config
+    if (config["Settings"].Get("EarnMCTOnly", 0))
+        return EarnUIReady("mct_title", [0.3,0,0.7,0.1]) || EarnFail("MCT 전용: 목록 복귀 미확인")
+    return EarnMCTClose()
 }
 
 EarnDJSwapLoop(pop) {
@@ -351,18 +378,22 @@ EarnDJSwapLoop(pop) {
             return EarnFail("DJ: 목록 이동 실패")
         ; 캡처로 확인한 $10,000 Rebook만 클릭. 신규 고용은 선택하지 않는다.
         area := [0.38, 0.50, 0.603, 0.58]
-        targetX := 940, confirmation := "dj_confirm_solomun"
-        if (!EarnSeen("dj_rebook_10k", area)) {
+        rebook := "dj_rebook_10k"
+        resident := "dj_resident"
+        targetX := 1100, confirmation := "dj_confirm_solomun"
+        if (!EarnSeen(rebook, area)) {
             area := [0.61, 0.50, 0.835, 0.58]
-            targetX := 1385, confirmation := "dj_confirm_tale"
+            rebook := "dj_rebook_10k_right"
+            resident := "dj_resident_right"
+            targetX := 1540, confirmation := "dj_confirm_tale"
         }
-        if (!EarnSeen("dj_rebook_10k", area))
+        if (!EarnSeen(rebook, area))
             return EarnFail("DJ: 기존 DJ $10,000 재고용 버튼 없음")
-        if (!EarnUIClick("dj_rebook_10k", targetX, 584, area)
+        if (!EarnUIClick(rebook, targetX, 584, area)
             || !EarnWaitSeen(confirmation, "", 3000)
             || !EarnUIClick(confirmation, 1160, 628)
             || !EarnWaitGone(confirmation, "", 15000)
-            || !EarnWaitSeen("dj_resident", area, 5000))
+            || !EarnWaitSeen(resident, area, 5000))
             return EarnFail("DJ: 교체 결과 미확인")
         if (!EarnUIClick("nc_home", 495, 596)
             || !EarnSleep(500) || !EarnUIBackToMCT("nc_dj_menu", 1))
@@ -394,15 +425,32 @@ EarnUIClick(guard, x, y, area := "") {
         if (cw != 1920 || ch != 1080)
             return EarnFail("MCT: 미지원 해상도")
         DllCall("SetCursorPos", "int", cx+x, "int", cy+y)
-        if (!EarnSleep(80) || !EarnUIReady(guard, area))
+        if (!EarnSleep(80))
             return false
+        if (!EarnUIReady(guard, area))
+            return EarnFail("MCT: 커서 이동 후 화면 확인 실패: " guard)
         SendEvent("{Blind}{LButton down}")
         try {
             Sleep(100)
         } finally {
             SendEvent("{Blind}{LButton up}")
         }
+        DllCall("SetCursorPos", "int", cx+40, "int", cy+130)
         return EarnSleep(450)
+    } finally {
+        DllCall("SetThreadDpiAwarenessContext", "ptr", previous, "ptr")
+    }
+}
+
+EarnUIClearCursor() {
+    if (EarnAborted())
+        return false
+    hwnd := IsGTAActive()
+    previous := DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
+    try {
+        WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
+        DllCall("SetCursorPos", "int", cx+40, "int", cy+130)
+        return EarnSleep(100)
     } finally {
         DllCall("SetThreadDpiAwarenessContext", "ptr", previous, "ptr")
     }
