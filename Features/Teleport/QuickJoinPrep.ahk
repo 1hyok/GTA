@@ -179,15 +179,12 @@ JWRetireBoss() {
     if (!JWPress("Enter"))
         return false
     JWLap("해제")
-    if (!JWSleep(config["Settings"].Get("JobWarpRetireWaitMs", 2500)))
+    ; 해제는 게임이 메뉴를 닫는 것으로 끝난다. 메뉴를 다시 열어 확인하던 단계는 해제 알림 동안 M 이 씹혀 6초까지 걸려(0928 계측) 뺐다.
+    ; 해제가 안 됐으면 뒤의 보스 등록이 Register as a Boss 줄을 못 찾아 멈추므로 거기서 걸린다
+    if (!JWWaitMenu(false, 1500) && !JWMenuClose())
         return false
-    ; 해제됐는지 메뉴로 확인한다
-    if (!JWReopenMenu())
-        return false
-    if (!(JWWaitSeen("m_boss_sel", JW_MENU_AREA, 2000) || JWSeen("m_boss", JW_MENU_AREA)))
-        return JWFail(label ": 해제 뒤 메뉴에 Register as a Boss 가 안 보임")
     JWLap("해제확인")
-    return JWMenuClose() && !JWLap("메뉴닫기")
+    return true
 }
 
 ; --- 폰: Up 으로 열고 Quick Join 앱 → Random → Alone → Yes ---
@@ -226,15 +223,27 @@ JWPhoneQuickJoin() {
         return false
     JWLap("앱찾기")
     ; 목록에 들어간 직후 첫 키가 씹히는 일이 잦아 누른 횟수가 아니라 선택 줄로 판정한다
-    ; 목록은 맨 위에서 열려 Random(맨 아래)은 Up, Alone 은 Friends in Session 다음 줄이라 Down. Yes 는 폰 안의 "Are you sure?" 한 줄이 이미 골라진 채로 뜬다(0927 실측)
-    for step in [["qj_random_sel", "Up", 8, "Random"], ["qj_alone_sel", "Down", 6, "Alone"], ["qj_yes_sel", "Down", 3, "Yes"]] {
-        ; Random 은 목록 맨 아래라 처음부터 보일 일이 없어 오래 기다리지 않는다(0928 계측: 1.5초 그대로 버려짐)
-        if (!JWWaitSeen(step[1], JW_PHONE_AREA, step[4] = "Random" ? 100 : 1500) && !JWSelectRow(step[1], JW_PHONE_AREA, step[2], step[3], false))
-            return JWFail("폰: " step[4] " 줄을 찾지 못함")
-        if (!JWPress("Enter", 150))
+    ; 목록은 맨 위에서 열려 Random(맨 아래)은 Up. Yes 는 폰 안의 "Are you sure?" 한 줄이 이미 골라진 채로 뜬다(0927 실측)
+    ; Random 은 목록 맨 아래라 처음부터 보일 일이 없어 오래 기다리지 않는다(0928 계측: 1.5초 그대로 버려짐)
+    if (!JWWaitSeen("qj_random_sel", JW_PHONE_AREA, 100) && !JWSelectRow("qj_random_sel", JW_PHONE_AREA, "Up", 8, false))
+        return JWFail("폰: Random 줄을 찾지 못함")
+    if (!JWPress("Enter", 150))
+        return false
+    JWLap("Random")
+    ; Random 안의 Friends in Session·Alone 은 어느 쪽이든 된다(0928 사용자). Alone 을 찾아 내려가느라 2.3초씩 걸려(0928 계측)
+    ; 골라진 줄에서 바로 Enter 한다. 목록이 뜨기 전에 눌러 씹혔으면 Yes 가 안 뜨므로 한 번 더 누른다
+    Loop 3 {
+        if (A_Index = 3)
+            return JWFail("폰: Random 안에서 Enter 뒤 Yes 줄이 안 뜸")
+        if (!JWSleep(250) || !JWPress("Enter", 150))
             return false
-        JWLap(step[4])
+        if (JWWaitSeen("qj_yes_sel", JW_PHONE_AREA, 1200))
+            break
     }
+    JWLap("세션종류")
+    if (!JWPress("Enter", 150))
+        return false
+    JWLap("Yes")
     MacroLog("jobwarp", "퀵 조인 검색 시작 (Yes)")
     return true
 }
