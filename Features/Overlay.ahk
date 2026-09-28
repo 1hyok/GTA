@@ -79,6 +79,9 @@ OverlayTick() {
     pos := x "," y "," w "," h
     if (!gOverlayShown || pos != gOverlayLastPos) {
         gOverlayGui.Show("NA x" x " y" y " w" w " h" h)
+        ; 배율이 다른 보조 모니터(175%)로 옮기면 창이 DPI 변경을 받아 글자 칸만 밀려 빈 검은 상자가 된다(0928 실측). 자리를 다시 잡는다
+        gOverlayText.Move(8, 4, tw, th)
+        gOverlayText.Redraw()
         gOverlayShown := true
         gOverlayLastPos := pos
     }
