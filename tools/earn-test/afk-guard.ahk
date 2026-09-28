@@ -61,6 +61,11 @@ GuardTick() {
         if (!IsGTAActive()) {
             if (!WinExist(GTA_WIN))
                 return
+            ; 크롬 원격 데스크톱·computer-use·코덱스의 입력은 주입 입력이라 A_TimeIdlePhysical 에 안 잡힌다. 그 입력이 45초 안에 있었으면
+            ; 누가 다른 창을 쓰는 중이므로 GTA 를 가져오지 않는다(가져오면 그 클릭·타이핑이 게임으로 들어간다). A_TimeIdle 은 이 실행기의
+            ; W/S 와 WinActivate 가 실패 때 누를 수 있는 Alt 도 세므로, 그 뒤 45초는 다시 가져오지 않는다.
+            if (A_TimeIdle < 45000)
+                return
             WinActivate(GTA_WIN)
             if (!WinWaitActive(GTA_WIN,,2) || A_TimeIdlePhysical < 45000)
                 return
