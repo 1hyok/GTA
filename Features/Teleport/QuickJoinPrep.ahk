@@ -11,15 +11,23 @@
 ; 되돌리는 키는 Backspace·M 만 쓴다(Esc 금지: 런처 종료창).
 ;
 ; 템플릿: Images\JobWarp\<가로>x<세로>\*.png (없으면 그 단계에서 멈추고 gta-macro.log 에 "템플릿 없음" 이 남는다)
-;   1920x1080 은 tools\build-jobwarp-templates.ps1 이 docs\evidence\2026-09-27-jobwarp\ 실측 화면에서 뜨고, 같은 스크립트가 모든 원본에 대 보는 시험까지 한다.
+;   1920x1080 은 tools\build-jobwarp-templates.ps1 이 docs\evidence\2026-09-27-jobwarp\(저택 안)과 2026-09-28-jobwarp-outdoor\(실외 밤·동틀 녘·낮)
+;   실측 화면을 상태마다 여러 장 겹쳐 뜨고, 같은 스크립트가 모든 원본에 대 보는 시험까지 한다(-TestOnly).
 ;   상호작용 메뉴(왼쪽 위): m_securo·m_securo_sel(CEO 맨 위 줄 SecuroServ CEO) / m_retire_sel(CEO 하위 메뉴 맨 아래 Retire)
 ;                           m_boss·m_boss_sel(Register as a Boss) / m_ceo_sel(SecuroServ CEO) / m_start_org_sel(Start an Organization)
 ;                           m_sub_boss·m_sub_securo(하위 메뉴 제목 REGISTER AS A BOSS·SECUROSERV, 메뉴가 열려 있는지 볼 때 m_title 과 같이 쓴다)
 ;   MC 쪽(m_mc·m_mc_sel·m_mc_disband_sel·m_mcpres_sel·m_start_mc_sel, MC 하위 메뉴 제목)은 아직 없다. JobWarpBossRole=MC 나 MC 상태에서는 그 단계에서 멈춘다.
-;   폰(오른쪽 아래): ph_quickjoin_sel(홈 화면에서 Quick Join 앱이 골라진 상태) / qj_random_sel / qj_alone_sel / qj_yes_sel
+;   폰(오른쪽 아래): ph_quickjoin_sel(홈 화면에서 Quick Join 앱이 골라진 상태) / qj_random_sel / qj_alone_sel / qj_yes_sel, 각각 어두운 폰용 대체 *_dim(JW_ALT)
 ;   메뉴 제목 확인은 수익 자동화가 이미 가진 Images\Earn\<해상도>\m_title.png 를 같이 쓴다.
-; _sel 은 선택(흰 바탕·폰은 파란 바탕) 줄, 접미사 없는 것은 선택 안 된 줄이다. 선택 안 된 메뉴 줄은 반투명이라 흰 글자만 남기고 나머지를 FF00FF(투명)로 뜬다.
+; _sel 은 선택(흰 바탕·폰은 파란 바탕) 줄, 접미사 없는 것은 선택 안 된 줄이다. 원본마다 값이 갈리는 칸(반 픽셀 어긋난 글자 가장자리, 뒤 배경이 비치는 칸)은
+; FF00FF(투명)로 뜨고, 선택 안 된 Register as a Boss(m_boss)만 흰 글자 속 + 회색 바탕 칸으로 떠서 허용 오차 70 으로 찾는다(JW_VARIATION, 까닭은 스크립트 머리말).
 ; "SecuroServ CEO" 선택 줄은 등록 하위 메뉴와 CEO 메인 메뉴에서 글자·자리가 같아, m_ceo_sel·m_securo_sel·m_securo 는 바로 위 제목 줄까지 같이 떴다.
+;
+; 0928 실측(1920x1080, 실외 Vinewood 길가, 밤·동틀 녘·흐린 낮): 실외에서 F11 이 "보스 상태를 모름"·"해제 뒤 Register as a Boss 가 안 보임" 으로 멈춘 까닭은
+;   배경이 아니라 줄 자리였다. 메뉴 줄 간격이 37.5px 라 짝수 번째 줄은 반 픽셀 아래에 그려지는데, 실외 해제 상태는 Quick GPS → Register as a Boss(2번째)라
+;   저택 안(3번째 줄)에서 뜬 m_boss·m_boss_sel 이 글자 가장자리에서 다 틀렸다. 폰의 Alone 도 세션에 친구가 없으면 Random 안에 한 줄뿐(1번째 줄)이라 같은 일이 난다.
+;   메뉴 제목 줄(m_title·m_sub_*)은 불투명이라 실외에서도 차이 0 이었다. 선택 안 된 줄 바탕은 약 60% 불투명한 검정이라 뒤 배경이 0.35~0.41 배로 비치고,
+;   폰 화면은 장면 밝기에 따라 통째로 어두워진다(저택 안 1.0, 동틀 녘 약 0.87, 흐린 낮 약 0.93).
 ;
 ; 0927 실측(1920x1080, 저택 안):
 ;   메뉴 맨 위 줄은 자리마다 다르다. 저택 안 해제 상태는 Mansion Management → Quick GPS → Register as a Boss(3번째), CEO 면 SecuroServ CEO 가 맨 위로 온다.
@@ -49,6 +57,13 @@ global gQuickJoinFail := ""       ; 1단계가 멈춘 까닭 (오버레이·툴�
 
 global JW_MENU_AREA := [0, 0, 0.27, 0.55]
 global JW_PHONE_AREA := [0.6, 0.3, 1, 1]
+; 템플릿마다 ImageSearch 허용 오차(없는 이름은 40). tools\build-jobwarp-templates.ps1 의 $variation 과 같아야 한다.
+; m_boss 의 바탕 칸은 회색 55 라 70 이면 0~125 를 받는다: 뒤가 어두운 실내(바탕 0)부터 하얀 하늘(바탕 약 105)까지 맞고, 선택 줄의 밝은 바탕(192 이상)은 떨어진다
+global JW_VARIATION := Map("m_boss", 70)
+; 폰 템플릿은 값을 0.82 배로 낮춘 대체(_dim)를 하나 더 두고 둘 중 하나가 보이면 찾은 것으로 친다. 폰 화면은 3D 로 그려져 장면에 따라 통째로 어두워지는데
+; (0928 실측 저택 안 1.0, 동틀 녘 0.87, 흐린 낮 0.93) 한 장으로는 *40 안에서 약 0.83 까지만 덮어서다. 대체까지 선형 밝기 모의로 약 0.65 까지 덮는다
+global JW_ALT := Map("ph_quickjoin_sel", "ph_quickjoin_sel_dim", "qj_random_sel", "qj_random_sel_dim",
+    "qj_alone_sel", "qj_alone_sel_dim", "qj_yes_sel", "qj_yes_sel_dim")
 
 ; F11 두 번의 진입점 (HotkeyManager 의 TeleportAltF4 액션)
 JobWarpKey() {
@@ -232,7 +247,12 @@ JWAborted() {
 }
 
 JWSeen(name, area) {
-    return TemplateSeen("JobWarp", name, area)
+    global JW_VARIATION, JW_ALT
+    fx := 0, fy := 0
+    v := JW_VARIATION.Get(name, 40)
+    if (TemplateSeen("JobWarp", name, area, &fx, &fy, v))
+        return true
+    return JW_ALT.Has(name) && TemplateSeen("JobWarp", JW_ALT[name], area, &fx, &fy, v)
 }
 
 JWPress(key, afterMs := 0) {
