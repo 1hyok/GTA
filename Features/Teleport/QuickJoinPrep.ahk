@@ -1,4 +1,4 @@
-; === F11 작텔 앞단: 퀵 조인 준비 ===
+﻿; === F11 작텔 앞단: 퀵 조인 준비 ===
 ; F11 두 번을 두 단계로 나눈다 (Config [Settings] JobWarpQuickJoin=1 일 때).
 ;   1단계(준비 안 된 상태에서 F11 두 번): 보스 해제 → 폰 Quick Join → Random → Alone → Yes → 곧바로 보스 등록 → "작텔 준비됨"
 ;   그 사이 사용자가 직접: 준비 임무(prep) 시작 → 지도에서 작업 아이콘에 커서를 올려 "Start Job (Space)" 가 보이게 한다
@@ -202,9 +202,16 @@ JWPhoneQuickJoin() {
     ; 폰이 뜨는 동안 기다리되, Quick Join 이 이미 골라져 있으면 바로 넘어간다
     ; 폰은 열 때 1쪽에서 시작해 Quick Join(2쪽)이 처음부터 보일 일이 드물다. 폴링하면 폰 영역 검색(대체 템플릿까지 두 번)이 겹쳐
     ; 1초 대기가 2.3초가 됐다(0928 계측). 고정으로 기다린 뒤 한 번만 본다
-    if (!JWSleep(s.Get("PhoneOpenDelay", 1000) - 300))
+    if (!JWSleep(s.Get("PhoneOpenDelay", 1000) - 500))
         return false
-    found := JWSeen("ph_quickjoin_sel", JW_PHONE_AREA)
+    ; 빠른 길: 사람처럼 Right 두 번을 몰아 누르고(0928 손 계측: 1쪽 Job List 에서 두 번이면 Quick Join) 그 뒤 한 번만 본다.
+    ; 확인 지점 1: 앱에 들어가기 전 Quick Join 이 골라졌는지. 아니면 아래 Right 하나씩 보며 찾는 느린 길로 간다(Right 는 어디서든 3번 안에 닿는다)
+    found := false
+    Loop 2 {
+        if (!JWPress("Right", 120))
+            return false
+    }
+    found := JWWaitSeen("ph_quickjoin_sel", JW_PHONE_AREA, 300)
     JWLap("폰열기")
     Loop 6 {
         if (found)
@@ -223,7 +230,7 @@ JWPhoneQuickJoin() {
     ; 목록은 맨 위에서 열려 Random(맨 아래)은 Up, Alone 은 Friends in Session 다음 줄이라 Down. Yes 는 폰 안의 "Are you sure?" 한 줄이 이미 골라진 채로 뜬다(0927 실측)
     for step in [["qj_random_sel", "Up", 8, "Random"], ["qj_alone_sel", "Down", 6, "Alone"], ["qj_yes_sel", "Down", 3, "Yes"]] {
         ; Random 은 목록 맨 아래라 처음부터 보일 일이 없어 오래 기다리지 않는다(0928 계측: 1.5초 그대로 버려짐)
-        if (!JWWaitSeen(step[1], JW_PHONE_AREA, step[4] = "Random" ? 300 : 1500) && !JWSelectRow(step[1], JW_PHONE_AREA, step[2], step[3], false))
+        if (!JWWaitSeen(step[1], JW_PHONE_AREA, step[4] = "Random" ? 100 : 1500) && !JWSelectRow(step[1], JW_PHONE_AREA, step[2], step[3], false))
             return JWFail("폰: " step[4] " 줄을 찾지 못함")
         if (!JWPress("Enter", 150))
             return false
@@ -302,7 +309,7 @@ JWPress(key, afterMs := 0) {
     if (JWAborted())
         return false
     PressKey(key)
-    return JWSleep(afterMs ? afterMs : config["Settings"]["MenuControlDelay"] + 150)
+    return JWSleep(afterMs ? afterMs : config["Settings"]["MenuControlDelay"] + 30)
 }
 
 JWSleep(ms) {
@@ -376,7 +383,7 @@ JWMenuOpen() {
 JWMenuClose() {
     if (!JWMenuIsOpen())
         return true
-    if (!JWPress("m", 300))
+    if (!JWPress("m", 120))
         return false
     return JWWaitMenu(false, 2500)
 }
