@@ -104,6 +104,7 @@ QuickJoinPrep() {
     gQuickJoinFail := ""
     role := config["Settings"].Get("JobWarpBossRole", "CEO")
     ok := false
+    JWLap("")
     try {
         ShowTooltip("🔁 작텔 준비: 보스 해제 → 퀵 조인 → " role " 등록", 2000)
         ok := JWRetireBoss() && JWPhoneQuickJoin() && JWRegisterBoss(role)
@@ -119,7 +120,23 @@ QuickJoinPrep() {
         ShowTooltip("⚠ 작텔 준비 중단: " (gQuickJoinFail = "" ? "포커스 이탈 또는 전체 멈춤" : gQuickJoinFail) "`n더 누르지 않았습니다", 6000)
     }
     MacroLog("jobwarp", "퀵 조인 준비 " (ok ? "ok" : "중단: " gQuickJoinFail))
+    MacroLog("jobwarp", JWLap("끝"))
     return ok
+}
+
+; 단계별 소요(ms). JWLap("") 로 시작하고, 단계 끝마다 이름을 넘기고, JWLap("끝") 이 "총 N ms: 단계 ms · ..." 한 줄을 돌려준다
+JWLap(step) {
+    static t0 := 0, at := 0, laps := ""
+    now := A_TickCount
+    if (step = "") {
+        t0 := at := now, laps := ""
+        return ""
+    }
+    if (step = "끝")
+        return "소요 총 " (now - t0) "ms:" laps
+    laps .= " " step " " (now - at)
+    at := now
+    return ""
 }
 
 ; --- 보스 해제: 메뉴에 Register as a Boss 줄이 보이면 이미 해제, 맨 위가 SecuroServ CEO 면 Retire, Motorcycle Club 이면 Disband Club ---
@@ -127,6 +144,7 @@ JWRetireBoss() {
     global config, JW_MENU_AREA
     if (!JWMenuOpen())
         return false
+    JWLap("메뉴열기")
     ; 앉았다 일어나는 동안처럼 Register as a Boss 줄이 잠깐 빠질 때가 있어(0927 실측) 바로 "모름" 으로 멈추지 않고 조금 기다려 다시 본다
     state := ""
     deadline := A_TickCount + 2000
@@ -142,8 +160,9 @@ JWRetireBoss() {
         if (!JWSleep(200))
             return false
     }
+    JWLap("보스판정")
     if (state = "free")
-        return JWMenuClose()
+        return JWMenuClose() && !JWLap("메뉴닫기")
     if (state = "ceo") {
         top := "m_securo_sel", bottom := "m_retire_sel", label := "CEO Retire"
     } else if (state = "mc") {
@@ -158,14 +177,16 @@ JWRetireBoss() {
         return JWFail(label ": 해제 줄을 찾지 못함 (임무 중이면 해제가 막힌다)")
     if (!JWPress("Enter"))
         return false
+    JWLap("해제")
     if (!JWSleep(config["Settings"].Get("JobWarpRetireWaitMs", 2500)))
         return false
     ; 해제됐는지 메뉴로 확인한다
     if (!JWReopenMenu())
         return false
-    if (!(JWSeen("m_boss_sel", JW_MENU_AREA) || JWSeen("m_boss", JW_MENU_AREA)))
+    if (!(JWWaitSeen("m_boss_sel", JW_MENU_AREA, 2000) || JWSeen("m_boss", JW_MENU_AREA)))
         return JWFail(label ": 해제 뒤 메뉴에 Register as a Boss 가 안 보임")
-    return JWMenuClose()
+    JWLap("해제확인")
+    return JWMenuClose() && !JWLap("메뉴닫기")
 }
 
 ; --- 폰: Up 으로 열고 Quick Join 앱 → Random → Alone → Yes ---
@@ -176,27 +197,35 @@ JWPhoneQuickJoin() {
     s := config["Settings"]
     if (!JWPress("Up"))
         return false
-    if (!JWSleep(s.Get("PhoneOpenDelay", 1000)))
+    ; 폰이 뜨는 동안 기다리되, Quick Join 이 이미 골라져 있으면 바로 넘어간다
+    ; 폰은 열 때 1쪽에서 시작해 Quick Join(2쪽)이 처음부터 보일 일이 드물다. 폴링하면 폰 영역 검색(대체 템플릿까지 두 번)이 겹쳐
+    ; 1초 대기가 2.3초가 됐다(0928 계측). 고정으로 기다린 뒤 한 번만 본다
+    if (!JWSleep(s.Get("PhoneOpenDelay", 1000) - 300))
         return false
     found := JWSeen("ph_quickjoin_sel", JW_PHONE_AREA)
+    JWLap("폰열기")
     Loop 6 {
         if (found)
             break
-        if (!JWPress("Right", s.Get("PhoneControlDelay", 150) + 250))
+        if (!JWPress("Right", s.Get("PhoneControlDelay", 150) + 50))
             return false
         found := JWSeen("ph_quickjoin_sel", JW_PHONE_AREA)
     }
     if (!found)
         return JWFail("폰: Quick Join 앱을 찾지 못함")
-    if (!JWPress("Enter", 600))
+    ; 다음 줄은 아래에서 선택 줄이 보일 때까지 기다리므로 Enter 뒤 고정 대기는 짧게 둔다
+    if (!JWPress("Enter", 150))
         return false
+    JWLap("앱찾기")
     ; 목록에 들어간 직후 첫 키가 씹히는 일이 잦아 누른 횟수가 아니라 선택 줄로 판정한다
     ; 목록은 맨 위에서 열려 Random(맨 아래)은 Up, Alone 은 Friends in Session 다음 줄이라 Down. Yes 는 폰 안의 "Are you sure?" 한 줄이 이미 골라진 채로 뜬다(0927 실측)
     for step in [["qj_random_sel", "Up", 8, "Random"], ["qj_alone_sel", "Down", 6, "Alone"], ["qj_yes_sel", "Down", 3, "Yes"]] {
-        if (!JWWaitSeen(step[1], JW_PHONE_AREA, 1500) && !JWSelectRow(step[1], JW_PHONE_AREA, step[2], step[3], false))
+        ; Random 은 목록 맨 아래라 처음부터 보일 일이 없어 오래 기다리지 않는다(0928 계측: 1.5초 그대로 버려짐)
+        if (!JWWaitSeen(step[1], JW_PHONE_AREA, step[4] = "Random" ? 300 : 1500) && !JWSelectRow(step[1], JW_PHONE_AREA, step[2], step[3], false))
             return JWFail("폰: " step[4] " 줄을 찾지 못함")
-        if (!JWPress("Enter", 500))
+        if (!JWPress("Enter", 150))
             return false
+        JWLap(step[4])
     }
     MacroLog("jobwarp", "퀵 조인 검색 시작 (Yes)")
     return true
@@ -211,26 +240,37 @@ JWRegisterBoss(role) {
         if (!JWSleep(150))
             return false
     }
+    ; 폰이 닫히는 애니메이션 동안 M 이 씹힌다(0928 계측: 바로 누르면 2.4초 걸림). 조금 기다렸다 누른다
+    if (!JWSleep(400))
+        return false
+    JWLap("폰닫힘")
     if (!JWMenuOpen())
         return false
+    JWLap("메뉴열기")
     if (role = "MC")
         sub := "m_mcpres_sel", start := "m_start_mc_sel", top := "m_mc"
     else
         sub := "m_ceo_sel", start := "m_start_org_sel", top := "m_securo"
     if (!JWSelectRow("m_boss_sel", JW_MENU_AREA, "Down", 4) || !JWPress("Enter"))
         return JWFail(role " 등록: Register as a Boss 줄을 찾지 못함")
+    JWLap("Register")
     if (!JWSelectRow(sub, JW_MENU_AREA, "Down", 3) || !JWPress("Enter"))
         return JWFail(role " 등록: 보스 종류 줄을 찾지 못함")
+    JWLap(role)
     if (!JWSelectRow(start, JW_MENU_AREA, "Down", 3) || !JWPress("Enter"))
         return JWFail(role " 등록: Start 줄을 찾지 못함")
+    JWLap("Start")
     if (!JWSleep(config["Settings"].Get("JobWarpRegisterWaitMs", 2500)))
         return false
+    JWLap("등록대기")
     ; 등록이 끝나면 게임이 메뉴를 닫는다. 다시 열어 맨 위 줄이 보스 메뉴인지 본다
     if (!JWReopenMenu())
         return false
-    if (!(JWSeen(top "_sel", JW_MENU_AREA) || JWSeen(top, JW_MENU_AREA)))
+    ; 메뉴가 닫히자마자 다시 열면 보스 줄이 조금 늦게 뜰 수 있어 2초까지 다시 본다
+    if (!(JWWaitSeen(top "_sel", JW_MENU_AREA, 2000) || JWSeen(top, JW_MENU_AREA)))
         return JWFail(role " 등록: 등록 뒤 메뉴 맨 위에 보스 줄이 안 보임")
-    return JWMenuClose()
+    JWLap("등록확인")
+    return JWMenuClose() && !JWLap("메뉴닫기")
 }
 
 ; === 공용 ===
@@ -320,11 +360,14 @@ JWMenuOpen() {
     global config
     if (JWMenuIsOpen())
         return true
-    if (!JWPress("m", config["Settings"]["MenuOpenDelay"]))
-        return false
-    if (!JWWaitMenu(true, 2500))
-        return JWFail("상호작용 메뉴가 열리지 않음")
-    return true
+    ; 폰이 닫히는 중처럼 게임이 M 을 씹을 때가 있어(0928 실측: Yes 직후), 안 열렸을 때만 M 을 다시 보낸다(최대 3번)
+    Loop 3 {
+        if (!JWPress("m", config["Settings"]["MenuOpenDelay"]))
+            return false
+        if (JWWaitMenu(true, 800))
+            return true
+    }
+    return JWFail("상호작용 메뉴가 열리지 않음")
 }
 
 ; 열려 있으면 M 으로 닫고 닫혔는지 본다. 하위 메뉴에서도 M 한 번에 전체가 닫힌다
