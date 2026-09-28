@@ -56,7 +56,9 @@ global gQuickJoinRunning := false
 global gQuickJoinFail := ""       ; 1단계가 멈춘 까닭 (오버레이·툴팁)
 
 global JW_MENU_AREA := [0, 0, 0.27, 0.55]
-global JW_PHONE_AREA := [0.6, 0.3, 1, 1]
+; 폰 화면은 1920x1080 에서 x 1600~1870, y 645~1080 에 선다(0928 실외 캡처). 영역을 넓게 잡으면 없는 템플릿을 찾는 데 한 번에 약 1초가 걸려
+; 폰 둘레만 남겼다(0928 계측: 폰 열기·앱 찾기가 전체 1단계의 절반)
+global JW_PHONE_AREA := [0.8, 0.55, 1, 1]
 ; 템플릿마다 ImageSearch 허용 오차(없는 이름은 40). tools\build-jobwarp-templates.ps1 의 $variation 과 같아야 한다.
 ; m_boss 의 바탕 칸은 회색 55 라 70 이면 0~125 를 받는다: 뒤가 어두운 실내(바탕 0)부터 하얀 하늘(바탕 약 105)까지 맞고, 선택 줄의 밝은 바탕(192 이상)은 떨어진다
 global JW_VARIATION := Map("m_boss", 70)
