@@ -66,8 +66,13 @@ OverlayTick() {
     }
     gOverlayText.GetPos(, , &tw, &th)
     w := tw + 16, h := th + 8
-    WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
-    if (!OverlayPlace(cx, cy, cw, ch, w, h, &x, &y)) {
+    ; 보조 모니터가 있으면 거기 오른쪽 위에 띄운다(0928 사용자 지시: AFK 상태 등을 GTA 화면에 띄우지 않는다)
+    if (OtherMonitorArea(&ml, &mt, &mr, &mb)) {
+        x := mr - w - 20, y := mt + 20
+    } else {
+        WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
+    }
+    if (!IsSet(x) && !OverlayPlace(cx, cy, cw, ch, w, h, &x, &y)) {
         OverlayHide()
         return
     }

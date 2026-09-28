@@ -90,7 +90,8 @@ JobWarpArmedText() {
     global gJobWarpArmed, gQuickJoinRunning
     if (gQuickJoinRunning)
         return "퀵 조인 준비 중"
-    return gJobWarpArmed ? "작텔 준비됨 · prep 시작 → 작업 아이콘 → F11 두 번" : ""
+    ; 0928 사용자 지시: "작텔 준비됨" 문구는 띄우지 않는다(준비 상태는 gta-macro.log 에만 남는다)
+    return ""
 }
 
 QuickJoinPrep() {
@@ -108,7 +109,6 @@ QuickJoinPrep() {
     ok := false
     JWLap("")
     try {
-        ShowTooltip("🔁 작텔 준비: 보스 해제 → 퀵 조인 → " role " 등록", 2000)
         ok := JWRetireBoss() && JWPhoneQuickJoin() && JWRegisterBoss(role)
     } finally {
         gQuickJoinRunning := false
@@ -117,7 +117,6 @@ QuickJoinPrep() {
     if (ok) {
         gJobWarpArmed := true
         gJobWarpArmedAt := A_TickCount
-        ShowTooltip("✅ 작텔 준비됨: prep 시작 → 지도에서 작업 아이콘에 커서 → F11 두 번", 5000)
     } else {
         ShowTooltip("⚠ 작텔 준비 중단: " (gQuickJoinFail = "" ? "포커스 이탈 또는 전체 멈춤" : gQuickJoinFail) "`n더 누르지 않았습니다", 6000)
     }
