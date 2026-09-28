@@ -430,7 +430,8 @@ function Get-LadderCaptures($ladder) {
     $label = Get-StageLabel $ladder
     $since = [datetime]::ParseExact([string]$st.since, 'yyyy-MM-dd HH:mm:ss', $Inv)
     return @(Import-Csv -LiteralPath $PerfCsv | Where-Object {
-        $_.status -eq 'capture' -and $_.obs -eq 'no' -and $_.play -eq 'user' -and $_.stage -eq $label -and (ConvertTo-Num $_.fg_ratio) -ge 0.9 -and
+        # OBS 는 거르지 않는다. 0928 사용자 확인: 평소에도 OBS 를 켜 두고 하므로 그 상태로 60 FPS 를 지키는지 본다
+        $_.status -eq 'capture' -and $_.play -eq 'user' -and $_.stage -eq $label -and (ConvertTo-Num $_.fg_ratio) -ge 0.9 -and
         # GPU 사용률로 거르지 않는다. 0928 실측: 이 노트북은 CPU·GPU 가 전력 한도를 나눠 써서 GPU 가 약 95W 를 가져가면
         # CPU 가 기본 클럭의 66% 로 눌리고, 붐비는 장면에서 GPU 사용률이 70~89% 로 내려가며 FPS 도 45 안팎으로 떨어진다.
         # 그것도 그래픽 단계가 만든 실제 체감이라 판정에 넣는다(예전 90% 조건은 S2 표본을 하루 넘게 0 개로 만들었다).
