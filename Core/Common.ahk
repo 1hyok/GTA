@@ -7,10 +7,30 @@ IsGTAActive() {
     return WinActive(GTA_WIN)
 }
 
+; GTA 창이 없는 모니터(보조 모니터)의 작업 영역. 없으면 false. 0928 사용자 지시: 상태 메시지는 GTA 화면이 아니라 보조 모니터에 띄운다
+OtherMonitorArea(&l, &t, &r, &b) {
+    global GTA_WIN
+    gx := 0, gy := 0
+    if (hwnd := WinExist(GTA_WIN)) {
+        try {
+            WinGetPos(&wx, &wy, &ww, &wh, "ahk_id " hwnd)
+            gx := wx + ww // 2, gy := wy + wh // 2
+        }
+    }
+    Loop MonitorGetCount() {
+        MonitorGetWorkArea(A_Index, &l, &t, &r, &b)
+        if (gx < l || gx >= r || gy < t || gy >= b)
+            return true
+    }
+    return false
+}
+
 ShowTooltip(text, duration := 1000) {
     ; 상태 메시지가 게임 왼쪽 위의 단계 안내와 이미지 검색을 가리지 않게 한다.
     CoordMode("ToolTip", "Screen")
-    if (hwnd := IsGTAActive()) {
+    if (OtherMonitorArea(&ml, &mt, &mr, &mb)) {
+        ToolTip(text, ml + 20, mb - 100)
+    } else if (hwnd := IsGTAActive()) {
         WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
         ; 미니맵(왼쪽 아래 290x190) 오른쪽에 띄운다. 그 위에 띄우면 수익 자동화의 미니맵 픽셀 판정을 가린다(0927 실측)
         ToolTip(text, cx + Round(cw * 0.17), cy + Max(260, ch - 100))
