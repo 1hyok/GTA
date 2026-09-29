@@ -378,10 +378,12 @@ JWMenuOpen() {
     if (JWMenuIsOpen())
         return true
     ; 폰이 닫히는 중처럼 게임이 M 을 씹을 때가 있어(0928 실측: Yes 직후), 안 열렸을 때만 M 을 다시 보낸다(최대 3번)
+    ; 0929 16:13: 메뉴가 800ms 안에 안 보이자 M 을 또 눌러 열리던 메뉴를 닫았다(메뉴열기 3.6초 = M 세 번, 열림·닫힘·열림). 마지막 열기에서
+    ; 같은 식으로 닫힌 채 끝나 "상호작용 메뉴가 열리지 않음"으로 멈췄다. 제목 템플릿은 그 뒤 화면에서 정상 인식됐다. 다시 누르기 전에 2초 기다린다
     Loop 3 {
         if (!JWPress("m", config["Settings"]["MenuOpenDelay"]))
             return false
-        if (JWWaitMenu(true, 800))
+        if (JWWaitMenu(true, 2000))
             return true
     }
     return JWFail("상호작용 메뉴가 열리지 않음")
