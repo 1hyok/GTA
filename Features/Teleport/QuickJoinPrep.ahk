@@ -52,6 +52,7 @@ JobWarpAddDefaults() {
 
 global gJobWarpArmed := false     ; 1단계를 마치고 2단계(F11 두 번)를 기다리는 중
 global gJobWarpArmedAt := 0
+global gJWStartPressed := false   ; 보스 등록 Start 까지 눌렀는지. 뒤의 확인만 실패하면 준비됨으로 본다
 global gQuickJoinRunning := false
 global gQuickJoinFail := ""       ; 1단계가 멈춘 까닭 (오버레이·툴팁)
 
@@ -95,7 +96,7 @@ JobWarpArmedText() {
 }
 
 QuickJoinPrep() {
-    global config, gAbort, gQuickJoinRunning, gQuickJoinFail, gJobWarpArmed, gJobWarpArmedAt
+    global gJWStartPressed, config, gAbort, gQuickJoinRunning, gQuickJoinFail, gJobWarpArmed, gJobWarpArmedAt
     if (!IsGTAActive() || IsTeleportRunning())
         return false
     if (IsSet(gEarnBusy) && gEarnBusy) {
@@ -109,10 +110,17 @@ QuickJoinPrep() {
     ok := false
     JWLap("")
     try {
+        gJWStartPressed := false
         ok := JWRetireBoss() && JWPhoneQuickJoin() && JWRegisterBoss(role)
     } finally {
         gQuickJoinRunning := false
         JWMenuClose()
+    }
+    ; 0929 16:13·16:18: 퀵 조인과 CEO Start 까지 눌렀는데 등록 확인용 메뉴 다시 열기에서 M 이 씹혀 준비가 중단됐고(게임에선 CEO 등록 완료),
+    ; 지도에서 누른 F11 두 번이 작텔 대신 준비를 다시 돌렸다. Start 를 누른 뒤의 확인 실패는 준비된 것으로 본다
+    if (!ok && gJWStartPressed) {
+        MacroLog("jobwarp", "등록 확인만 실패(" gQuickJoinFail "), Start 는 눌렀으니 준비됨으로 둠")
+        ok := true
     }
     if (ok) {
         gJobWarpArmed := true
@@ -250,7 +258,7 @@ JWPhoneQuickJoin() {
 
 ; --- 보스 등록: M → Register as a Boss → SecuroServ CEO / Motorcycle Club President → Start ... ---
 JWRegisterBoss(role) {
-    global config, JW_MENU_AREA, JW_PHONE_AREA
+    global config, JW_MENU_AREA, JW_PHONE_AREA, gJWStartPressed
     ; Yes 뒤 폰(확인 줄)이 닫혀야 M 이 먹는다
     deadline := A_TickCount + 3000
     while (A_TickCount < deadline && JWSeen("qj_yes_sel", JW_PHONE_AREA)) {
@@ -276,6 +284,7 @@ JWRegisterBoss(role) {
     JWLap(role)
     if (!JWSelectRow(start, JW_MENU_AREA, "Down", 3) || !JWPress("Enter"))
         return JWFail(role " 등록: Start 줄을 찾지 못함")
+    gJWStartPressed := true
     JWLap("Start")
     if (!JWSleep(config["Settings"].Get("JobWarpRegisterWaitMs", 2500)))
         return false
