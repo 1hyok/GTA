@@ -1,5 +1,5 @@
 ﻿<#
-gta-perf-watch.ps1 - GTA V Enhanced 그래픽 사다리(0~4단계) 적용·판정과 성능 감시.
+gta-perf-watch.ps1 - GTA V Enhanced 그래픽 사다리(0~5단계) 적용·판정과 성능 감시.
 
 작업 스케줄러 "GTA Perf Watch" 가 10분마다 gta-perf-watch.vbs 로 숨겨서 실행한다.
 게임 창에는 키·클릭·포커스 변경을 보내지 않는다. 하는 일은 읽기(PresentMon ETW, nvidia-smi,
@@ -11,10 +11,13 @@ GetForegroundWindow, GetLastInputInfo, 이벤트 로그)와, 게임이 꺼져 �
   pending.json  {"reason","created","set":{키:값}} 게임이 꺼진 순간 settings.xml 에 쓸 값.
   config.json   {"until": ...} 사다리가 없을 때의 감시 끝 시각.
   cooling.txt   첫 줄을 cooling 열에 적는다(없으면 flat).
-  perf.csv      실행마다 한 줄(obs 열: 캡처 시작·끝에 obs64.exe 가 떠 있었으면 yes, 그 캡처는 판정에서 뺀다). crashes.csv, applied.log, ladder.log, watch.log, launch.log.
+  perf.csv      실행마다 한 줄. OBS 실행 여부는 해석 자료이며 판정 제외 조건이 아니다.
+  perf.csv.pending  CSV 저장 전 원본 행. 저장 실패 시 다음 실행에서 복구한다.
+  perf.csv.previous CSV 원자적 교체 직전 백업. crashes.csv, applied.log, ladder.log, watch.log, launch.log.
 
-판정(사다리 phase=measure/confirm): 지금 조합(expected)과 디스크 값이 같고, OBS 가 꺼져 있고, 사용자가 직접 플레이한(play=user) 전경 캡처 중
-  수익 매크로까지 확인한 신규 캡처(note 의 activity-check=2)이고 GPU 평균 사용률 90% 이상인 것이 minCaptures 개 모이면
+게임 실행 중에는 백그라운드에서도 캡처를 시도한다. 빈 결과·실패는 한 번 재시도하며 실패 내역을 남긴다.
+판정(사다리 phase=measure/confirm): 지금 조합(expected)과 디스크 값이 같고, 사용자가 직접 플레이한(play=user) 전경 캡처(fg_ratio >= 0.9) 중
+  수익 매크로까지 확인한 신규 캡처(note 의 activity-check=2)가 minCaptures 개 모이면
   표시 FPS 시간 가중 평균 >= fpsTarget, 캡처 중 VRAM 최대 <= vramLimitMiB, 그 단계 동안 GTA 비정상 종료 없음
   (디스플레이 장치 변화로 설명되는 종료는 뺌) 이면 통과. 실패한 단계만 revert 값으로 되돌리고 다음 단계로 간다.
   마지막 단계 뒤에는 confirm 으로 남은 조합을 한 번 더 재고, 실패하면 가장 최근에 남긴 단계를 되돌려 다시 잰다.
@@ -92,7 +95,54 @@ function Add-PerfRow($values) {
     $row = [ordered]@{}
     foreach ($c in $Columns) { $row[$c] = '' }
     foreach ($k in $values.Keys) { if ($row.Contains($k)) { $row[$k] = $values[$k] } }
-    [pscustomobject]$row | Export-Csv -LiteralPath $PerfCsv -Append -NoTypeInformation -Encoding UTF8
+    # CSV 교체 전에 원본 행을 내구성 있는 대기 파일로 보존한다.
+    $queue = "$PerfCsv.pending"
+    $null = New-Item -ItemType Directory -Force -Path $queue
+    Write-JsonFile ([pscustomobject]$row) (Join-Path $queue (([guid]::NewGuid().ToString('N')) + '.json'))
+    Flush-PerfRows
+}
+
+function Flush-PerfRows {
+    $queue = "$PerfCsv.pending"
+    if (-not (Test-Path -LiteralPath $queue)) { return }
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try {
+            $files = @(Get-ChildItem -LiteralPath $queue -Filter '*.json' | Sort-Object LastWriteTime, Name)
+            if (-not $files.Count) { return }
+            $rows = @()
+            if (Test-Path -LiteralPath $PerfCsv) { $rows = @(Import-Csv -LiteralPath $PerfCsv) }
+            foreach ($file in $files) { $rows += (Get-Content -LiteralPath $file.FullName -Raw -Encoding UTF8 | ConvertFrom-Json) }
+            # 옛 열도 유지한다. 새 열은 과거 행에서 빈 값으로 남긴다.
+            $names = @($Columns)
+            foreach ($item in $rows) {
+                foreach ($p in $item.PSObject.Properties) { if ($p.Name -notin $names) { $names += $p.Name } }
+            }
+            $normalized = foreach ($item in $rows) {
+                $record = [ordered]@{}
+                foreach ($name in $names) { $record[$name] = [string]$item.$name }
+                [pscustomobject]$record
+            }
+            $lines = @($normalized | ConvertTo-Csv -NoTypeInformation)
+            $seen = New-Object 'System.Collections.Generic.HashSet[string]'
+            $unique = @($lines[0])
+            # 기존 기록은 그대로 두고, 교체 성공 후 대기 파일 삭제가 실패한 경우만 중복 방지.
+            $oldCount = $rows.Count - $files.Count
+            for ($i = 1; $i -lt $lines.Count; $i++) {
+                $isNew = $seen.Add($lines[$i])
+                if ($i -le $oldCount -or $isNew) { $unique += $lines[$i] }
+            }
+            $tmp = "$PerfCsv.tmp"
+            $unique | Set-Content -LiteralPath $tmp -Encoding UTF8
+            if (Test-Path -LiteralPath $PerfCsv) {
+                [IO.File]::Replace($tmp, $PerfCsv, "$PerfCsv.previous", $true)
+            } else { Move-Item -LiteralPath $tmp -Destination $PerfCsv }
+            foreach ($file in $files) { Remove-Item -LiteralPath $file.FullName -Force }
+            return
+        } catch {
+            Write-Log "CSV 저장 재시도 $attempt/3 (대기 원본 보존): $($_.Exception.Message)"
+            if ($attempt -lt 3) { Start-Sleep -Seconds 1 }
+        }
+    }
 }
 
 function Read-SettingsText {
@@ -312,61 +362,85 @@ function Get-MacroActivity([datetime]$since) {
 }
 
 function Invoke-Capture {
+    $failures = @()
+    for ($attempt = 1; $attempt -le 2; $attempt++) {
+        try { $row = Invoke-CaptureOnce }
+        catch { $row = @{ status = 'capture-failed'; note = $_.Exception.Message } }
+        if ($row.status -eq 'capture') {
+            if ($failures.Count) { $row.note += ' | recovered-after=' + ($failures -join ',') }
+            return $row
+        }
+        $failures += [string]$row.status
+        Write-Log "캡처 실패 $attempt/2: $($row.status) $($row.note)"
+        if ($attempt -lt 2) { Start-Sleep -Seconds 2 }
+    }
+    $row.note += ' | capture-attempts=2'
+    return $row
+}
+
+function Invoke-CaptureOnce {
     if (-not (Test-Path -LiteralPath $PresentMon)) {
         $src = Join-Path $env:TEMP 'claude\PresentMon-2.6.0-x64.exe'
         if (Test-Path -LiteralPath $src) { Copy-Item -LiteralPath $src -Destination $PresentMon -Force }
         else { Write-Log 'PresentMon 없음'; return @{ status = 'error'; note = 'PresentMon missing' } }
     }
-    $stamp = (Get-Date).ToString('yyyyMMdd-HHmmss')
+    $stamp = (Get-Date).ToString('yyyyMMdd-HHmmss-fff')
     $csv = Join-Path $CapDir "cap-$stamp.csv"
     $smiFile = Join-Path $CapDir "smi-$stamp.csv"
     $start = Get-Date
     $obsAtStart = Test-ObsRunning
     $pmArgs = "--process_name $GameProc.exe --timed $CaptureSec --terminate_after_timed --output_file `"$csv`" --session_name GtaPerfWatch --stop_existing_session --no_console_stats"
-    $pm = Start-Process -FilePath $PresentMon -ArgumentList $pmArgs -NoNewWindow -PassThru `
-        -RedirectStandardOutput (Join-Path $CapDir 'pm-out.txt') -RedirectStandardError (Join-Path $CapDir 'pm-err.txt')
-    $smi = Start-Process -FilePath 'nvidia-smi.exe' -NoNewWindow -PassThru -RedirectStandardOutput $smiFile -RedirectStandardError (Join-Path $CapDir 'smi-err.txt') `
-        -ArgumentList '--query-gpu=utilization.gpu,power.draw,temperature.gpu,memory.used,clocks.gr,clocks_event_reasons.active,enforced.power.limit --format=csv,noheader,nounits -lms 1000'
+    $pm = $null; $smi = $null
+    try {
+        $pm = Start-Process -FilePath $PresentMon -ArgumentList $pmArgs -NoNewWindow -PassThru `
+            -RedirectStandardOutput (Join-Path $CapDir "pm-out-$stamp.txt") -RedirectStandardError (Join-Path $CapDir "pm-err-$stamp.txt")
+        $smi = Start-Process -FilePath 'nvidia-smi.exe' -NoNewWindow -PassThru -RedirectStandardOutput $smiFile -RedirectStandardError (Join-Path $CapDir "smi-err-$stamp.txt") `
+            -ArgumentList '--query-gpu=utilization.gpu,power.draw,temperature.gpu,memory.used,clocks.gr,clocks_event_reasons.active,enforced.power.limit --format=csv,noheader,nounits -lms 1000'
 
-    $idles = New-Object 'System.Collections.Generic.List[double]'
-    $fgHits = 0; $samples = 0
-    $idleStart = [GtaPerfNative]::IdleSeconds()
-    $deadline = $start.AddSeconds($CaptureSec + 20)
-    while (-not $pm.HasExited -and (Get-Date) -lt $deadline) {
-        $idles.Add([GtaPerfNative]::IdleSeconds())
-        if ((Get-ForegroundName) -eq $GameProc) { $fgHits++ }
-        $samples++
-        Start-Sleep -Seconds $SampleSec
-    }
-    if (-not $pm.HasExited) { $null = $pm.WaitForExit(15000) }
-    if (-not $pm.HasExited) { Stop-Process -Id $pm.Id -Force -ErrorAction SilentlyContinue; Write-Log 'PresentMon 시간 초과로 종료' }
-    if (-not $smi.HasExited) { Stop-Process -Id $smi.Id -Force -ErrorAction SilentlyContinue }
-    $idleEnd = [GtaPerfNative]::IdleSeconds()
+        $idles = New-Object 'System.Collections.Generic.List[double]'
+        $fgHits = 0; $samples = 0
+        $idleStart = [GtaPerfNative]::IdleSeconds()
+        $deadline = $start.AddSeconds($CaptureSec + 20)
+        while (-not $pm.HasExited -and (Get-Date) -lt $deadline) {
+            $idles.Add([GtaPerfNative]::IdleSeconds())
+            if ((Get-ForegroundName) -eq $GameProc) { $fgHits++ }
+            $samples++
+            Start-Sleep -Seconds $SampleSec
+        }
+        if (-not $pm.HasExited) { $null = $pm.WaitForExit(15000) }
+        if (-not $pm.HasExited) { Stop-Process -Id $pm.Id -Force -ErrorAction SilentlyContinue; Write-Log 'PresentMon 시간 초과로 종료' }
+        if (-not $smi.HasExited) { Stop-Process -Id $smi.Id -Force -ErrorAction SilentlyContinue }
+        $idleEnd = [GtaPerfNative]::IdleSeconds()
 
-    # 기존 play=user 행에는 수익 매크로가 섞였다. 네 로그를 확인하는 이 경로에서만 판정용 표식을 남긴다.
-    $row = @{ status = 'capture'; note = 'activity-check=2' }
-    $row.obs = $(if ($obsAtStart -or (Test-ObsRunning)) { 'yes' } else { 'no' })
-    if (Test-Path -LiteralPath $csv) {
-        $s = Get-PresentMonStats $csv
-        if ($s) { foreach ($k in $s.Keys) { $row[$k] = $s[$k] } } else { $row.status = 'capture-empty' }
-    } else {
-        $row.status = 'capture-failed'
-        $row.note = (Get-Content (Join-Path $CapDir 'pm-err.txt') -Raw -ErrorAction SilentlyContinue)
+        # 기존 play=user 행에는 수익 매크로가 섞였다. 네 로그를 확인하는 이 경로에서만 판정용 표식을 남긴다.
+        $row = @{ status = 'capture'; note = 'activity-check=2' }
+        $row.obs = $(if ($obsAtStart -or (Test-ObsRunning)) { 'yes' } else { 'no' })
+        if (Test-Path -LiteralPath $csv) {
+            $s = Get-PresentMonStats $csv
+            if ($s) { foreach ($k in $s.Keys) { $row[$k] = $s[$k] } } else { $row.status = 'capture-empty' }
+        } else {
+            $row.status = 'capture-failed'
+            $row.note = (Get-Content (Join-Path $CapDir "pm-err-$stamp.txt") -Raw -ErrorAction SilentlyContinue)
+        }
+        $g = Get-GpuStats $smiFile
+        foreach ($k in $g.Keys) { $row[$k] = $g[$k] }
+        $row.idle_start_s   = [math]::Round($idleStart, 1)
+        $row.idle_end_s     = [math]::Round($idleEnd, 1)
+        $row.idle_min_s     = $(if ($idles.Count) { [math]::Round(($idles | Measure-Object -Minimum).Minimum, 1) } else { '' })
+        $row.active_samples = @($idles | Where-Object { $_ -ge 0 -and $_ -lt $ActiveIdleS }).Count
+        $row.samples        = $samples
+        $row.fg_ratio       = $(if ($samples) { [math]::Round($fgHits / $samples, 2) } else { '' })
+        $row.macro_activity = Get-MacroActivity $start
+        # 매크로의 SendInput 도 GetLastInputInfo 를 갱신하므로, 매크로 로그가 캡처 동안 갱신됐으면 macro 로 먼저 가른다.
+        $row.play = $(if ($row.macro_activity) { 'macro' } elseif ($idleEnd -ge 0 -and $idleEnd -lt 60) { 'user' } else { 'idle' })
+        Get-ChildItem -LiteralPath $CapDir -Filter '*-2*.csv' | Sort-Object LastWriteTime -Descending | Select-Object -Skip 24 |
+            Remove-Item -Force -ErrorAction SilentlyContinue
+        return $row
+    } finally {
+        foreach ($proc in @($pm, $smi)) {
+            if ($proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
+        }
     }
-    $g = Get-GpuStats $smiFile
-    foreach ($k in $g.Keys) { $row[$k] = $g[$k] }
-    $row.idle_start_s   = [math]::Round($idleStart, 1)
-    $row.idle_end_s     = [math]::Round($idleEnd, 1)
-    $row.idle_min_s     = $(if ($idles.Count) { [math]::Round(($idles | Measure-Object -Minimum).Minimum, 1) } else { '' })
-    $row.active_samples = @($idles | Where-Object { $_ -ge 0 -and $_ -lt $ActiveIdleS }).Count
-    $row.samples        = $samples
-    $row.fg_ratio       = $(if ($samples) { [math]::Round($fgHits / $samples, 2) } else { '' })
-    $row.macro_activity = Get-MacroActivity $start
-    # 매크로의 SendInput 도 GetLastInputInfo 를 갱신하므로, 매크로 로그가 캡처 동안 갱신됐으면 macro 로 먼저 가른다.
-    $row.play = $(if ($row.macro_activity) { 'macro' } elseif ($idleEnd -ge 0 -and $idleEnd -lt 60) { 'user' } else { 'idle' })
-    Get-ChildItem -LiteralPath $CapDir -Filter '*-2*.csv' | Sort-Object LastWriteTime -Descending | Select-Object -Skip 24 |
-        Remove-Item -Force -ErrorAction SilentlyContinue
-    return $row
 }
 
 function Update-CrashState($state, [string]$gtaStart) {
@@ -543,6 +617,7 @@ try { $got = $mutex.WaitOne(0) } catch [Threading.AbandonedMutexException] { $go
 if (-not $got) { exit 0 }
 $RunStart = Get-Date
 try {
+    Flush-PerfRows
     $ladder = Read-JsonFile $LadderFile
     $deadline = [datetimeoffset]::MaxValue
     try {
@@ -599,11 +674,9 @@ try {
         $base.status = 'not_running'
     } elseif ($expired) {
         $base.status = 'expired-skip'; $note += 'watch window over; capture skipped'
-    } elseif ((Get-ForegroundName) -eq $GameProc -and -not [GtaPerfNative]::ForegroundMinimized()) {
+    } else {
         $cap = Invoke-Capture
         foreach ($k in $cap.Keys) { if ($k -eq 'note') { if ($cap.note) { $note += $cap.note } } else { $base[$k] = $cap[$k] } }
-    } else {
-        $base.status = 'background'; $note += ('foreground=' + (Get-ForegroundName))
     }
     if (Test-Path -LiteralPath $PendingFile) { $note += 'pending waiting' }
     $base.note = ($note -join ' | ')
