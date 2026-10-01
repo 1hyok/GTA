@@ -30,6 +30,11 @@ description: GTA V Enhanced 그래픽 사다리의 기록 확인 기준. 사용�
 - Codex는 기록을 읽고 필요한 결과만 현재 채팅에 알린다. settings.xml·pending.json·ladder.json 을 고치지 않는다.
 
 ## 자료 (전부 `C:\Users\rlfjr\gta-perf`)
+
+2026-10-01부터 게임 실행 중에는 백그라운드·최소화 상태에서도 캡처를 시도한다. 게임이 프레임을 출력하지 않아 결과가 비면 `capture-empty`, 캡처 예외는 `capture-failed`로 기록하며 한 번 재시도한다. 각 시도의 오류 출력은 `captures`에, 실패·복구 흔적은 `watch.log`와 행의 `note`에 남긴다. 백그라운드 표본도 보존하되 단계 판정은 기존 `play=user`, `fg_ratio >= 0.9` 기준을 유지한다. 과거 `background`는 당시 측정을 건너뛴 기록이다.
+
+CSV 행은 먼저 `perf.csv.pending`에 저장한다. 기존·신규 열을 모두 보존해서 CSV를 원자적으로 교체하며 직전 파일은 `perf.csv.previous`에 남긴다. 저장 실패 시 세 번 시도하고 원본 행을 대기 폴더에 보존해 다음 실행에서 복구한다. 확인할 때 대기 파일이 계속 쌓이거나 `watch.log`에 저장 재시도가 반복되면 저장 장애로 보고한다. 과거에 확보하지 못한 FPS는 복원하거나 추정해서 채우지 않는다.
+
 AppData 가 아니다. Claude 앱(MSIX)에서 띄운 프로세스가 AppData 에 쓰면 패키지 전용 폴더로 가상화돼 작업 스케줄러와 다른 파일을 보게 되므로 AppData 밖에 둔다.
 - `ladder.json`: `state.phase`(measure/confirm/done), `state.stage`, `state.expected`(지금 조합), `state.kept`·`state.reverted`, `state.history`(판정마다 time, label, result, avgFps, captures, maxVramMiB, crashes, reason, action).
 - `ladder.log`: 판정·재적용·종료를 한 줄씩. 오늘 날짜 줄이 있으면 그날 단계가 바뀐 것이다.

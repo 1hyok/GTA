@@ -10,7 +10,7 @@ $tokens = $null; $parseErrors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile($source, [ref]$tokens, [ref]$parseErrors)
 if (@($parseErrors).Count) { throw ($parseErrors | Out-String) }
 # 정규 실행 본문은 실행하지 않는다. 테스트에 필요한 함수 정의만 읽는다.
-$names = @('ConvertTo-Num', 'ConvertTo-Hashtable', 'Get-StageLabel', 'Get-MacroActivity', 'Invoke-Capture', 'Get-LadderCaptures', 'Invoke-LadderJudge')
+$names = @('ConvertTo-Num', 'ConvertTo-Hashtable', 'Get-StageLabel', 'Get-MacroActivity', 'Invoke-Capture', 'Invoke-CaptureOnce', 'Get-LadderCaptures', 'Invoke-LadderJudge', 'Add-PerfRow', 'Flush-PerfRows', 'Write-JsonFile')
 foreach ($name in $names) {
     $definition = @($ast.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name }, $true))
     if ($definition.Count -ne 1) { throw "함수 정의 수 오류: $name" }
@@ -71,8 +71,6 @@ $newRows = @(0..5 | ForEach-Object { $r = Clone $template; $r.time = ([datetime]
 Save-Rows $newRows
 Check '새 정상 사용자 캡처 여섯 개 판정 가능' (@(Get-LadderCaptures $testLadder).Count -eq 6)
 $mutations = @(
-    @{ name='OBS 녹화 제외'; field='obs'; value='yes' },
-    @{ name='낮은 GPU 제외'; field='gpu_util_pct'; value='89.9' },
     @{ name='낮은 전경 비율 제외'; field='fg_ratio'; value='0.89' },
     @{ name='다른 단계 제외'; field='stage'; value='S0' },
     @{ name='기준 시각 이전 제외'; field='time'; value='2026-09-26 20:11:06' },
@@ -89,6 +87,12 @@ foreach ($mutation in $mutations) {
     Save-Rows $rows
     Check $mutation.name (@(Get-LadderCaptures $testLadder).Count -eq 5)
 }
+foreach ($field in @('obs', 'gpu_util_pct')) {
+    $rows = @(Clone $newRows)
+    $rows[0].($field) = $(if ($field -eq 'obs') { 'yes' } else { '70' })
+    Save-Rows $rows
+    Check "현행 기준 $field 제한 없음" (@(Get-LadderCaptures $testLadder).Count -eq 6)
+}
 $boundary = Clone $template
 $boundary.gpu_util_pct = '90'; $boundary.fg_ratio = '0.9'; $boundary.time = $testLadder.state.since
 $boundary.note = '  activity-check=2 | pending waiting'
@@ -101,6 +105,7 @@ Check '기존 세 개와 새 세 개를 합쳐 조기 판정하지 않음' (@(Ge
 Add-Type -TypeDefinition 'public static class GtaPerfNative { public static double IdleSeconds() { return 0.0; } }'
 function Start-Process { [pscustomobject]@{ HasExited = $true; Id = -1 } }
 function Test-ObsRunning { return $false }
+function Write-Log { param($message) $script:lastLog = $message }
 function Test-Path([string]$LiteralPath) {
     if ([IO.Path]::GetFileName($LiteralPath) -like 'cap-*.csv') { return $true }
     return (Microsoft.PowerShell.Management\Test-Path -LiteralPath $LiteralPath)
@@ -136,6 +141,55 @@ Invoke-LadderJudge $judgeLadder
 Check '새 여섯 표본으로 S1 정상 판정' ($judgeLadder.state.stage -eq 2 -and $judgeLadder.state.history[-1].captures -eq 6 -and $judgeLadder.state.history[-1].result -eq 'pass')
 Check '새 판정 뒤에도 기존 S0 history 보존' (($judgeLadder.state.history[0] | ConvertTo-Json -Depth 12 -Compress) -ceq $s0Before)
 Check '상태 출력은 테스트 대역으로만 전달' ($script:writeSeen.state.stage -eq 2 -and -not (Test-Path -LiteralPath $LadderFile))
+
+# 저장 오류 복구: 실 데이터와 분리된 파일에서 실제 파일 잠금·스키마 변경을 재현한다.
+$jsonDefinition = $ast.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Write-JsonFile' }, $true)
+Invoke-Expression $jsonDefinition[0].Extent.Text
+$PerfCsv = Join-Path $FixtureDir 'persistence.csv'
+$Columns = @('time', 'status', 'stage', 'play', 'note')
+[pscustomobject]@{time='old';status='capture';stage='S0';legacy='preserved'} | Export-Csv -LiteralPath $PerfCsv -NoTypeInformation -Encoding UTF8
+Add-PerfRow @{time='new';status='capture';stage='S4';play='user';note='activity-check=2'}
+$saved = @(Import-Csv -LiteralPath $PerfCsv)
+Check '열 변경 뒤 과거 열과 신규 행 모두 보존' ($saved.Count -eq 2 -and $saved[0].legacy -eq 'preserved' -and $saved[1].play -eq 'user')
+$lock = [IO.File]::Open($PerfCsv, 'Open', 'ReadWrite', 'None')
+try { Add-PerfRow @{time='locked';status='capture';stage='S4';play='user'} }
+finally { $lock.Dispose() }
+Check '잠긴 CSV 저장 실패 시 원본 대기 행 보존' (@(Get-ChildItem -LiteralPath "$PerfCsv.pending" -Filter '*.json').Count -eq 1)
+$pendingCopy = Get-Content -LiteralPath (Get-ChildItem -LiteralPath "$PerfCsv.pending" -Filter '*.json')[0].FullName -Raw
+Flush-PerfRows
+Check '잠금 해제 후 다음 flush로 복구' (@(Import-Csv -LiteralPath $PerfCsv).Count -eq 3 -and @(Get-ChildItem -LiteralPath "$PerfCsv.pending" -Filter '*.json').Count -eq 0)
+$pendingCopy | Set-Content -LiteralPath (Join-Path "$PerfCsv.pending" 'replay.json') -Encoding UTF8
+Flush-PerfRows
+Check 'CSV 교체 후 대기 파일 재처리 시 중복 없음' (@(Import-Csv -LiteralPath $PerfCsv).Count -eq 3)
+
+# 실패 재시도와 예외를 실행해서 검증한다.
+$script:processStarts=0; $script:stoppedPid=0
+function Start-Process {
+    $script:processStarts++
+    if ($script:processStarts -eq 2) { throw 'fixture GPU sampler start failure' }
+    return [pscustomobject]@{HasExited=$false;Id=123456}
+}
+function Stop-Process { param($Id, [switch]$Force, $ErrorAction) $script:stoppedPid=$Id }
+try { $null=Invoke-CaptureOnce } catch { }
+Check 'GPU 수집 시작 예외에도 먼저 띄운 PresentMon 정리' ($script:stoppedPid -eq 123456)
+$script:attempts = 0
+function Invoke-CaptureOnce { $script:attempts++; if ($script:attempts -eq 1) { return @{status='capture-empty';note='activity-check=2'} }; return @{status='capture';note='activity-check=2'} }
+$recovered = Invoke-Capture
+Check '빈 캡처는 두 번째 측정으로 복구하며 실패 흔적 보존' ($script:attempts -eq 2 -and $recovered.status -eq 'capture' -and $recovered.note -match 'recovered-after=capture-empty')
+function Invoke-CaptureOnce { throw 'fixture capture failure' }
+$failed = Invoke-Capture
+Check '캡처 예외도 최종 실패 행으로 반환' ($failed.status -eq 'capture-failed' -and $failed.note -match 'capture-attempts=2')
+
+$route = @($ast.FindAll({param($node) $node -is [Management.Automation.Language.IfStatementAst] -and $node.Clauses[0].Item1.Extent.Text -eq '-not $g' -and $node.Extent.Text -match 'expired-skip'}, $true))
+Check '실행 상태 라우팅 한 곳' ($route.Count -eq 1)
+function Invoke-Capture { return @{status='capture';fg_ratio=0;play='idle';note='activity-check=2'} }
+function Get-ForegroundName { return 'other-app' }
+$g = [pscustomobject]@{Id=123}; $expired=$false; $base=@{}; $note=@()
+Invoke-Expression $route[0].Extent.Text
+Check '백그라운드 게임도 캡처 경로 실행' ($base.status -eq 'capture' -and $base.fg_ratio -eq 0)
+$g=$null; $base=@{}
+Invoke-Expression $route[0].Extent.Text
+Check '꺼진 게임은 캡처하지 않음' ($base.status -eq 'not_running')
 $results | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $FixtureDir 'results.json') -Encoding UTF8
 $liveResult = $null
 if ($CheckLiveData) {
