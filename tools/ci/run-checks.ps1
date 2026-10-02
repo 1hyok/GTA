@@ -147,7 +147,7 @@ try {
     # The verified 2.0.28 interpreter never executes Main.ahk here.
     Invoke-LoggedCheck 'validate-main' $AhkPath @('/validate', '/ErrorStdOut', '/CP65001', (Join-Path $repositoryRoot 'Main.ahk')) 30 -RequireEmptyStderr
     # Explicit allowlist: never discover/run arbitrary *test* scripts or Main.ahk.
-    foreach ($suite in @('test-earner', 'test-antiafk', 'test-earnnav', 'test-earntasks', 'test-earnblip')) {
+    foreach ($suite in @('test-earner', 'test-antiafk', 'test-altf4teleport', 'test-earnnav', 'test-earntasks', 'test-earnblip')) {
         $scriptPath = Join-Path $repositoryRoot ('tools\earn-test\' + $suite + '.ps1')
         Invoke-LoggedCheck $suite $powershell ($psArguments + @($scriptPath, '-AhkPath', $AhkPath))
     }
@@ -167,7 +167,7 @@ try {
     Write-Host $failure
 } finally {
     $failedChecks = @($results | Where-Object { -not $_.passed })
-    $passed = -not $failure -and $results.Count -eq 11 -and $failedChecks.Count -eq 0
+    $passed = -not $failure -and $results.Count -eq 12 -and $failedChecks.Count -eq 0
     [ordered]@{
         passed = $passed; revision = $revision; workingTree = $workingTree
         startedUtc = $started.ToString('o'); finishedUtc = [DateTime]::UtcNow.ToString('o')
