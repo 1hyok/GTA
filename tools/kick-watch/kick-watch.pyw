@@ -11,15 +11,22 @@ launcher.log, gta-afk.log)와 화면 캡처뿐이다. Main.ahk 와 따로 돌아
   events.log  launcher.log 에 세션 변경(NotifyActiveSessionChange)이 찍힐 때마다 한 줄: 그 순간의 전경 창,
               마지막 입력부터 지난 초(주입 입력 포함), gta-afk.log 끝 3줄, 원격 데스크톱 접속 여부.
   shots\\      세션 변경 2초·15초·45초 뒤의 전체 화면 PNG. 튕긴 뒤 뜨는 알림 문구(방치·연결 끊김 등)가 여기 남는다.
+  observations.jsonl  5초마다 전경 PID/HWND, 커서와 커서 아래 창, OS 마지막 입력 시각. AFK 로그 변화도 기록한다.
+  afk-shots\\  AFK 입력 로그 직전 표본·직후·2초 뒤 GTA 영역, 세션 변경 통지 직전 링 표본.
+              전경 GTA 영역만 5초마다 읽어 최근 3장을 메모리에 둔다. 게임 내부 입력 수신 여부는 알 수 없다.
 
 2026-10-02: 19:45:50 킥은 원격 데스크톱이 13분 전경을 쥔 탓으로 로그가 맞았지만, 20:57:27 세션 변경은 AFK 입력이
 정상으로 찍혔는데도 일어났고 그 순간의 화면이 없어 원인을 못 가렸다. 그 빈칸을 메우려고 만들었다.
 
 시험: python kick-watch.pyw --once  (상태 한 줄과 캡처 한 장을 남기고 끝난다)
+회귀: python -m unittest discover -s tools/kick-watch -p "test_*.py" -v
 """
 import ctypes
 import ctypes.wintypes as wt
 import datetime
+import collections
+import hashlib
+import json
 import os
 import struct
 import sys
@@ -34,6 +41,8 @@ psapi = ctypes.WinDLL("psapi", use_last_error=True)
 HOME = os.environ.get("USERPROFILE", os.path.expanduser("~"))
 OUT = os.path.join(HOME, "gta-kick")
 SHOTS = os.path.join(OUT, "shots")
+AFK_SHOTS = os.path.join(OUT, "afk-shots")
+SOURCE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 LAUNCHER_LOG = os.path.join(HOME, "Documents", "Rockstar Games", "Launcher", "launcher.log")
 AFK_LOG = os.path.join(HOME, "AppData", "Local", "Temp", "gta-afk.log")
 GTA_EXE = "GTA5_Enhanced.exe"
@@ -41,21 +50,63 @@ SESSION_MARK = "NotifyActiveSessionChange"
 SHOT_DELAYS = (2, 15, 45)
 KEEP_SHOTS = 120
 LOG_MAX = 2 * 1024 * 1024
+SAMPLE_SECONDS = 5
+KEEP_AFK_SHOTS = 90
 
 
 def now():
     return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-def append(name, line):
+def append(name, line, timestamp=True):
     path = os.path.join(OUT, name)
     try:
         if os.path.exists(path) and os.path.getsize(path) > LOG_MAX:
             os.replace(path, path + ".1")
         with open(path, "a", encoding="utf-8") as f:
-            f.write(now() + " " + line + "\n")
+            f.write((now() + " " if timestamp else "") + line + "\n")
     except OSError:
         pass
+
+
+def record(kind, **fields):
+    """OS 관측값이다. 게임의 입력 수신/방치 타이머 초기화를 뜻하지 않는다."""
+    append("observations.jsonl", json.dumps({"at": now(), "event": kind, **fields}, ensure_ascii=False),
+           timestamp=False)
+
+
+class LogTail:
+    """시작 전 기록은 재생하지 않고, 나뉘어 기록된 줄과 로그 교체를 처리한다."""
+    def __init__(self, path):
+        self.path = path
+        self.identity = None
+        self.offset = None
+        self.pending = b""
+        self.error = None
+
+    def read(self):
+        try:
+            with open(self.path, "rb") as stream:
+                stat = os.fstat(stream.fileno())
+                self.error = None
+                identity = (stat.st_dev, stat.st_ino)
+                if self.offset is None:
+                    self.offset, self.identity = stat.st_size, identity
+                    return []
+                if identity != self.identity or stat.st_size < self.offset:
+                    self.offset, self.pending = 0, b""
+                self.identity = identity
+                stream.seek(self.offset)
+                fresh = stream.read()
+                self.offset = stream.tell()
+            parts = (self.pending + fresh).split(b"\n")
+            self.pending = parts.pop()
+            return [part.decode("utf-8", "replace").strip() for part in parts if part.strip()]
+        except OSError as error:
+            self.error = repr(error)
+            if isinstance(error, FileNotFoundError) and self.offset is None:
+                self.offset = 0
+            return []
 
 
 class LASTINPUTINFO(ctypes.Structure):
@@ -126,14 +177,17 @@ class BITMAPINFOHEADER(ctypes.Structure):
                 ("biClrImportant", wt.DWORD)]
 
 
-def screenshot(tag):
-    """모든 모니터를 한 장으로 찍어 shots\\ 에 PNG 로 저장한다. 실패하면 빈 문자열."""
+def capture_png(rect=None):
+    """표시된 데스크톱 픽셀만 읽는다. 가려진 게임 내부 화면을 읽지 않는다."""
     for fn in (user32.GetDC, gdi32.CreateCompatibleDC):
         fn.restype = wt.HDC
     gdi32.CreateCompatibleBitmap.restype = wt.HBITMAP
     gdi32.SelectObject.restype = wt.HGDIOBJ
-    x, y = user32.GetSystemMetrics(76), user32.GetSystemMetrics(77)
-    w, h = user32.GetSystemMetrics(78), user32.GetSystemMetrics(79)
+    if rect is None:
+        x, y = user32.GetSystemMetrics(76), user32.GetSystemMetrics(77)
+        w, h = user32.GetSystemMetrics(78), user32.GetSystemMetrics(79)
+    else:
+        x, y, w, h = rect
     if w <= 0 or h <= 0:
         return ""
     screen = user32.GetDC(None)
@@ -161,19 +215,133 @@ def screenshot(tag):
     def chunk(kind, body):
         return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body) & 0xFFFFFFFF)
 
-    png = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
            + chunk(b"IDAT", zlib.compress(data, 3)) + chunk(b"IEND", b""))
-    name = datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + tag + ".png"
-    path = os.path.join(SHOTS, name)
+
+
+def save_png(png, tag, directory=SHOTS, keep=KEEP_SHOTS):
+    if not png:
+        return ""
+    name = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f") + "-" + tag + ".png"
+    path = os.path.join(directory, name)
     with open(path, "wb") as f:
         f.write(png)
     try:
-        files = sorted(p for p in os.listdir(SHOTS) if p.endswith(".png"))
-        for stale in files[:-KEEP_SHOTS]:
-            os.remove(os.path.join(SHOTS, stale))
+        files = sorted(p for p in os.listdir(directory) if p.endswith(".png"))
+        for stale in files[:-keep]:
+            os.remove(os.path.join(directory, stale))
     except OSError:
         pass
     return name
+
+
+def screenshot(tag):
+    return save_png(capture_png(), tag)
+
+
+def observation():
+    user32.GetForegroundWindow.restype = wt.HWND
+    user32.WindowFromPoint.argtypes = [wt.POINT]
+    user32.WindowFromPoint.restype = wt.HWND
+    hwnd = user32.GetForegroundWindow()
+    pid = wt.DWORD()
+    user32.GetWindowThreadProcessId(wt.HWND(hwnd), ctypes.byref(pid))
+    exe = exe_of(pid.value)
+    title_buffer = ctypes.create_unicode_buffer(200)
+    user32.GetWindowTextW(wt.HWND(hwnd), title_buffer, 200)
+    title = title_buffer.value.replace("\n", " ")[:80]
+    point = wt.POINT()
+    cursor = None
+    if user32.GetCursorPos(ctypes.byref(point)):
+        under = user32.WindowFromPoint(point)
+        under_pid = wt.DWORD()
+        user32.GetWindowThreadProcessId(wt.HWND(under), ctypes.byref(under_pid))
+        cursor = {"x": point.x, "y": point.y, "window": under,
+                  "pid": under_pid.value, "exe": exe_of(under_pid.value)}
+    rect = None
+    if exe.lower() == GTA_EXE.lower() and not user32.IsIconic(wt.HWND(hwnd)):
+        client = wt.RECT()
+        origin = wt.POINT()
+        if (user32.GetClientRect(wt.HWND(hwnd), ctypes.byref(client))
+                and user32.ClientToScreen(wt.HWND(hwnd), ctypes.byref(origin))):
+            rect = [origin.x, origin.y, client.right, client.bottom]
+    info = LASTINPUTINFO(ctypes.sizeof(LASTINPUTINFO), 0)
+    last_input = info.dwTime if user32.GetLastInputInfo(ctypes.byref(info)) else None
+    return {"at": datetime.datetime.now().isoformat(timespec="milliseconds"),
+            "monotonic": time.monotonic(), "fg_hwnd": hwnd, "fg_pid": pid.value,
+            "fg_exe": exe, "fg_title": title, "cursor": cursor, "game_rect": rect,
+            "last_input_tick": last_input, "os_idle_s": input_idle_sec()}
+
+
+def source_fingerprints():
+    result = {}
+    for rel in ("Config.ini", "Features/AntiAFK.ahk", "Main.ahk", "tools/kick-watch/kick-watch.pyw"):
+        try:
+            with open(os.path.join(SOURCE_ROOT, rel), "rb") as stream:
+                result[rel] = hashlib.sha256(stream.read()).hexdigest()
+        except OSError as error:
+            result[rel] = {"error": str(error)}
+    return result
+
+
+class AFKObserver:
+    def __init__(self):
+        self.tail = LogTail(AFK_LOG)
+        self.tail.read()
+        self.frames = collections.deque(maxlen=3)
+        self.next_sample = 0
+        self.after_due = None
+        self.last_error = None
+
+    def frame(self, state):
+        rect = state["game_rect"]
+        png = capture_png(rect) if rect else None
+        return {"state": state, "png": png, "capture_end_monotonic": time.monotonic()}
+
+    def save_frame(self, frame, tag):
+        if frame is None:
+            return None
+        name = save_png(frame["png"], tag, AFK_SHOTS, KEEP_AFK_SHOTS)
+        return {"state": frame["state"], "file": name or None,
+                "capture_end_monotonic": frame["capture_end_monotonic"],
+                "capture": "visible_game_region" if name else "unavailable"}
+
+    def sample(self):
+        current = time.monotonic()
+        fresh = self.tail.read()
+        if self.tail.error != self.last_error:
+            record("afk_log_status", error=self.tail.error)
+            self.last_error = self.tail.error
+        if fresh:
+            state = observation()
+            record("afk_log", lines=fresh, state=state)
+            if any("mouse pulse" in line or "tap " in line for line in fresh):
+                # 가장 가까운 과거 프레임은 호출 전 2픽셀 움직임을 직접 증명하지 않는다.
+                before = self.frames[-1] if self.frames else None
+                age = current - before["state"]["monotonic"] if before else None
+                record("afk_input_logged", lines=fresh, before_age_s=age,
+                       before=self.save_frame(before, "before-afk") if age is not None and age <= 10 else None,
+                       after=self.save_frame(self.frame(state), "after-afk"))
+                self.after_due = current + 2
+        if self.after_due is not None and current >= self.after_due:
+            record("afk_after_2s", frame=self.save_frame(self.frame(observation()), "after-afk-2s"))
+            self.after_due = None
+        if current >= self.next_sample:
+            state = observation()
+            record("sample", state=state)
+            self.frames.append(self.frame(state))
+            self.next_sample = current + SAMPLE_SECONDS
+
+    def session_change(self):
+        record("session_change_frames", frames=[self.save_frame(frame, f"before-session-notice-{i}")
+                                                  for i, frame in enumerate(self.frames)])
+
+
+def observe_safely(observer, method):
+    try:
+        getattr(observer, method)()
+    except Exception as error:
+        append("events.log", "AFK 관측 오류(세션 감시는 계속) " + repr(error)[:200])
 
 
 def state_line():
@@ -188,6 +356,7 @@ def state_line():
 
 def main():
     os.makedirs(SHOTS, exist_ok=True)
+    os.makedirs(AFK_SHOTS, exist_ok=True)
     try:
         user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
     except Exception:
@@ -196,6 +365,7 @@ def main():
     if "--once" in sys.argv:
         shot = screenshot("test")
         append("events.log", "시험 실행 | " + state_line() + " | 캡처 " + (shot or "실패"))
+        record("once", state=observation(), disk_sources=source_fingerprints())
         return
 
     kernel32.CreateMutexW.restype = wt.HANDLE
@@ -203,12 +373,16 @@ def main():
     if not mutex or ctypes.get_last_error() == 183:  # ERROR_ALREADY_EXISTS
         return
     append("events.log", "감시 시작 pid " + str(os.getpid()))
+    record("observer_start", pid=os.getpid(), disk_sources=source_fingerprints(),
+           note="디스크 해시이며 실행 중인 AHK가 로드한 버전이나 게임 입력 수신을 증명하지 않음")
+    observer = AFKObserver()
 
     last_fg = None
     offset = None
     pending = []  # (찍을 시각, 꼬리표)
     while True:
         try:
+            observe_safely(observer, "sample")
             fg = foreground()
             if fg != last_fg:
                 append("fg.log", f"{fg[0]} | {fg[1]}")
@@ -229,6 +403,7 @@ def main():
                     if SESSION_MARK in fresh:
                         stamp = datetime.datetime.now().strftime("%H%M%S")
                         append("events.log", "세션 변경 | " + state_line())
+                        observe_safely(observer, "session_change")
                         t = time.monotonic()
                         pending = [(t + d, f"session{stamp}-{d}s") for d in SHOT_DELAYS]
 
