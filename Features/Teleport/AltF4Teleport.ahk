@@ -55,6 +55,10 @@ ExecuteAltF4Teleport() {
                 MacroLog("jobwarp", "aborted during quit wait")
                 return
             }
+            if (!IsGTAActive()) {
+                MacroLog("jobwarp", "focus lost during quit wait")
+                return
+            }
             if (A_TickCount - start > s["JobWarpMinWaitMs"] && QuitPromptReady()) {
                 ready := true
                 break
@@ -70,8 +74,7 @@ ExecuteAltF4Teleport() {
             return
         }
         MacroLog("jobwarp", "prompt ready after " (A_TickCount - start) "ms")
-        Sleep(s["JobWarpAfterPromptMs"])
-        if (!IsGTAActive())
+        if (!WaitAbortable(s["JobWarpAfterPromptMs"]))
             return
         PressKey("Backspace")   ; No
         ok := true
@@ -107,5 +110,5 @@ WaitAbortable(ms) {
             return false
         Sleep(50)
     }
-    return true
+    return !gAbort && IsGTAActive()
 }
