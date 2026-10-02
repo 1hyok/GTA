@@ -29,10 +29,10 @@ function Quote-NativeArgument([string]$Value) {
     return '"' + ([regex]::Replace([regex]::Replace($Value, '(\\*)"', '$1$1\"'), '(\\+)$', '$1$1')) + '"'
 }
 
-function Stop-CheckProcessTree([Diagnostics.Process]$Process) {
+function Stop-CheckProcessTree([Diagnostics.Process]$Process, [DateTime]$Started) {
     # Snapshot descendants of this exact process only. Never select by executable name.
     $owned = New-Object 'System.Collections.Generic.List[object]'
-    $owned.Add([pscustomobject]@{ id = $Process.Id; started = $Process.StartTime })
+    $owned.Add([pscustomobject]@{ id = $Process.Id; started = $Started })
     $snapshot = @(Get-CimInstance Win32_Process -ErrorAction Stop)
     for ($index = 0; $index -lt $owned.Count; $index++) {
         $parent = $owned[$index]
@@ -80,17 +80,22 @@ function Invoke-LoggedCheck {
     $stderr = ''
     try {
         $process = [Diagnostics.Process]::Start($info)
+        # Keep the root identity even if it exits before a child closes the inherited pipes.
+        $processStarted = $process.StartTime
         # Drain both pipes while the child is running, so verbose failures cannot deadlock.
         $stdoutTask = $process.StandardOutput.ReadToEndAsync()
         $stderrTask = $process.StandardError.ReadToEndAsync()
         if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
             $timedOut = $true
-            Stop-CheckProcessTree $process
+            Stop-CheckProcessTree $process $processStarted
         }
         $drained = [Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]@($stdoutTask, $stderrTask), 5000)
         if (-not $drained) {
-            $process.StandardOutput.Close()
-            $process.StandardError.Close()
+            try { Stop-CheckProcessTree $process $processStarted }
+            finally {
+                $process.StandardOutput.Close()
+                $process.StandardError.Close()
+            }
             throw 'Output pipes did not close within five seconds after process exit/cleanup.'
         }
         $stdout = $stdoutTask.GetAwaiter().GetResult()
