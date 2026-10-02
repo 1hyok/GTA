@@ -283,5 +283,6 @@ End 는 도는 것을 전부 멈추고(카요 타이머 포함) 누른 키를 �
 - `KeyHoldTest.ahk`: F10. M 다음 바로 Enter 를 보내 메뉴가 열리는지 보는 시험. `Config.ini` 를 읽는다(`KeyHoldTime`·`MenuControlDelay`). F12 종료.
 - `LCtrlSpammer.ahk`: F10 토글. 100ms 마다 LCtrl. `Config.ini` 안 읽음. F12 종료.
 - `tools\gta-perf-watch.ps1`: 작업 스케줄러가 10분마다 돌리는 성능 감시. 게임에 입력은 안 보내고, 게임이 꺼져 있을 때 `settings.xml` 의 그래픽 단계를 바꾼다. 기록은 `%USERPROFILE%\gta-perf\`.
+- `tools\kick-watch\kick-watch.pyw`: 작업 스케줄러 "GTA Kick Watch" 가 5분마다 pythonw 로 띄우는 킥 원인 기록기(이미 돌고 있으면 바로 끝난다). 게임과 매크로에 입력을 보내지 않고 `Main.ahk` 와 키가 겹치지 않는다. 기록은 `%USERPROFILE%\gta-kick\`: `fg.log`(전경 창이 바뀔 때마다 날짜·실행 파일·제목), `events.log`(런처 로그에 세션 변경이 찍힌 순간의 전경 창·마지막 입력·AFK 로그 끝 3줄), `shots\`(세션 변경 2·15·45초 뒤 전체 화면. 튕긴 뒤의 알림 문구가 남는다).
 
 `Lester-Ver2.0/` 과 `CodeSwine GTA5O - Private Public Lobby V1.0.1/` 은 별개 도구다.
