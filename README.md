@@ -18,6 +18,21 @@ Copy-Item Main.ahk Main_check.ahk
 [IO.File]::Delete("Main_check.ahk")
 ```
 
+## CI와 배포 패키지
+
+GitHub Actions의 [CI](.github/workflows/ci.yml)는 Windows에서 AHK 문법, PowerShell·Python 구문, 게임 입력 없는 회귀검사를 실행한다. 실제 게임 입력·화면 캡처·GPU 측정·작업 스케줄러 실행은 포함하지 않는다. 검사 도구와 고정한 실행기 버전은 [tools/ci](tools/ci/README.md), 구성요소와 현장 시험의 경계는 [도구 경계](docs/tool-boundaries.md)에 있다.
+
+로컬에서도 Windows PowerShell 5.1에서 같은 검사를 실행한다. Python 3가 PATH에 있어야 하며, 다른 실행기를 쓰면 `run-checks.ps1 -PythonPath`로 지정한다. AutoHotkey는 임시 디렉터리에 압축만 풀어 기존 설치를 유지한다.
+
+```powershell
+$ciDirectory = Join-Path $env:TEMP ('gta-ci-' + [guid]::NewGuid().ToString('N'))
+$ahk = & .\tools\ci\install-autohotkey.ps1 -Destination (Join-Path $ciDirectory 'ahk')
+& .\tools\ci\run-checks.ps1 -AhkPath $ahk -OutputDirectory (Join-Path $ciDirectory 'checks')
+& .\tools\ci\package-macro.ps1 -CheckResults (Join-Path $ciDirectory 'checks\results.json') -OutputDirectory (Join-Path $ciDirectory 'package')
+```
+
+패키지는 검사를 통과한 소스와 이미지, 캡처 런타임, 기능을 꺼 둔 `Config.example.ini`, 파일별 SHA-256을 담는다. 실제 `Config.ini`는 포함하지 않는다. 처음 설치할 때 예제를 `Config.ini`로 복사해 검토하고 필요한 기능을 켠다. 기존 설치를 갱신할 때는 설정을 보존한다. 패키지 생성은 매크로 재시작·실행 파일 설치·작업 스케줄러 갱신을 수행하지 않는다.
+
 ## 사용법을 보는 곳
 
 - 게임 안: `Num.` 한 번이면 현재 키맵 툴팁이 8초 뜬다(다시 누르면 닫힘). 2초 안에 두 번 누르면 설정 창이 열린다.
@@ -285,4 +300,7 @@ End 는 도는 것을 전부 멈추고(카요 타이머 포함) 누른 키를 �
 - `tools\gta-perf-watch.ps1`: 작업 스케줄러가 10분마다 돌리는 성능 감시. 게임에 입력은 안 보내고, 게임이 꺼져 있을 때 `settings.xml` 의 그래픽 단계를 바꾼다. 기록은 `%USERPROFILE%\gta-perf\`.
 - `tools\kick-watch\kick-watch.pyw`: 작업 스케줄러 "GTA Kick Watch" 가 5분마다 pythonw 로 띄우는 킥 원인 기록기(이미 돌고 있으면 바로 끝난다). 게임과 매크로에 입력을 보내지 않고 `Main.ahk` 와 키가 겹치지 않는다. 기록은 `%USERPROFILE%\gta-kick\`: `fg.log`(전경 창이 바뀔 때마다 날짜·실행 파일·제목), `events.log`(런처 로그에 세션 변경이 찍힌 순간의 전경 창·마지막 입력·AFK 로그 끝 3줄), `shots\`(세션 변경 2·15·45초 뒤 전체 화면. 튕긴 뒤의 알림 문구가 남는다).
 
-`Lester-Ver2.0/` 과 `CodeSwine GTA5O - Private Public Lobby V1.0.1/` 은 별개 도구다.
+별도로 보관하는 도구는 `third_party/` 아래에 있다. Main의 CI 검사와 배포 패키지에는 넣지 않는다. 기존 폴더 안의 파일과 상대 경로는 그대로 보존했다.
+
+- `third_party/Lester-Ver2.0/`: 자체 Python 앱. 해당 디렉터리로 이동한 뒤 그 안의 [README](third_party/Lester-Ver2.0/README.md)에 따라 의존성을 설치하고 `python main.py`로 실행한다.
+- `third_party/CodeSwine GTA5O - Private Public Lobby V1.0.1/`: `CodeSwine-Private_Public_Lobby.exe`와 인접한 DLL·설정을 함께 보관한다. 사용하는 바로가기는 새 디렉터리를 대상으로 지정한다.

@@ -833,7 +833,10 @@ EarnSnapMinimap(tag) {
         x := cx + Round(EARN_MINIMAP[1] * sx), y := cy + Round(EARN_MINIMAP[2] * sy)
         w := Round((EARN_MINIMAP[3] - EARN_MINIMAP[1]) * sx), h := Round((EARN_MINIMAP[4] - EARN_MINIMAP[2]) * sy)
         ; 동기로 찍는다: 비동기(Run)로 하면 다음 단계(재접속의 P)가 먼저 눌려 일시정지 메뉴의 흐린 배경이 찍힌다(0927 실측)
-        RunWait(A_ComSpec ' /c powershell -NoProfile -ExecutionPolicy Bypass -File "' A_Temp '\claude\capscreen.ps1" -Name gta-earn-' tag ' -X ' x ' -Y ' y ' -W ' w ' -H ' h ' -Scale 1', , "Hide")
+        ; Main과 tools/earn-test 어느 진입점에서도 이 파일을 기준으로 런타임 도구를 찾는다.
+        SplitPath(A_LineFile, , &sourceDir)
+        captureScript := sourceDir "\..\..\Core\ScreenCapture.ps1"
+        RunWait('"' A_WinDir '\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "' captureScript '" -Name "gta-earn-' tag '" -X ' x ' -Y ' y ' -W ' w ' -H ' h ' -Scale 1', , "Hide")
     }
 }
 
