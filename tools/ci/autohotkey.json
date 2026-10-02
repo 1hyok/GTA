@@ -1,0 +1,8 @@
+{
+  "version": "2.0.28",
+  "releaseUrl": "https://github.com/AutoHotkey/AutoHotkey/releases/tag/v2.0.28",
+  "archiveUrl": "https://github.com/AutoHotkey/AutoHotkey/releases/download/v2.0.28/AutoHotkey_2.0.28.zip",
+  "archiveSha256": "B63BE7548792B4AD0DFE424D91CC69376694ED2F758245B7A75A0C77D693B478",
+  "executable": "AutoHotkey64.exe",
+  "executableSha256": "373181727D1AE858564D4DAA678F9FA6CF330D1751F8B284A369C79AFDB05E98"
+}
