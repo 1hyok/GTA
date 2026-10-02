@@ -13,7 +13,8 @@ ToggleAutoClick() {
         clickRunning := true
         ShowTooltip("자동 클릭 시작 (간격: " clickInterval "ms) - 아무 키로 중지")
         DoClick()
-        SetTimer(DoClick, clickInterval)
+        if (clickRunning)
+            SetTimer(DoClick, clickInterval)
     } else {
         clickRunning := false
         ShowTooltip("자동 클릭 중지")
