@@ -1,16 +1,16 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 param([string]$AhkPath = "$env:LOCALAPPDATA\Programs\AutoHotkey\v2\AutoHotkey64.exe")
 $ErrorActionPreference = 'Stop'
 # Exercise the production scheduler with all window/input/timer dependencies replaced.
 $source = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\Earner.ahk') -Raw -Encoding UTF8
 $tick = [regex]::Match($source, '(?ms)^EarnTick\(\) \{.*?^\}').Value
 if (-not $tick) { throw 'EarnTick missing' }
-$guards = @('EarnInputGuardStart', 'EarnInputGuardStop', 'EarnInputWatch', 'EarnInputAllowed', 'EarnGamePID', 'EarnTaskList', 'EarnEnabledText', 'SetEarner') | ForEach-Object {
+$guards = @('EarnInputGuardStart', 'EarnInputGuardStop', 'EarnInputWatch', 'EarnInputAllowed', 'EarnGamePID', 'EarnTaskList', 'EarnEnabledText', 'SetEarner', 'EarnStatusText') | ForEach-Object {
     $body = [regex]::Match($source, ('(?ms)^' + $_ + '\([^\r\n]*\) \{.*?^\}')).Value
     if (-not $body) { throw "Production function missing: $_" }
     $body
 }
-$production = ($tick + "`n" + ($guards -join "`n")).Replace('A_TimeIdlePhysical', 'idleMs')
+$production = ($tick + "`n" + ($guards -join "`n")).Replace('A_TimeIdlePhysical', 'idleMs').Replace('A_TickCount', 'fakeTick')
 $driver = @'
 #Requires AutoHotkey v2.0
 #SingleInstance Off
@@ -18,7 +18,7 @@ $driver = @'
 #Warn All, StdOut
 global gEarnOn, gEarnBusy, gEarnDue, gEarnDone, gEarnTasks, gEarnCurrent, gEarnFail, gEarnNextDue, gEarnSoftFails, gEarnRetryIn, gAbort, config, GTA_WIN, afkOn
 global calls, releaseCount, stopped, mode, windowExists, focused, otherBusy, activationCount, idleMs, gEarnGuardArmed, timers
-global gEarnGamePID, fakePID, lockAvailable, lockCalls, lockReleases, lockHeld, hooks, checkCount := 0
+global gEarnGamePID, fakePID, fakeTick, gEarnGuardStartedTick, lockAvailable, lockCalls, lockReleases, lockHeld, hooks, checkCount := 0
 Reset()
 gEarnOn := false
 EarnTick()
@@ -39,6 +39,41 @@ Reset()
 config["Settings"]["EarnUserIdleSec"] := 1000000000
 EarnTick()
 Check(calls.Length = 0, "user active")
+Reset()
+idleMs := 1999
+EarnTick()
+Check(calls.Length = 0 && lockCalls = 0 && !gEarnGuardArmed, "two-second start gate waits at 1999ms")
+fakeTick++, idleMs++
+EarnTick()
+Check(calls.Length = 1 && gEarnDone["bunker"] = 1 && lockReleases = 1, "two-second start gate executes at 2000ms")
+Reset()
+idleMs := 2000
+mode := "long-readonly"
+EarnTick()
+Check(gEarnOn && !gAbort && gEarnDone["bunker"] = 1 && lockReleases = 1, "pre-start input never aborts long readonly work")
+Reset()
+idleMs := 2000
+mode := "long-physical"
+EarnTick()
+Check(!gEarnOn && gAbort && idleMs > 2000 && gEarnDone["bunker"] = 0 && lockReleases = 1,
+    "input during blocked work aborts even when newer idle exceeds start wait")
+Reset()
+idleMs := 0
+Check(EarnStatusText() = "수익: 입력 안정 대기 2초", "overlay shows two-second input countdown")
+idleMs := 1999
+Check(EarnStatusText() = "수익: 입력 안정 대기 1초", "overlay keeps countdown before boundary")
+idleMs := 2000
+Check(EarnStatusText() = "수익: bunker 시작 대기", "overlay clears input countdown at boundary")
+focused := false
+Check(EarnStatusText() = "수익: GTA 포커스 대기", "overlay explains focus wait")
+focused := true, otherBusy := true
+Check(EarnStatusText() = "수익: 다른 매크로 종료 대기", "overlay explains busy macro wait")
+otherBusy := false
+for id in ["bunker", "dj"]
+    gEarnDue[id] := A_TickCount + 5000
+Check(EarnStatusText() = "수익: 다음 bunker 0:05 뒤", "overlay preserves future due countdown")
+gEarnCurrent := "bunker", idleMs := 0, focused := false
+Check(EarnStatusText() = "수익: bunker 진행 중", "running task status precedes startup wait")
 Reset()
 otherBusy := true
 EarnTick()
@@ -94,6 +129,7 @@ mode := "focus"
 EarnTick()
 Check(!gEarnOn && gAbort && !gEarnGuardArmed && gEarnDone["bunker"] = 0, "focus loss stops")
 Reset()
+config["Settings"]["EarnUserIdleSec"] := 0
 mode := "idle-zero"
 EarnTick()
 Check(!gEarnOn && gAbort, "physical guard still enabled with zero start wait")
@@ -143,7 +179,7 @@ Check(EarnTaskList()[5].on, "cargo alone enables staff")
 Reset()
 start := A_TickCount
 SetEarner(true)
-Check(gEarnOn && gEarnGamePID = fakePID && hooks = 2 && timers[timers.Length] = 5000, "enable binds current game and timer")
+Check(gEarnOn && gEarnGamePID = fakePID && hooks = 2 && timers[timers.Length] = 1000, "enable binds current game and one-second timer")
 Check(gEarnDue["safe"] >= start && gEarnDue["safe"] <= A_TickCount
     && gEarnDue["warehouse"] >= start && gEarnDue["warehouse"] <= A_TickCount, "safe and warehouse first check immediately")
 Check(gEarnDue["bunker"] <= A_TickCount && gEarnDue["dj"] <= A_TickCount, "bunker and DJ fresh read immediately")
@@ -173,21 +209,34 @@ ExitApp(0)
 
 Reset() {
     global
-    idleMs := 60000, gEarnGuardArmed := false, timers := [], fakePID := 101, gEarnGamePID := 101
+    fakeTick := 100000, idleMs := 60000, gEarnGuardArmed := false, gEarnGuardStartedTick := 0
+    timers := [], fakePID := 101, gEarnGamePID := 101
     lockAvailable := true, lockCalls := 0, lockReleases := 0, lockHeld := false, hooks := 0
     gEarnOn := true, gEarnBusy := false, gEarnCurrent := "", gEarnFail := "", gEarnRetryIn := 0, gAbort := false, afkOn := false
     gEarnDue := Map("bunker", A_TickCount - 1, "dj", A_TickCount - 1)
     gEarnDone := Map("bunker", 0, "dj", 0), gEarnNextDue := Map(), gEarnSoftFails := Map()
     gEarnTasks := [{id:"bunker", label:"bunker", on:true, every:300000, fn:RunTask.Bind("bunker")}, {id:"dj", label:"dj", on:true, every:300000, fn:RunTask.Bind("dj")}]
-    config := Map("Settings", Map("EarnUserIdleSec", 0, "EarnSoftFailMax", 1, "EarnMCTOnly",1,
+    config := Map("Settings", Map("EarnUserIdleSec", 2, "EarnSoftFailMax", 1, "EarnMCTOnly",1,
         "EarnSafe",1,"EarnSafeIntervalMin",5,"EarnSafeFirstMin",0,"EarnBunker",1,"EarnBunkerIntervalSec",8400,
         "EarnDJ",1,"EarnDJIntervalMin",5,"EarnDispatch",0,"EarnDispatchIntervalMin",48,"EarnDispatchFirstMin",0),
         "Features", Map("AntiAFK", 0))
     GTA_WIN := "fake", calls := [], releaseCount := 0, stopped := 0, mode := "ok", windowExists := true, focused := true, otherBusy := false, activationCount := 0
 }
 RunTask(id) {
-    global calls, mode, gEarnNextDue, gEarnRetryIn, idleMs, focused, fakePID
+    global calls, mode, gEarnNextDue, gEarnRetryIn, idleMs, focused, fakePID, fakeTick
     calls.Push(id)
+    if (mode = "long-readonly") {
+        fakeTick += 30000
+        idleMs += 30000
+        EarnInputWatch()
+        return true
+    }
+    if (mode = "long-physical") {
+        fakeTick += 10000
+        idleMs := 5000
+        EarnInputWatch()
+        return true
+    }
     if (mode = "pid") {
         fakePID++
         EarnInputWatch()
@@ -292,6 +341,7 @@ EarnLog(*) {
 ShowTooltip(*) {
 }
 '@
+$driver = $driver.Replace('A_TickCount', 'fakeTick')
 $previous = [Console]::InputEncoding
 [Console]::InputEncoding = New-Object Text.UTF8Encoding($false)
 try {
@@ -310,7 +360,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 41 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 52 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout
