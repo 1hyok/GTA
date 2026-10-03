@@ -1,4 +1,4 @@
-; 바인우드 앱의 실제 금고 금액을 확인한다. 나이트클럽에 걷거나 재접속하지 않는다.
+﻿; 바인우드 앱의 실제 금고 금액을 확인한다. 나이트클럽에 걷거나 재접속하지 않는다.
 EarnVinewoodSafeTask() {
     if (!EarnVinewoodOpen())
         return false
@@ -18,10 +18,17 @@ EarnVinewoodSafeTask() {
     if (!EarnSelectText("i)^Nightclub$", "i)^THE VINEWOOD CLUB APP$", 7))
         return EarnFail("금고: 수익 목록에서 나이트클럽 선택 미확인")
     ; 행에는 금액이 없다. 선택한 행과 하단의 나이트클럽 전용 설명을 같은 화면에서 읽는다.
-    lines := EarnVinewoodAmountLines()
-    amount := EarnVinewoodNightclubAmount(lines)
-    if (amount < 0 || amount > 250000)
+    ; 한 번의 판독이 깨져도(1003 19:22 실측) 같은 화면을 세 번까지 다시 읽고, 끝내 실패하면 읽은 줄을 남긴다.
+    Loop 3 {
+        lines := EarnVinewoodAmountLines()
+        amount := EarnVinewoodNightclubAmount(lines)
+        if (amount >= 0 || !IsObject(lines) || A_Index = 3 || !EarnSleep(500))
+            break
+    }
+    if (amount < 0 || amount > 250000) {
+        EarnLog("금고: 판독한 줄 " EarnVinewoodAmountDebug(lines))
         return EarnFail("금고: 나이트클럽 금액 판독 실패")
+    }
     EarnLog("금고: 나이트클럽 $" amount)
     if (amount = 0 || !EarnVinewoodSafeClaimDue(amount))
         return EarnVinewoodClose()
@@ -64,6 +71,7 @@ EarnVinewoodAmountLines() {
 }
 
 ; 금액을 다른 사업장의 설명이나 Nightclub 이름 옆의 임의 숫자에서 추측하지 않는다.
+; "your" 는 반투명 배경에서 자주 깨진다(1003 실측: "ydÜr"). 금액과 Nightclub safe 는 그대로 요구한다.
 EarnVinewoodNightclubAmount(lines) {
     if (!IsObject(lines) || !EarnFindText(lines, "i)^THE VINEWOOD CLUB APP$"))
         return -1
@@ -75,12 +83,27 @@ EarnVinewoodNightclubAmount(lines) {
         if (RegExMatch(line.text, "i)^Your Nightclub safe is empty\.$")) {
             amount := 0
             matches += 1
-        } else if (RegExMatch(line.text, "i)^Claim \$[0-9,]+ from your Nightclub safe\.$")) {
+        } else if (RegExMatch(line.text, "i)^Claim \$[0-9,]+ from \S+ Nightclub safe\.$")) {
             amount := EarnReadDollars(line.text)
             matches += 1
         }
     }
     return matches = 1 ? amount : -1
+}
+
+; 실패 원인을 녹화 없이도 가릴 수 있게 앱 제목·나이트클럽 행 선택·하단 설명만 한 줄로 남긴다.
+EarnVinewoodAmountDebug(lines) {
+    if (!IsObject(lines))
+        return "(OCR 실패)"
+    out := ""
+    for line in lines {
+        if (!RegExMatch(line.text, "i)vinewood club app|nightclub|claim|safe"))
+            continue
+        out .= (out = "" ? "" : " | ") line.text
+        if (RegExMatch(line.text, "i)^Nightclub$"))
+            out .= EarnMenuRowSelected(line) ? "[선택]" : "[미선택]"
+    }
+    return out = "" ? "(해당 줄 없음)" : out
 }
 
 EarnVinewoodOpen() {

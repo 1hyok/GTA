@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 Runs the real Vinewood flow and text-selection/parser helpers against a fake menu.
 No game input, screen capture, window activation, or Main.ahk execution.
@@ -94,8 +94,9 @@ RunTests() {
     lines := Frame("Claim $250,000 from your Nightclub safe.")
     Check(EarnVinewoodNightclubAmount(lines) = 250000, "comma-formatted detail amount")
     Check(EarnVinewoodNightclubAmount(Frame("Claim $250000 from your Nightclub safe.")) = 250000, "plain detail amount")
+    Check(EarnVinewoodNightclubAmount(Frame("Claim $50000 from ydÜr Nightclub safe.")) = 50000, "garbled your still reads amount")
     Check(EarnVinewoodNightclubAmount(Frame("Your Nightclub safe is empty.")) = 0, "explicit nightclub empty detail")
-    for text in ["Claim $250000 from your Arcade safe.", "Your Arcade safe is empty.", "Nightclub $250000", "Claim $25O000 from your Nightclub safe.", "Claim $250,00 from your Nightclub safe.", "Claim $250 000 from your Nightclub safe.", "Claim $250000 from your Nightclub safe. Confirm?"]
+    for text in ["Claim $250000 from your Arcade safe.", "Your Arcade safe is empty.", "Nightclub $250000", "Claim $25O000 from your Nightclub safe.", "Claim $250,00 from your Nightclub safe.", "Claim $250 000 from your Nightclub safe.", "Claim $250000 from your Nightclub safe. Confirm?", "Claim $250000 from Nightclub safe.", "Claim $250000 from your Arcade Nightclub safe"]
         Check(EarnVinewoodNightclubAmount(Frame(text)) = -1, "reject detail: " text)
     Check(EarnVinewoodNightclubAmount(false) = -1, "OCR failure is not an empty safe")
 }
