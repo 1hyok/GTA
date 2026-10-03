@@ -11,6 +11,7 @@ param(
     [int]$H = 0,
     [double]$Scale = 2,
     [switch]$WhiteText,
+    [ValidateSet('en-US', 'ko')][string]$OcrLanguage = 'en-US',
     [Parameter(Mandatory = $true)][string]$OutputPath
 )
 
@@ -55,13 +56,13 @@ try {
     $null = [Windows.Media.Ocr.OcrEngine, Windows.Foundation, ContentType = WindowsRuntime]
     $null = [Windows.Media.Ocr.OcrResult, Windows.Foundation, ContentType = WindowsRuntime]
     $null = [Windows.Globalization.Language, Windows.Globalization, ContentType = WindowsRuntime]
-    $language = New-Object Windows.Globalization.Language 'en-US'
+    $language = New-Object Windows.Globalization.Language $OcrLanguage
     if (-not [Windows.Media.Ocr.OcrEngine]::IsLanguageSupported($language)) {
         $available = @([Windows.Media.Ocr.OcrEngine]::AvailableRecognizerLanguages | ForEach-Object { $_.LanguageTag }) -join ', '
-        throw "Windows OCR en-US is unavailable. Installed OCR languages: $available"
+        throw "Windows OCR $OcrLanguage is unavailable. Installed OCR languages: $available"
     }
     $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage($language)
-    if ($null -eq $engine) { throw 'Windows OCR failed to create the en-US recognizer.' }
+    if ($null -eq $engine) { throw "Windows OCR failed to create the $OcrLanguage recognizer." }
     $asyncAdapter = @([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
         $_.Name -eq 'AsTask' -and $_.IsGenericMethodDefinition -and
         $_.GetParameters().Count -eq 1 -and
@@ -225,7 +226,7 @@ public static class EarnOcrImageFilter {
     [IO.File]::WriteAllLines($stagingFile, $rows, (New-Object Text.UTF8Encoding $true))
     [IO.File]::Move($stagingFile, $outputFile)
     $stagingFile = $null
-    Write-Output ('OK en-US lines={0} region={1},{2},{3},{4} output={5}' -f ($rows.Count - 1), $X, $Y, $W, $H, $outputFile)
+    Write-Output ('OK ' + $OcrLanguage + ' lines={0} region={1},{2},{3},{4} output={5}' -f ($rows.Count - 1), $X, $Y, $W, $H, $outputFile)
     $exitCode = 0
 }
 catch {
