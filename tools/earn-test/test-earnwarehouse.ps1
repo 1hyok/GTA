@@ -12,6 +12,10 @@ $production = Get-Content -LiteralPath (Join-Path $root 'Features\Earn\EarnWareh
 $pixelPattern = '(?ms)^EarnWarehouseBrightLabel\([^\r\n]*\) \{.*?^\}'
 if ([regex]::Matches($production, $pixelPattern).Count -ne 1) { throw 'Expected one production pixel sampler.' }
 $production = [regex]::Replace($production, $pixelPattern, '')
+$dialogPattern = '(?ms)^EarnWarehouseDialogClick\([^
+]*\) \{.*?^\}'
+if ([regex]::Matches($production, $dialogPattern).Count -ne 1) { throw 'Expected one production dialog click.' }
+$production = [regex]::Replace($production, $dialogPattern, '')
 $production += "`n" + (Get-Content -LiteralPath (Join-Path $root 'Features\Earn\EarnPolicy.ahk') -Raw -Encoding UTF8)
 $production += "`n" + (Get-Content -LiteralPath (Join-Path $root 'Features\Earn\EarnWarehouseRead.ahk') -Raw -Encoding UTF8)
 $fixture = Join-Path $PSScriptRoot 'test-earnwarehouse-read-fixtures\stock.tsv'
@@ -21,7 +25,8 @@ $driver = @'
 #NoTrayIcon
 #Warn All, StdOut
 global whTests := 0, whMode, whState, whAssigned, whCounts, whActive, whSelected,
-    whSelections, whAttempts, whMoves, whBegins, whEnds, whError, whHistory
+    whSelections, whAttempts, whMoves, whBegins, whEnds, whError, whHistory,
+    whPending := "", whCancels := 0, whTooltips := 0
 try {
     RunWarehouseTests()
     FileAppend("PASS EarnWarehouse cases=" whTests " (no game input)`n", "*")
@@ -32,7 +37,7 @@ try {
 }
 
 RunWarehouseTests() {
-    global whAssigned, whCounts, whActive, whAttempts, whMoves, whBegins, whEnds, whSelections, whState, whHistory
+    global whAssigned, whCounts, whActive, whAttempts, whMoves, whBegins, whEnds, whSelections, whState, whHistory, whTooltips, whCancels
     scenarios := [
         ["normal",true,1], ["two_moves",true,2], ["no_full",true,0],
         ["no_available",true,0], ["idle_staff",false,0], ["stock_noocr",false,0],
@@ -40,14 +45,16 @@ RunWarehouseTests() {
         ["target_inactive",false,0], ["move_noocr",false,0],
         ["move_noresult",false,1], ["move_rejected",false,1],
         ["missing_staff",false,0], ["ambiguous_identity",false,0],
-        ["end_rejected",false,1], ["begin_rejected",false,0]
+        ["end_rejected",false,1], ["begin_rejected",false,0],
+        ["full_staff",true,1], ["full_missing",false,0], ["full_ambiguous",false,0],
+        ["dialog_missing",false,1]
     ]
     for scenario in scenarios {
         ResetWarehouse(scenario[1])
         actual := EarnWarehouseTask()
         Check(actual = scenario[2] && whAttempts = scenario[3], scenario[1] " result=" actual " attempts=" whAttempts)
         Check(whBegins = 1 && whEnds = (scenario[1] = "begin_rejected" ? 0 : 1), scenario[1] " MCT lifetime")
-        Check(whAssigned[3] = (scenario[1] = "idle_staff" ? "" : "organic")
+        Check(whAssigned[3] = (scenario[1] = "idle_staff" ? "" : scenario[1] = "full_staff" ? "pharmaceutical" : "organic")
             && whAssigned[4] = "printing" && whAssigned[5] = "cash", scenario[1] " producing and idle staff preserved")
         Check(whAttempts <= 2, scenario[1] " no repeated assignment requests")
         if (scenario[1] = "normal")
@@ -55,9 +62,27 @@ RunWarehouseTests() {
         if (scenario[1] = "two_moves")
             Check(whHistory.Length = 2 && whHistory[1] = "cargo:south_american"
                 && whHistory[2] = "sporting:pharmaceutical", "each move recomputes after changed screen")
+        if (scenario[1] = "full_staff")
+            Check(whMoves = 1 && whHistory[1] = "organic:pharmaceutical" && whState = "mct",
+                "observed full gray technician 3 moves only from Organic 80/80 to Pharmaceutical 16/20")
         if (scenario[1] = "move_noresult" || scenario[1] = "move_rejected")
             Check(whAssigned[1] = "cargo" && whAttempts = 1, scenario[1] " never retries unconfirmed click")
+        if (scenario[1] = "move_noresult")
+            Check(whCancels = 1 && whState = "warehouse", "unconfirmed assignment dialog is cancelled once before cleanup")
     }
+
+    ; Three or more full goods: notify once per change and keep it for the overlay.
+    global gEarnSellNotice := ""
+    three := [{id:"south_american",count:10,capacity:10}, {id:"organic",count:80,capacity:80},
+        {id:"cash",count:40,capacity:40}, {id:"cargo",count:31,capacity:50}]
+    two := [{id:"south_american",count:10,capacity:10}, {id:"organic",count:80,capacity:80},
+        {id:"cash",count:39,capacity:40}]
+    whTooltips := 0
+    Check(EarnWarehouseSellNotice(three) = 3 && InStr(gEarnSellNotice, "판매 필요") && whTooltips = 1,
+        "three full goods raise a sell notice")
+    Check(EarnWarehouseSellNotice(three) = 3 && whTooltips = 1, "unchanged sell notice is not repeated")
+    Check(EarnWarehouseSellNotice(two) = 2 && gEarnSellNotice = "", "two full goods clear the sell notice")
+    Check(EarnWarehouseSellNotice(three) = 3 && whTooltips = 2, "notice returns after goods fill again")
 
     ; A native click/pixel exception must still leave the shared MCT lifetime.
     ; Error handling inside the real MCT End is covered in test-earntasks.ps1.
@@ -71,6 +96,24 @@ RunWarehouseTests() {
         Check(whBegins = 1 && whEnds = 1, mode " MCT cleanup called once")
         Check(whAttempts = (mode = "entry_throw" ? 0 : 1) && whMoves = 0,
             mode " failed request is not sent again")
+    }
+
+    ; A scheduler batch owns the already-open MCT session. The same real body
+    ; must run, return failures and propagate exceptions without acquiring or
+    ; closing that session, even when either standalone lifetime hook rejects.
+    for scenario in [["normal",true,1,""], ["stock_noocr",false,0,""],
+        ["begin_rejected",true,1,""], ["end_rejected",true,1,""],
+        ["entry_throw",false,0,"warehouse native exception"],
+        ["assignment_throw",false,1,"warehouse native exception"]] {
+        ResetWarehouse(scenario[1])
+        actual := false, caught := ""
+        try actual := EarnWarehouseTask(false)
+        catch as e
+            caught := e.Message
+        Check(actual = scenario[2] && caught = scenario[4], "batch " scenario[1] " body result or exception preserved")
+        Check(whBegins = 0 && whEnds = 0, "batch " scenario[1] " leaves MCT lifetime to its caller")
+        Check(whAttempts = scenario[3] && (!actual || whState = "mct"),
+            "batch " scenario[1] " executes the body once and returns successful work to MCT")
     }
 
     ResetWarehouse("normal")
@@ -111,7 +154,7 @@ RunWarehouseTests() {
 
 ResetWarehouse(mode) {
     global whMode, whState, whAssigned, whCounts, whActive, whSelected, whSelections,
-        whAttempts, whMoves, whBegins, whEnds, whError, whHistory
+        whAttempts, whMoves, whBegins, whEnds, whError, whHistory, whPending, whCancels
     whMode := mode, whState := "mct", whAssigned := ["cargo","sporting","organic","printing","cash"]
     whCounts := Map("cargo",50,"sporting",51,"south_american",10,"pharmaceutical",16,"organic",70,"printing",44,"cash",29)
     whActive := Map("cargo",true,"sporting",true,"south_american",true,"pharmaceutical",true,"organic",true,"printing",true,"cash",true)
@@ -123,8 +166,13 @@ ResetWarehouse(mode) {
         whAssigned[3] := ""
     if (mode = "two_moves")
         whCounts["sporting"] := 100, whCounts["south_american"] := 5
+    if (InStr(mode,"full_") = 1) {
+        ; 2026-10-03 actual stock when the selected Organic person turned gray.
+        whCounts["cargo"] := 31, whCounts["sporting"] := 56, whCounts["organic"] := 80,
+            whCounts["printing"] := 58, whCounts["cash"] := 36
+    }
     whSelected := 0, whSelections := 0, whAttempts := 0, whMoves := 0,
-        whBegins := 0, whEnds := 0, whError := "", whHistory := []
+        whBegins := 0, whEnds := 0, whError := "", whHistory := [], whPending := "", whCancels := 0
 }
 
 EarnTaskMCTBegin() {
@@ -138,7 +186,7 @@ EarnTaskMCTEnd() {
     return whMode != "end_rejected"
 }
 EarnUIClick(name, x, y, *) {
-    global whState, whSelected, whSelections, whAttempts, whMoves, whAssigned, whMode, whHistory
+    global whState, whSelected, whSelections, whAttempts, whMoves, whAssigned, whMode, whHistory, whPending
     if (name = "mct_nightclub_card") {
         if (whMode = "entry_throw")
             throw Error("warehouse native exception")
@@ -171,11 +219,28 @@ EarnUIClick(name, x, y, *) {
         throw Error("warehouse native exception")
     if (whMode = "move_rejected")
         return false
-    if (whMode != "move_noresult") {
-        whHistory.Push(whAssigned[whSelected] ":" destination)
-        whAssigned[whSelected] := destination, whMoves++
-    }
+    ; The real UI asks for confirmation before changing the assignment.
+    if (whMode != "dialog_missing")
+        whState := "dialog", whPending := destination
     return true
+}
+EarnWarehouseDialogClick(x, y) {
+    global whState, whPending, whSelected, whAssigned, whMoves, whHistory, whMode, whCancels
+    if (whState != "dialog" || y != 612 || (x != 1160 && x != 756))
+        throw Error("Unexpected dialog click")
+    if (x = 756) {
+        whState := "warehouse", whCancels++
+        return true
+    }
+    if (whMode = "move_noresult")
+        return true
+    whHistory.Push(whAssigned[whSelected] ":" whPending)
+    whAssigned[whSelected] := whPending, whMoves++, whState := "warehouse"
+    return true
+}
+ShowTooltip(*) {
+    global whTooltips
+    whTooltips++
 }
 EarnUIReady(name, *) {
     global whState
@@ -189,7 +254,7 @@ EarnSeen(name, area, *) {
     global whMode, whSelected, whAssigned, whSelections
     if (InStr(name, "warehouse_staff_") = 1)
         return whMode != "missing_staff" || name != "warehouse_staff_3"
-    if (name != "warehouse_person_foot")
+    if (name != "warehouse_person_foot" && name != "warehouse_person_full_foot")
         throw Error("Unexpected template " name)
     requestedId := ""
     for id, tile in EarnWarehouseTiles()
@@ -200,6 +265,13 @@ EarnSeen(name, area, *) {
     if (whMode = "ambiguous_identity" && whSelected = 1)
         return requestedId = "cargo" || requestedId = "pharmaceutical"
     identity := whMode = "source_changed" && whSelections > 5 ? "cash" : whAssigned[whSelected]
+    if (name = "warehouse_person_full_foot") {
+        if (whMode = "full_ambiguous" && whSelected = 3)
+            return requestedId = "organic" || requestedId = "south_american"
+        return whMode = "full_staff" && identity = "organic" && requestedId = identity
+    }
+    if (InStr(whMode,"full_") = 1 && identity = "organic")
+        return false
     return requestedId = identity
 }
 EarnReadScreen(area) {
@@ -222,6 +294,11 @@ EarnReadScreen(area) {
             rows.Push({x:Integer(columns[1]),y:Integer(columns[2]),w:Integer(columns[3]),h:Integer(columns[4]),text:text})
         }
         return rows
+    }
+    if (area[2] = 420) {
+        global whState
+        return whState = "dialog" ? [{text:"Assign Technician"},
+            {text:"Are you sure you'd like to assign this technician to accrue Meth?"}] : []
     }
     if (area[2] != 548)
         throw Error("Unexpected OCR area")
@@ -292,7 +369,7 @@ try {
     }
     $stdout = $process.StandardOutput.ReadToEnd().Trim()
     $stderr = $process.StandardError.ReadToEnd().Trim()
-    if ($process.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnWarehouse cases=85 (no game input)') {
+    if ($process.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnWarehouse cases=125 (no game input)') {
         throw "Warehouse flow failed (exit=$($process.ExitCode))`nstdout: $stdout`nstderr: $stderr"
     }
     Write-Output $stdout

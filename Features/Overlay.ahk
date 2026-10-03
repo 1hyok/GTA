@@ -205,5 +205,8 @@ RunningItems() {
         items.Push("메뉴 매크로 진행 중")
     if (IsSet(gEarnOn) && (earn := EarnStatusText()) != "")
         items.Push(earn)
+    ; 창고 작업이 남긴 판매 필요 알림은 다음 관측에서 풀릴 때까지 계속 보인다.
+    if (IsSet(gEarnSellNotice) && gEarnSellNotice != "")
+        items.Push(gEarnSellNotice)
     return items
 }

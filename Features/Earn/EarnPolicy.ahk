@@ -1,9 +1,10 @@
 ; 벙커 구매 계획. 화면 판독값으로 다음 20% 소모 경계를 고른다.
-; 기본 8400초는 풀업그레이드·제조 전용·기본 속도에서 140분(5칸)이다.
+; 기본 6720초는 풀업그레이드·제조 전용·기본 속도에서 112분(4칸)이다.
+; 남은 1칸은 약 28분 생산분이므로 약 10분 배송 동안에도 생산을 이어간다.
 ; waitMs는 같은 조건의 예상 시간이다. 실제 소비처는 다시 화면을 읽어야 한다.
 ; buy=true도 결제 허가는 아니다. 배송 중이 아닌지 확인하고, 확인창의 실제
 ; 가격을 EarnBunkerPriceAllowed로 검사한 뒤에만 결제한다.
-EarnBunkerOrderPlan(supplyFraction, stockFraction, requestedSeconds := 8400) {
+EarnBunkerOrderPlan(supplyFraction, stockFraction, requestedSeconds := 6720) {
     if (!IsNumber(supplyFraction) || !IsNumber(stockFraction)
         || supplyFraction < 0 || supplyFraction > 1 || stockFraction < 0 || stockFraction > 1)
         return {buy: false, bars: 0, waitMs: 300000, reason: "invalid_read"}

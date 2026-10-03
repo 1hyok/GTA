@@ -20,7 +20,12 @@ $cases = @(
     @('clipped-mct','mct',0,0,0), @('clipped-mct','laptop',0,0,0),
     @('screen-only','mct',0,0,0), @('screen-only','laptop',0,0,0),
     @('whole-edge-mct','mct',1,32.5,924.5,1), @('whole-edge-mct','laptop',0,0,0),
-    @('whole-edge-laptop','laptop',1,33,935,1), @('whole-edge-laptop','mct',0,0,0)
+    @('whole-edge-laptop','laptop',1,33,935,1), @('whole-edge-laptop','mct',0,0,0),
+    @('arcade-fresh-route-end','mct',1,230.5,971), @('arcade-fresh-route-end','laptop',1,114.5,1027),
+    @('arcade-fresh-route-state','mct',1,73.5,879), @('arcade-fresh-route-state','laptop',1,163,971),
+    @('arcade-face-resume-result','mct',0,0,0), @('arcade-face-resume-result','laptop',1,172,984),
+    @('arcade-stair-approach','mct',1,172,1000.5), @('arcade-stair-approach','laptop',0,0,0),
+    @('arrow-only','mct',0,0,0), @('arrow-only','laptop',0,0,0)
 )
 $previousEncoding = [Console]::InputEncoding
 try {
@@ -74,7 +79,7 @@ for c in cases {
         ExitApp(1)
     }
 }
-FileAppend("PASS EarnBlip: 16 screenshot cases; no game input`n", "*")
+FileAppend("PASS EarnBlip: 26 screenshot cases; no game input`n", "*")
 ExitApp(0)
 '@
     [Console]::InputEncoding = New-Object Text.UTF8Encoding($false)
@@ -93,7 +98,7 @@ ExitApp(0)
         if (!$p.WaitForExit(10000)) { $p.Kill(); throw 'Offline blip test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS EarnBlip: 16 screenshot cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS EarnBlip: 26 screenshot cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout
