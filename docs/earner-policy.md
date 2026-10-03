@@ -71,7 +71,7 @@ GTA+의 Vinewood Club 앱은 사업장 금고 수익을 원격 회수하는 기�
 
 스페셜 패키지 직원 조달의 기본 비용은 창고당 회당 $7,500다. [Rockstar 1.61 패치노트](https://support.rockstargames.com/articles/5aud9bTiQluHnVEP6x7YRp/gtav-title-update-1-61-notes-ps4-ps5-xbox-one-xbox-series-x-s-pc) 보석 집행 요원의 수익은 Bail Office 금고에 들어간다. [Rockstar 1.69 패치노트](https://support.rockstargames.com/articles/eUgRHVRSN2V9gimBT32YX/gtav-title-update-1-69-notes-ps5-ps4-xbox-series-x-s-xbox-one-pc) 두 직원의 평시 복귀 시간 약 48분은 플레이 관측과 교차 확인한 값이며, 공식 패치노트에 시간 수치가 실려 있지는 않다. [창고 직원 플레이 기록](https://gtaforums.com/topic/984368-bug-lupe-generic-warehouse-staff-crate-sourcing/), [보석 집행 요원 플레이 기록](https://gtaforums.com/topic/997642-gta-online-bottom-dollar-bounties-out-now/page/13/)
 
-`EarnVinewoodStaffTask`는 Main과 F9 스케줄러에 연결돼 있다. 앱 메인의 `Manage Staff Members`를 열고 Bail Office와 Warehouse를 각각 확인한다. 기본 5분은 상태 관측 간격이며 준비 상태가 돌아왔을 때만 다시 파견한다. 약 48분을 고정 재주문 시각으로 사용하지 않는다.
+`EarnVinewoodStaffTask`는 Main과 F9 스케줄러에 연결돼 있다. 앱 메인의 `Manage Staff Members`를 열고 Bail Office와 Warehouse를 각각 확인한다. 준비 상태가 돌아왔을 때만 다시 파견한다. 파견한 대상은 49분 뒤에 다시 보고(1003 실측: 보석 요원·스페셜 패키지 모두 파견 43분 뒤 작업 중, 55분 뒤 준비), 그때도 작업 중이거나 언제 보냈는지 모르면 기본 5분 간격으로 본다. 49분은 확인 시각일 뿐 재주문은 여전히 준비 문구를 읽은 뒤에만 한다.
 
 앱 제목과 메뉴 행은 메뉴 영역을 잘라 읽는다. 일반 OCR이 투명 배경의 흰 글자를 놓치면 같은 영역을 흰 글자 전처리로 다시 읽되, 정확한 전체 문구와 행 위치를 요구한다. 선택된 행의 검은 글자는 일반 OCR로 확인하며 Enter 직전에도 같은 대상의 선택을 새로 확인한다. 잘린 이름을 완전한 문구로 간주하지 않는다.
 

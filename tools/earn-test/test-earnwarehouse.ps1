@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 Execute the real warehouse orchestration, stock parser and policy against a
 stateful fake warehouse. Only the pixel sampler and external game APIs are
@@ -29,6 +29,7 @@ global whTests := 0, whMode, whState, whAssigned, whCounts, whActive, whSelected
     whPending := "", whCancels := 0, whTooltips := 0
 try {
     RunWarehouseTests()
+    RunScheduleTests()
     FileAppend("PASS EarnWarehouse cases=" whTests " (no game input)`n", "*")
     ExitApp(0)
 } catch as testFailure {
@@ -346,7 +347,26 @@ EarnFail(reason) {
     whError := reason
     return false
 }
-EarnLog(*) {
+EarnScheduleNext(*) => true
+RunScheduleTests() {
+    base := 10000000, m := 60000
+    for cap in [50, 13] {
+        EarnWarehouseTrack("reset")
+        t := 0
+        while (t <= 160) {
+            EarnWarehouseTrack([{id: "cargo", count: 10 + t // 70, capacity: cap}, {id: "cash", count: 0, capacity: 20}], base + t*m)
+            if (t = 140)
+                Check(EarnWarehouseTrack(, base + t*m) = 0, "schedule: unknown goods under 150 min use default interval (cap " cap ")")
+            t += 10
+        }
+        ms := EarnWarehouseTrack(, base + 160*m)
+        Check(ms = (cap = 50 ? 240*m : 40*m), "schedule: measured 70 min/unit predicts fill (cap " cap ", got " ms ")")
+    }
+    EarnWarehouseTrack("reset")
+    EarnWarehouseTrack([{id: "cargo", count: 49, capacity: 50}], base)
+    EarnWarehouseTrack([{id: "cargo", count: 50, capacity: 50}], base + 10*m)
+    Check(EarnWarehouseTrack(, base + 20*m) = 0, "schedule: rising good without a rate uses default interval")
+}EarnLog(*) {
 }
 Check(condition, description) {
     global whTests, whError
@@ -375,7 +395,7 @@ try {
     }
     $stdout = $process.StandardOutput.ReadToEnd().Trim()
     $stderr = $process.StandardError.ReadToEnd().Trim()
-    if ($process.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnWarehouse cases=135 (no game input)') {
+    if ($process.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnWarehouse cases=140 (no game input)') {
         throw "Warehouse flow failed (exit=$($process.ExitCode))`nstdout: $stdout`nstderr: $stderr"
     }
     Write-Output $stdout

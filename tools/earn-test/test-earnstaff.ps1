@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 Runs actual Vinewood staff functions with a fake screen and input sink.
 No game input, screen capture, window activation, or Main.ahk execution.
@@ -38,6 +38,7 @@ try {
     RunCargoTests()
     RunMenuTests()
     RunFixtureTests()
+    RunScheduleTests()
 } catch as testError {
     FileAppend(testError.Message " at line " testError.Line "`n" testError.Stack, "*")
     ExitApp(1)
@@ -618,6 +619,24 @@ EarnVinewoodOpen() {
     global mode, opens
     opens += 1
     return mode != "open_fail"
+}
+EarnScheduleNext(*) => true
+RunScheduleTests() {
+    EarnStaffTrack("reset")
+    Check(EarnStaffTrack() = 300000, "schedule: nothing seen uses 5 min")
+    EarnStaffTrack("sched cargo", "full")
+    Check(EarnStaffTrack() = 300000, "schedule: full warehouse alone uses 5 min")
+    EarnStaffTrack("sched agent A", "busy")
+    Check(EarnStaffTrack() = 300000, "schedule: busy with unknown send time rechecks in 5 min")
+    EarnStaffTrack("sched agent B", "sent")
+    ms := EarnStaffTrack()
+    Check(ms > 48 * 60000 && ms <= 49 * 60000, "schedule: sent agent returns after about 49 min")
+    EarnStaffTrack("sched agent B", "busy")
+    EarnStaffTrack("sched agent A", "busy")
+    Check(EarnStaffTrack() = 300000, "schedule: unknown busy agent wins over later known return")
+    EarnStaffTrack("sched agent B", "busy")
+    ms := EarnStaffTrack()
+    Check(ms > 48 * 60000 && ms <= 49 * 60000, "schedule: known busy agent keeps its return time")
 }
 EarnLog(*) {
 }

@@ -1,4 +1,4 @@
-; === 수익 자동화 공통: 화면 확인 · 상호작용 메뉴 · 스폰 위치 · 세션 재접속 ===
+﻿; === 수익 자동화 공통: 화면 확인 · 상호작용 메뉴 · 스폰 위치 · 세션 재접속 ===
 ; 이 파일의 함수는 게임에 키를 하나 보낼 때마다 "지금 화면에 무엇이 보이는지" 를 템플릿(Images\Earn\<가로>x<세로>\*.png)으로 확인한다.
 ; 확인이 안 되면 그 자리에서 false 를 돌려주고 더 누르지 않는다. 되돌리는 키는 Backspace·M 만 쓴다(Esc 금지: 런처 종료창).
 ; 템플릿은 1920x1080 테두리 없는 창에서 뜬 것이다. 해상도가 다르면 그 해상도 폴더에 같은 이름으로 떠 넣어야 동작한다(없으면 멈춘다).
@@ -24,6 +24,14 @@ EarnFail(reason) {
     gEarnFail := reason
     EarnLog("멈춤: " reason)
     return false
+}
+
+; 작업이 화면에서 읽은 상태로 다음 확인까지의 시간을 정한다. 작업이 성공으로 끝날 때만 스케줄러가 이 값을 쓴다.
+EarnScheduleNext(id, ms) {
+    global gEarnNextDue
+    if (ms > 0 && IsSet(gEarnNextDue))
+        gEarnNextDue[id] := A_TickCount + ms
+    return true
 }
 
 ; 전체 멈춤(End) 또는 GTA 가 앞이 아님

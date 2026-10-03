@@ -7,6 +7,7 @@ EarnVinewoodSafeTask() {
         return false
     if (EarnFindText(lines, "i)^No earnings to claim\.?$")) {
         EarnLog("금고: 바인우드 앱에 수거할 수익 없음")
+        EarnVinewoodSafeSchedule(0)
         return EarnVinewoodClose()
     }
     ; 앱 메인과 수익 하위 목록은 제목이 같다. 이미 하위 목록이면 다시 Enter를 보내지 않는다.
@@ -30,8 +31,10 @@ EarnVinewoodSafeTask() {
         return EarnFail("금고: 나이트클럽 금액 판독 실패")
     }
     EarnLog("금고: 나이트클럽 $" amount)
-    if (amount = 0 || !EarnVinewoodSafeClaimDue(amount))
+    if (amount = 0 || !EarnVinewoodSafeClaimDue(amount)) {
+        EarnVinewoodSafeSchedule(amount)
         return EarnVinewoodClose()
+    }
     if (EarnVinewoodNightclubAmount(EarnVinewoodAmountLines()) != amount)
         return EarnFail("금고: 수거 직전 나이트클럽 $" amount " 선택 미확인")
     ; 다른 사업장의 수익이나 Claim All은 선택하지 않는다.
@@ -45,6 +48,7 @@ EarnVinewoodSafeTask() {
         if (EarnVinewoodNightclubAmount(lines) = 0
             && EarnFindText(lines, "i)^Your Nightclub safe is empty\.$")) {
             EarnLog("금고: 나이트클럽 수거 뒤 빈 금고 확인")
+            EarnVinewoodSafeSchedule(0)
             return EarnVinewoodClose()
         }
         ; 모르는 확인창에서 다시 Enter를 보내지 않는다. 한 번 요청한 수거는 자동 재전송하지 않는다.
@@ -58,6 +62,21 @@ EarnVinewoodSafeTask() {
 ; 꽉 찰 때까지 기다리면 넘치는 입금이 버려지므로, 다음 입금이 넘칠 금액이면 지금 수거한다.
 EarnVinewoodSafeClaimDue(amount) {
     return amount + 50000 > 250000
+}
+
+; 수거할 때가 되려면 입금이 몇 번 더 들어와야 하는지로 다음 확인을 미룬다. 매번 앱을 열지 않는다.
+; k번째 입금이 수거 금액(>$200,000)을 만든다면 그 입금은 빨라야 (k-1)×48분 뒤이고, 늦어도 k×48분 뒤다.
+; 수거는 그 입금과 다음 입금 사이 48분 안에 하면 되므로 k×48-8분 뒤에 본다. 아직이면 그때 k=1 로 40분 뒤 다시 본다.
+; 인기도가 낮아 입금이 $50,000 보다 작으면 더 늦게 차므로 일찍 보는 쪽으로만 어긋난다.
+EarnVinewoodSafeNextMs(amount) {
+    deposits := amount > 200000 ? 1 : (200000 - amount) // 50000 + 1
+    return Max(300000, (deposits * 48 - 8) * 60000)
+}
+
+EarnVinewoodSafeSchedule(amount) {
+    ms := EarnVinewoodSafeNextMs(amount)
+    EarnLog("금고: 다음 확인 " Round(ms / 60000) "분 뒤 ($" amount " 기준, 입금 최대 $50,000/48분)")
+    return EarnScheduleNext("safe", ms)
 }
 
 ; 테러바이트처럼 밝은 배경 위의 반투명 설명은 일반 OCR 이 깨뜨린다(1003 17:28 실측: "yOürNightclub").
@@ -75,7 +94,8 @@ EarnVinewoodAmountLines() {
 EarnVinewoodNightclubAmount(lines) {
     if (!IsObject(lines) || !EarnFindText(lines, "i)^THE VINEWOOD CLUB APP$"))
         return -1
-    selected := EarnFindText(lines, "i)^Nightclub$")
+    ; 선택 막대 왼쪽 끝이 기호로 읽힐 때가 있다(1003 19:38 실측: ": Nightclub").
+    selected := EarnFindText(lines, "i)^[^A-Za-z0-9$]*Nightclub$")
     if (!selected || !EarnMenuRowSelected(selected))
         return -1
     amount := -1, matches := 0
