@@ -136,13 +136,50 @@ EarnMenuRowSelected(row) {
 EarnSelectText(pattern, heading, maxPress := 12) {
     Loop maxPress + 1 {
         lines := EarnReadScreen([25,15,450,800])
-        if (!IsObject(lines) || !EarnFindText(lines, heading))
+        top := IsObject(lines) ? EarnFindText(lines, heading) : false
+        if (!top)
             return false
         row := EarnFindText(lines, pattern)
         if (row && EarnMenuRowSelected(row))
             return row
-        if (A_Index > maxPress || !EarnPress("Down"))
+        if (A_Index > maxPress || !EarnPress(EarnMenuStepKey(lines, top, row, 815)))
             return false
     }
     return false
+}
+
+; Vinewood 앱 목록은 끝에서 반대쪽 끝으로 돈다. 제목 아래 37px 간격의 줄을 세어
+; 선택 줄에서 목표 줄까지 위·아래 중 덜 누르는 쪽을 고른다. 판단이 안 서면 원래대로 Down.
+; areaBottom 은 판독 영역의 아래 끝이다. 마지막 줄 다음 자리가 영역 밖이면 목록이 잘렸을 수 있어
+; 끝을 돌아가는 Up 은 쓰지 않는다(줄 수를 적게 세면 위아래를 오가며 헤맨다).
+EarnMenuStepKey(lines, heading, target, areaBottom) {
+    if (!IsObject(lines) || !IsObject(heading) || !IsObject(target))
+        return "Down"
+    rows := []
+    Loop 12 {
+        y := heading.y + 37 * A_Index, hit := false
+        for line in lines {
+            ; 1003 실측 줄 오차는 3px 이내, 직원 하위 메뉴 설명 문구는 4번째 줄 자리에서 8px 아래다.
+            if (Abs(line.y - y) <= 5) {
+                hit := line
+                break
+            }
+        }
+        if (!hit)
+            break
+        rows.Push(hit)
+    }
+    cur := 0, goal := 0
+    for i, row in rows {
+        if (Abs(row.y - target.y) <= 5)
+            goal := i
+        if (!cur && EarnMenuRowSelected(row))
+            cur := i
+    }
+    if (!cur || !goal)
+        return "Down"
+    n := rows.Length
+    if (heading.y + 37 * (n + 1) + 5 > areaBottom)
+        return goal < cur && cur - goal < n - cur + goal ? "Up" : "Down"
+    return Mod(cur - goal + n, n) < Mod(goal - cur + n, n) ? "Up" : "Down"
 }
