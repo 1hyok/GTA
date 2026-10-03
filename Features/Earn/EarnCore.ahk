@@ -53,8 +53,14 @@ EarnAborted() {
 ; name 템플릿(Images\Earn\<해상도>\<name>.png)이 area(클라이언트 비율 [x1, y1, x2, y2]) 안에 보이면 true. 찾은 자리(화면 좌표)는 &fx, &fy.
 EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
     ; 저택 MCT는 'Press ... to access' 대신 메뉴형 안내를 표시한다.
-    if (name = "mct_seated" && TemplateSeen("Earn", "mct_seated_mansion", area, &fx, &fy, variation))
-        return true
+    ; 템플릿이 흰 글자만 보므로 밝은 하늘 위에서는 아무 데나 맞는다(1003 23:44 실측: 선 채 하늘을 볼 때 앉은 안내로 오판해
+    ; Enter 만 보내다 멈춤, 녹화 프레임에서 1,500자리 넘게 일치). 맞은 자리의 글자 밖 바탕이 안내 상자처럼 어두워야 인정한다.
+    if (name = "mct_seated") {
+        for part in ["mct_seated_mansion", "mct_seated"]
+            if (TemplateSeen("Earn", part, area, &fx, &fy, variation) && TemplateAt("Earn", part "_bg", fx, fy))
+                return true
+        return false
+    }
     ; 테러바이트 안내는 CEO 여부에 따라 두 모양이다. CEO 일 때는 'Touchscreen computer / Master Control Terminal'.
     ; 반투명 상자라 뒤 배경에 따라 픽셀이 바뀌고, 남은 커서가 한 줄을 가릴 수 있다(1003 17:15 실측).
     ; 그래서 세 줄 중 하나만 맞아도 인정하고 허용 오차를 60으로 둔다.

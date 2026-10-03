@@ -473,8 +473,14 @@ AFKMenuSeen(name) {
         return AFKFreeHud()
     area := name = "m_title" ? [0,0,0.27,0.55] : name = "mct_title" ? [0.3,0,0.7,0.1]
         : name = "mct_terrorbyte" ? [0,0,0.3,0.25] : [0,0,0.3,0.1]
-    if (name = "mct_seated" && TemplateSeen("Earn", "mct_seated_mansion", area))
-        return true
+    ; 흰 글자만 보는 템플릿은 밝은 하늘 위에서 오탐한다. 맞은 자리의 바탕이 어두워야 인정한다(EarnSeen 과 같은 기준).
+    if (name = "mct_seated") {
+        fx := 0, fy := 0
+        for part in ["mct_seated_mansion", "mct_seated"]
+            if (TemplateSeen("Earn", part, area, &fx, &fy) && TemplateAt("Earn", part "_bg", fx, fy))
+                return true
+        return false
+    }
     ; 테러바이트 안내는 반투명 상자와 남은 커서 때문에 세 줄 중 하나만 맞아도 인정한다(EarnSeen 과 같은 기준).
     if (name = "mct_terrorbyte") {
         for part in ["mct_terrorbyte", "mct_terrorbyte_reg", "mct_terrorbyte_ceo"]

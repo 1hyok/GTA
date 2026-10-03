@@ -38,3 +38,32 @@ TemplateSeen(folder, name, area := "", &fx := 0, &fy := 0, variation := 40) {
             DllCall("SetThreadDpiAwarenessContext", "ptr", prev, "ptr")
     }
 }
+
+; TemplateSeen 이 찾은 자리(x, y)에서 name 템플릿이 정확히 같은 자리에 맞는지 본다.
+; 글자만 남긴 템플릿 짝(<name>_bg: 글자에서 떨어진 바탕만 검정)으로 안내 상자의 어두운 바탕을 확인하는 데 쓴다.
+TemplateAt(folder, name, x, y, variation := 90) {
+    global gImageRoot
+    hwnd := IsGTAActive()
+    if (!hwnd)
+        return false
+    prev := DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
+    try {
+        WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
+        img := gImageRoot "\" folder "\" cw "x" ch "\" name ".png"
+        if (!FileExist(img))
+            return false
+        CoordMode("Pixel", "Screen")
+        ; 검색은 한 줄씩 왼쪽부터라, 같은 자리에서 맞으면 첫 결과가 바로 (x, y)다.
+        try {
+            if (ImageSearch(&fx, &fy, x, y, Min(x + 400, cx + cw - 1), Min(y + 60, cy + ch - 1),
+                "*" variation " *Trans0xFF00FF " img))
+                return fx = x && fy = y
+        } catch as e {
+            MacroLog("screen", "ImageSearch 오류 " folder "\" name ": " e.Message)
+        }
+        return false
+    } finally {
+        if (prev)
+            DllCall("SetThreadDpiAwarenessContext", "ptr", prev, "ptr")
+    }
+}
