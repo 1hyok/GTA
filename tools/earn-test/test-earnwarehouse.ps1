@@ -47,7 +47,7 @@ RunWarehouseTests() {
         ["missing_staff",false,0], ["ambiguous_identity",false,0],
         ["end_rejected",false,1], ["begin_rejected",false,0],
         ["full_staff",true,1], ["full_missing",false,0], ["full_ambiguous",false,0],
-        ["dialog_missing",false,1]
+        ["dialog_missing",false,1], ["stock_none_full",true,0], ["stock_all_full",true,0]
     ]
     for scenario in scenarios {
         ResetWarehouse(scenario[1])
@@ -57,6 +57,8 @@ RunWarehouseTests() {
         Check(whAssigned[3] = (scenario[1] = "idle_staff" ? "" : scenario[1] = "full_staff" ? "pharmaceutical" : "organic")
             && whAssigned[4] = "printing" && whAssigned[5] = "cash", scenario[1] " producing and idle staff preserved")
         Check(whAttempts <= 2, scenario[1] " no repeated assignment requests")
+        if (scenario[1] = "stock_none_full" || scenario[1] = "stock_all_full")
+            Check(whSelections = 0 && whState = "mct", scenario[1] " decides from Sell Goods stock without opening staff management")
         if (scenario[1] = "normal")
             Check(whAssigned[1] = "pharmaceutical" && whMoves = 1 && whState = "mct", "full source moves once then reobserves")
         if (scenario[1] = "two_moves")
@@ -166,6 +168,10 @@ ResetWarehouse(mode) {
         whAssigned[3] := ""
     if (mode = "two_moves")
         whCounts["sporting"] := 100, whCounts["south_american"] := 5
+    if (mode = "stock_none_full")
+        whCounts["cargo"] := 29, whCounts["south_american"] := 9
+    if (mode = "stock_all_full")
+        whCounts := Map("cargo",50,"sporting",100,"south_american",10,"pharmaceutical",20,"organic",80,"printing",60,"cash",40)
     if (InStr(mode,"full_") = 1) {
         ; 2026-10-03 actual stock when the selected Organic person turned gray.
         whCounts["cargo"] := 31, whCounts["sporting"] := 56, whCounts["organic"] := 80,
@@ -369,7 +375,7 @@ try {
     }
     $stdout = $process.StandardOutput.ReadToEnd().Trim()
     $stderr = $process.StandardError.ReadToEnd().Trim()
-    if ($process.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnWarehouse cases=125 (no game input)') {
+    if ($process.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnWarehouse cases=135 (no game input)') {
         throw "Warehouse flow failed (exit=$($process.ExitCode))`nstdout: $stdout`nstderr: $stderr"
     }
     Write-Output $stdout
