@@ -241,7 +241,7 @@ EarnWarehouseDialogClick(x, y) {
         SendEvent("{Blind}{LButton down}")
         try Sleep(100)
         finally SendEvent("{Blind}{LButton up}")
-        DllCall("SetCursorPos", "int", cx+40, "int", cy+130)
+        DllCall("SetCursorPos", "int", cx+1880, "int", cy+1040)
         return EarnSleep(450)
     } finally {
         DllCall("SetThreadDpiAwarenessContext", "ptr", previous, "ptr")

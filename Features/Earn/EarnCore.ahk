@@ -47,6 +47,15 @@ EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
     ; 저택 MCT는 'Press ... to access' 대신 메뉴형 안내를 표시한다.
     if (name = "mct_seated" && TemplateSeen("Earn", "mct_seated_mansion", area, &fx, &fy, variation))
         return true
+    ; 테러바이트 안내는 CEO 여부에 따라 두 모양이다. CEO 일 때는 'Touchscreen computer / Master Control Terminal'.
+    ; 반투명 상자라 뒤 배경에 따라 픽셀이 바뀌고, 남은 커서가 한 줄을 가릴 수 있다(1003 17:15 실측).
+    ; 그래서 세 줄 중 하나만 맞아도 인정하고 허용 오차를 60으로 둔다.
+    if (name = "mct_terrorbyte") {
+        for part in ["mct_terrorbyte", "mct_terrorbyte_reg", "mct_terrorbyte_ceo"]
+            if (TemplateSeen("Earn", part, IsObject(area) ? area : [0,0,0.3,0.25], &fx, &fy, Max(variation, 60)))
+                return true
+        return false
+    }
     ; 보스 메뉴는 작텔과 같은 검증된 템플릿을 공유한다.
     static bossNames := Map("m_boss",1,"m_boss_sel",1,"m_ceo_sel",1,"m_start_org_sel",1,
         "m_securo",1,"m_securo_sel",1,"m_retire_sel",1,"m_sub_boss",1,"m_sub_securo",1)
@@ -55,6 +64,7 @@ EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
     ; MCT 웹 화면의 고정 위치만 검색한다. 투명 글자 템플릿의 전체 화면 검색은 매우 느리다.
     static mctAreas := Map(
         "mct_need_ceo", [0,0,0.3,0.1],
+        "mct_terrorbyte", [0,0,0.3,0.25],
         "mct_bunker_card", [0.42,0.20,0.58,0.25],
         "mct_nightclub_card", [0.23,0.20,0.32,0.25],
         "bunker_page", [0.15,0.01,0.35,0.12],
@@ -778,6 +788,18 @@ EarnMCTOpen() {
     global EARN_PROMPT_AREA
     if (EarnSeen("mct_title", [0.3, 0, 0.7, 0.1]))
         return true
+    ; 테러바이트 MCT는 터치스크린 앞에 선 채 Space 로 연다. 앉고 일어서는 단계가 없다(1003 실측).
+    if (EarnSeen("mct_terrorbyte")) {
+        if (!EarnPress("Space"))
+            return false
+        if (!EarnWaitSeen("mct_title", [0.3, 0, 0.7, 0.1], 8000)) {
+            if (!EarnSeen("mct_terrorbyte") || !EarnPress("Space")
+                || !EarnWaitSeen("mct_title", [0.3, 0, 0.7, 0.1], 8000))
+                return EarnFail("MCT: 테러바이트 화면이 안 열림")
+        }
+        Sleep(800)
+        return true
+    }
     if (!EarnSeen("mct_seated", EARN_PROMPT_AREA)) {
         ; CEO 메뉴가 닫힌 직후 접근 안내가 늦게 돌아올 수 있다.
         if (!EarnWaitSeen("mct_sit", EARN_PROMPT_AREA, 8000))
@@ -812,9 +834,16 @@ EarnMCTClose() {
             return EarnFail("MCT: 닫기 전 터미널 화면을 확인하지 못함")
         if (!EarnPress("Backspace"))
             return false
-        if (!EarnWaitSeen("mct_seated", EARN_PROMPT_AREA, 8000))
+        if (!EarnWaitSeen("mct_seated", EARN_PROMPT_AREA, 8000)) {
+            ; 테러바이트는 닫으면 바로 선 채 접속 안내로 돌아온다. 일어설 필요가 없다.
+            if (EarnSeen("mct_terrorbyte"))
+                return true
             return EarnFail("MCT: 닫은 뒤 앉은 상태 안내 대기 시간 초과")
+        }
     }
+    ; 테러바이트 CEO 안내는 저택의 앉은 상태 메뉴형 안내와 비슷하게 잡힌다(1003 17:12 실측). 일어서지 않는다.
+    if (EarnSeen("mct_terrorbyte"))
+        return true
     if (!EarnSeen("mct_seated", EARN_PROMPT_AREA))
         return EarnFail("MCT: 화면이 닫히지 않음")
     if (EarnAborted())
@@ -943,7 +972,10 @@ EarnCEO(on) {
             EarnLog("CEO 등록")
             return true
         }
-        if (EarnSeen("m_boss_sel", EARN_MENU_AREA) || EarnSeen("m_boss", EARN_MENU_AREA)) {
+        ; m_boss 는 허용 오차가 커서 테러바이트 CEO 메뉴의 다른 줄에도 맞았다(1003 17:13 실측).
+        ; SecuroServ 줄이 보이면 CEO 이므로 그것부터 본다.
+        if (!EarnSeen("m_securo_sel", EARN_MENU_AREA) && !EarnSeen("m_securo", EARN_MENU_AREA)
+            && (EarnSeen("m_boss_sel", EARN_MENU_AREA) || EarnSeen("m_boss", EARN_MENU_AREA))) {
             ok := true
             return true              ; 이미 해제
         }

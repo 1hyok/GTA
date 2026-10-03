@@ -430,7 +430,11 @@ AFKMCTPulse() {
     if (!AFKInputAllowed())
         return false
     start := "", middle := "", openKey := "", closeKey := ""
-    if (AFKMenuSeen("mct_title")) {
+    if (AFKMenuSeen("mct_terrorbyte")) {
+        ; 테러바이트 터치스크린 앞은 안내 상자 때문에 빈 HUD로 보이지 않는다. 서 있으니 M 메뉴가 열린다(1003 실측).
+        ; CEO 안내는 저택 앉은 안내와 비슷하게 잡히므로 그보다 먼저 본다.
+        start := "mct_terrorbyte", middle := "m_title", openKey := "m", closeKey := "m"
+    } else if (AFKMenuSeen("mct_title")) {
         start := "mct_title", middle := "mct_seated", openKey := "Backspace", closeKey := "Enter"
     } else if (AFKMenuSeen("mct_seated")) {
         start := "mct_seated", middle := "mct_title", openKey := "Enter", closeKey := "Backspace"
@@ -453,9 +457,17 @@ AFKMCTPulse() {
 AFKMenuSeen(name) {
     if (name = "game_hud")
         return AFKFreeHud()
-    area := name = "m_title" ? [0,0,0.27,0.55] : name = "mct_title" ? [0.3,0,0.7,0.1] : [0,0,0.3,0.1]
+    area := name = "m_title" ? [0,0,0.27,0.55] : name = "mct_title" ? [0.3,0,0.7,0.1]
+        : name = "mct_terrorbyte" ? [0,0,0.3,0.25] : [0,0,0.3,0.1]
     if (name = "mct_seated" && TemplateSeen("Earn", "mct_seated_mansion", area))
         return true
+    ; 테러바이트 안내는 반투명 상자와 남은 커서 때문에 세 줄 중 하나만 맞아도 인정한다(EarnSeen 과 같은 기준).
+    if (name = "mct_terrorbyte") {
+        for part in ["mct_terrorbyte", "mct_terrorbyte_reg", "mct_terrorbyte_ceo"]
+            if (TemplateSeen("Earn", part, area, , , 60))
+                return true
+        return false
+    }
     return TemplateSeen("Earn", name, area)
 }
 

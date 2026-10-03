@@ -71,7 +71,7 @@ GuardTick() {
                 return
         }
         if (!AFKMenuSeen("mct_title") && !AFKMenuSeen("mct_seated")
-            && !AFKMenuSeen("mct_sit") && !AFKFreeHud())
+            && !AFKMenuSeen("mct_sit") && !AFKMenuSeen("mct_terrorbyte") && !AFKFreeHud())
             return
         config["Settings"]["EarnMCTOnly"] := 1
         AntiAFKTick()
