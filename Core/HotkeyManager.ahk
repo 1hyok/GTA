@@ -32,8 +32,6 @@ RegisterActions() {
     gActions.Push({id: "Run", label: "달리기", fn: (*) => ToggleRun(), feature: "Movement", state: (*) => shiftWRunning ? "켜짐" : ""})
     gActions.Push({id: "AutoClick", label: "자동 클릭", fn: (*) => ToggleAutoClick(), feature: "AutoClick", state: (*) => clickRunning ? "켜짐" : ""})
     gActions.Push({id: "WalkCtrl", label: "벨럼", fn: (*) => ToggleVellumDriving(), feature: "Movement", state: (*) => vellumDrivingRunning ? "켜짐" : ""})
-    gActions.Push({id: "RegisterCEO", label: "CEO 등록", fn: (*) => RegisterCEO(), feature: "MenuMacros"})
-    gActions.Push({id: "RegisterMC", label: "MC 등록", fn: (*) => RegisterMC(), feature: "MenuMacros"})
     gActions.Push({id: "CayoPericoTimer", label: "카요 타이머", fn: (*) => ToggleCayoPericoTimer(), feature: "Timer", state: (*) => cayoTimerRunning ? "켜짐" : ""})
     gActions.Push({id: "Snack", label: "스낵", fn: (*) => EatSnack(), feature: "MenuMacros"})
     gActions.Push({id: "Earner", label: "수익 자동화", fn: (*) => ToggleEarner(), feature: "Earner", confirm: true, state: (*) => gEarnOn ? "켜짐" : ""})
