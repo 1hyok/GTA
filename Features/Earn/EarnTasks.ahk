@@ -448,8 +448,12 @@ EarnDJTask(manageSession := true) {
 
 EarnTaskMCTBegin() {
     ; 이 자동화는 사용자가 둔 MCT 앞에서만 동작한다. 부동산 재접속·임의 길찾기는 하지 않는다.
-    if (!EarnAtMCT() && !EarnSeen("mct_sit", [0,0,0.3,0.1]) && !EarnSeen("mct_terrorbyte"))
-        return EarnFail("MCT 앞에 서 있거나 사업장 목록을 연 상태에서 시작해야 함")
+    ; 게임 알림 아이콘이 안내 위에 잠깐 겹치면 한 번은 빗나간다(1003 18:25 실측). 5초 다시 보고, 그래도 없으면 끄지 않고 3분 뒤 다시 한다.
+    spotDeadline := A_TickCount + 5000
+    while (!EarnAtMCT() && !EarnSeen("mct_sit", [0,0,0.3,0.1]) && !EarnSeen("mct_terrorbyte")) {
+        if (A_TickCount >= spotDeadline || !EarnSleep(500))
+            return EarnSoftFail("MCT 앞에 서 있거나 사업장 목록을 연 상태에서 시작해야 함", 3)
+    }
     opened := false
     try {
         opened := EarnMCTOpen() && EarnMCTRefresh()

@@ -432,15 +432,17 @@ ExitApp(0)
 '@
     Invoke-EarnOfflineCheck 'DJRebook' 'EarnDJNeedsRebook' $djDriver 10
     $mctDriver = @'
-global config := Map("Settings", Map("EarnMCTOnly",1)), scene := "", failAt := "", order := ""
+global config := Map("Settings", Map("EarnMCTOnly",1)), scene := "", failAt := "", order := "", softRetry := 0
 for c in [["list","",true,"OR"],["stand","",true,"OR"],["chair","",true,"OR"],
     ["need-ceo","",true,"OR"],["away","",false,""],["list","O",false,"OE"],
-    ["stand","O",false,"OE"],["stand","R",false,"ORE"]] {
-    scene := c[1], failAt := c[2], order := ""
+    ["stand","O",false,"OE"],["stand","R",false,"ORE"],["flicker","",true,"OR"]] {
+    scene := c[1], failAt := c[2], order := "", softRetry := 0
     if (EarnTaskMCTBegin() != c[3] || order != c[4])
         throw Error("MCT begin guard: " c[1] "/" c[2] " order=" order)
+    if (c[1] = "away" && softRetry != 3)
+        throw Error("MCT begin away must retry later instead of stopping")
 }
-FileAppend("PASS MCTBegin cases=8`n", "*")
+FileAppend("PASS MCTBegin cases=9`n", "*")
 ExitApp(0)
 EarnUIReady(name,*) => EarnSeen(name)
 EarnAtMCT() => scene = "list" || scene = "chair" || scene = "need-ceo"
@@ -470,9 +472,20 @@ EarnTaskMCTEnd() {
 EarnGoHome(*) {
     throw Error("MCT tasks must not travel")
 }
+EarnSleep(ms) {
+    global scene
+    if (scene = "flicker")
+        scene := "stand"
+    Sleep(ms)
+    return true
+}
+EarnSoftFail(reason, retryMin) {
+    global softRetry := retryMin
+    return false
+}
 EarnFail(*) => false
 '@
-    Invoke-EarnOfflineCheck 'MCTBegin' 'EarnTaskMCTBegin' $mctDriver 8
+    Invoke-EarnOfflineCheck 'MCTBegin' 'EarnTaskMCTBegin' $mctDriver 9
     $mctCleanupSupport = @'
 EarnAborted() => endAbort
 EarnWaitSeen(name,area,timeoutMs) {
@@ -758,6 +771,7 @@ EarnMCTRefresh() {
 }
 '@
     $mctBeginCleanupDriver += "`n" + $mctCleanupSupport + "`n" + (Get-EarnFunctionBody $sourceText 'EarnTaskMCTEnd')
+    $mctBeginCleanupDriver += "`nEarnSoftFail(reason, *) => EarnFail(reason)`n"
     Invoke-EarnOfflineCheck 'MCTBeginCleanup' 'EarnTaskMCTBegin' $mctBeginCleanupDriver 14
     $mctRefreshDriver = @'
 global refreshOptions := Map(), refreshClockMs := 0, refreshAborted := false, refreshFocused := true,
