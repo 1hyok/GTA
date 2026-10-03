@@ -1,6 +1,72 @@
-# 수익 자동화 인계 (2026-09-27, Claude Code → Codex)
+# 수익 자동화 인계
 
-## 지금 상태
+## 현재 정책과 검증 범위 (2026-10-03)
+
+현재 구현 범위는 저택 MCT의 벙커 보급·DJ 교체·나이트클럽 창고 직원 관리와 GTA+ Vinewood 앱의 나이트클럽 금고 회수·보석 집행 요원 파견·스페셜 패키지 직원 조달이다. 1920×1080 영어 UI를 지원하며 한글 UI는 지원하지 않는다. [수익 자동화 정책](earner-policy.md)에 설정값, 28분 소모 배수와 DJ 순수입 계산을 정리했다. 9월의 금고 방문·아케이드 복귀 경로는 현행 완료 조건에서 제외했다. 아래 9월 기록의 "현재", "미완료", 설정값과 프로세스 상태는 해당 날짜의 관측이며 지금의 실행 상태를 뜻하지 않는다.
+
+- 벙커 기본값은 `EarnBunkerIntervalSec=8400`이다. 풀업그레이드·제조 전용·기본 속도에서 140분에 해당하는 5칸 소모를 목표로 하며 실제 빈 보급과 $75,000 확인창을 함께 확인한다. 1680초의 1~5배 설정도 지원하며, 20% 경계를 지나친 부분 보급은 다음 경계까지 기다린다. 재고가 가득하거나 배송 중이면 구매하지 않는다. 최대 5분 간격의 관측과 약 10분 배송을 구매 소모량과 구분한다.
+- DJ는 목표 95%를 유지한다. Nightclub Home을 새로 열고 읽은 인기도가 95% 미만일 때만 기존 DJ를 재고용한다. MCT 카드의 인기도는 지출 근거로 사용하지 않는다. 정상 주기에서는 100%·95%의 최고 수입을 받은 뒤 90%에서 +10%p 재고용하며, 95%에서 100%를 만들기 위한 비용은 쓰지 않는다. 교체 뒤 Home → MCT → Home으로 한 번 재진입하고 최대 15초 읽기로 증가를 확인하며, 지연 갱신 때문에 재결제하지 않는다.
+- 금고는 5분마다 앱에서 관측하고 $250,000일 때만 수거한다. Nightclub 행에는 금액이 없으므로 선택 후 하단 `Claim $250000 from your Nightclub safe.` 문구를 판독한다. 빈 금고는 `Your Nightclub safe is empty.`이며 다른 사업장 문구를 금액 근거로 쓰지 않는다.
+- 나이트클럽 직원은 10분마다 관측해 만재 품목에 배정된 직원만 해금된 미포화·미배정 품목으로 이동한다. 화면에서 읽은 품목별 용량을 사용한다. 대상 선택은 남미 수입품, 의약품, 현금, 화물, 스포츠 용품, 유기농, 인쇄 순이다. 현재 판독은 고용한 직원 5명이 모두 품목에 배정된 상태를 요구한다. 직원이나 담당 품목이 확인되지 않으면 미배정을 추측하거나 자동 고용하지 않고 중단한다.
+- 앱 직원은 `EarnBailAgents=1`, `EarnCargoStaff=1`, `EarnStaffIntervalMin=5`로 켜져 있다. Bail Office의 Agent 1·2와 Warehouse의 관측된 1~5개 창고를 확인한다. 준비 상태만 요청하고 작업 중·만재는 건너뛰며, 스페셜 패키지는 선택한 창고의 $7,500을 새로 확인한다. Enter를 한 번 보낸 뒤 최대 60초 동안 작업 중 문구를 기다리고 재요청하지 않는다. Bail Office 금고 회수와 Hangar 파견은 이번 범위에 포함하지 않는다.
+- 이번 실제 앱 화면에서 메인·사업장 목록의 동일한 제목, Nightclub 빈 금고 문구, Arcade의 `Claim $5000 from your Arcade safe.` 상세 문구를 확인했다. Arcade 금액은 화면 형식 확인 자료이며 수거 대상이 아니다. 하위 목록과 메인에서 Backspace로 나와 MCT 대기 안내가 나타나는 경로도 확인했다.
+- Main의 모듈 포함과 스케줄러의 `EarnVinewoodSafeTask`·`EarnWarehouseTask`·`EarnVinewoodStaffTask` 소비가 연결돼 있다. CEO 하위 메뉴의 제목과 `Retire` 문맥을 놓치던 판독을 수정했다. 실제 직원 모듈의 파견·건너뛰기·앱 종료·MCT 앞 복귀와 금고 $150,000 무수거 복귀를 확인했다. 새 벙커 결제, 실제 $250,000 앱 수거, 나이트클럽 직원 재배정과 스케줄러 장시간 운용은 별도 검증 대상이다.
+
+### 입력 없는 검증
+
+| 검사 | 확인한 건수 | 범위 |
+|---|---:|---|
+| `test-earnpolicy` | 101 | 벙커 소모 경계·가격과 직원 이동 계획 |
+| `test-earntasks` | 278 | 벙커·Home 인기도에 따른 DJ 결정·결제 후 지연 갱신·MCT 종료 안내 지연·CEO 메뉴 분기 |
+| `test-earner` | 41 + 입력 잠금 9 | 반복 예약·재진입·오류 중단과 공통 잠금 |
+| `test-earnvinewood` | 147 | 금고 금액·선택·수거·앱 종료 모의 흐름 |
+| `test-earnwarehouse` / `test-earnwarehouse-read` | 85 / 38 | 직원 흐름과 품목별 수량 판독 |
+| `test-earnstaff` | 438 | 실제 직원 함수의 모의 화면·입력 대체 실행 |
+| `test-earnstaff -FixtureDirectory` | 462 | 위 검사와 실제 저장 화면 8장의 OCR·선택 픽셀 판독 |
+| `test-earnscreen` / `test-earnscreen-command` | 48 / 39 | 화면·금액 판독과 OCR 명령 구성·외부 절대 기한 |
+| `test-earnocr` | 9, 실제 자료 포함 15 | Windows OCR·영문 앱 문구·좌표 |
+| `test-antiafk` / `test-afk-notification-command` / `test-afk-input-lock` | 48 / 60 / 35 | AFK 상태, 알림 처리 명령, 입력 잠금 |
+| `test-notification-dismiss` | 52 | 알림 신원·버튼·취소·경쟁 상태 |
+| `test-mct-seated-template` | Nightclub 18 + MCT 9 | 메뉴·앉은 안내 판독과 템플릿 생성 결과 재현. 실제 앉은 화면 추가 시 MCT 10건 |
+
+작업 분기 278건은 이번 반영 대상의 staged 트리 기준이다. 다른 작업의 탐색 검사 11건을 포함한 작업 디렉터리 결과 289건과 구분한다. staged 트리의 Main 문법 검사는 종료 코드 0이고 오류 출력이 없었다. 전체 CI는 `tools/ci/run-checks.ps1`의 `results.json`에 검사별 결과를 기록한다.
+
+직원 모듈의 AHK LSP 검사는 `ok=true`, `source_unchanged=true`, 서버 종료 코드 0이며 진단은 0건이었다. 결과는 `%TEMP%\gta-staff-lsp-result.json`이다. 직원 테스트는 `OnError`와 최상위 오류 처리로 대화상자를 띄우지 않고 stdout과 종료 코드에 실패를 기록한다. 저장된 화면의 OCR 성공은 아래 실제 게임 실행 결과와 구분한다.
+
+### 이번 실측과 중간 실패
+
+- 07:16 저택 MCT에서 일어서면 카메라가 반대 벽을 향하는 상태를 확인했다. 07:17 제자리에서 카메라를 180도 돌린 뒤 MCT의 `Press E to sit down.` 안내를 확인했다. `EarnMCTClose`에 일어선 상태 확인 후 접근 안내가 없을 때만 회전하는 분기를 반영했다. 로컬 화면 근거는 `%TEMP%\claude\earn-standing-exit.png`, `%TEMP%\claude\earn-turn-back.png`이며 전체 화면을 저장소에 복사하지 않았다.
+- 실제 앱 캡처의 영문 제목, Nightclub 빈 금고 문구, Arcade $5,000 문구와 화면 좌표 OCR을 확인했다. 결과는 `%TEMP%\earn-vinewood-earnings-ocr-review.tsv`, `%TEMP%\earn-vinewood-amount-ocr-review.tsv`다. 나이트클럽 창고 화면에서는 재고 `29/50`, `10/10`, `70/80`, `29/40`, `51/100`, `16/20`, `44/60`과 품목명을 판독했다. 보정 결과는 `%TEMP%\earn-warehouse-stock-fixed.tsv`, `%TEMP%\earn-warehouse-tech2-labels-fixed.tsv` 등에 있다. 판독 성공과 직원 재배정 실행은 별개다.
+- 07:24 앱 실전 시험은 `EarnScreen.ahk`의 함수 호출 오류로 중단됐다. 해당 호출을 수정한 뒤 07:25 재시험은 전화 홈에서 Vinewood Club 앱 선택을 확인하지 못해 `EarnVinewoodSafeTask() = 0`으로 끝났다. `%TEMP%\earn-safe-smoke.stdout`와 `%TEMP%\gta-earn.log`에 실패가 기록돼 있다. 실제 $250,000 수거는 실행하지 않았다.
+- 알림 가림을 정리하며 다시 관측하려던 과정에서 GTA 포커스를 잃었다. 07:31 시험은 전면화에 실패해 입력 없이 종료했으며 `%TEMP%\earn-vopen.stdout`에 `EarnVinewoodOpen = not started`가 남았다. 07:39의 `%TEMP%\earn-vopen2.stdout`도 전면화 실패였고 07:40의 `%TEMP%\earn-vopen3.stdout`은 MCT 앞 대기 위치 확인 실패였다. 이후 UI 관측은 아래와 같이 이어졌으므로 이 실패들을 현재의 최종 중단 상태로 해석하지 않는다.
+- 07:50 이후 앱의 `Manage Staff Members`와 Hangar·Warehouse·Bail Office 목록을 확인했다. Bail Office의 Agent 1을 Enter 한 번으로 파견한 뒤 `Your Bail Office staff member is currently out on a job.`을 확인했다. `%TEMP%\claude\earn-bail-agents.png`, `earn-bail-agent1-sent.png`가 준비·작업 중 화면이다.
+- 07:55:02 Discount Retail Unit에 Enter 한 번으로 조달을 요청했다. 07:55:03에는 처리 중 준비 문구가 남아 있었고, 07:55:43 화면에서 작업 중 문구와 계좌 $7,500 차감을 확인했다. `%TEMP%\claude\earn-cargo-first-ready.png`, `earn-cargo-first-sent.png`, `earn-cargo-first-result.png`를 보존했다. Foreclosed Garage를 선택한 `earn-cargo-disabled.png`에서는 만재 설명을 확인했으며 해당 창고에는 주문하지 않았다. 이 실행은 UI 계약 확인용 직접 조작이며 새 직원 모듈의 전체 실행 성공 기록은 아니다.
+- 전체 화면 OCR은 투명 배경과 회색 가격 때문에 일부 단어를 놓쳤다. 선택 행과 설명 영역을 분리하고 흰 설명 글자만 전처리해 기존 문장 전체를 정확히 읽도록 했다. 축약 문장이나 잘못 읽은 숫자를 정답으로 치환하지 않았다. 실제 저장 화면 5장을 읽은 직원 검사 342건이 종료 코드 0으로 통과했고, 원본 전체 화면은 저장소에 복사하지 않았다.
+- 08:07경 초기 직원 시험의 런타임 오류 대화상자가 GTA 포커스를 빼앗았다. 하네스에 전역 `OnError`와 최상위 예외 처리를 추가했으며, 이후 오류를 창 없이 stdout·종료 코드 1로 회수하는 것과 최종 정상 검사의 종료 코드 0을 확인했다.
+- CEO가 남아 있다는 사용자 지적 뒤 정리 과정에서 상호작용 메뉴 검사가 CEO 하위 메뉴를 놓치는 오류를 확인했다. `EarnMenuIsOpen`이 기존 JobWarp의 `m_sub_boss`·`m_sub_securo`도 인식하도록 수정했다. 08:15 직접 `Retire` 후 `Register as a Boss`를 확인한 화면은 `%TEMP%\claude\earn-retired-verified.png`다. 직접 해제 성공과 새 코드의 전체 MCT 작업 정리 성공을 구분한다.
+- 08:17 시작한 직원 모듈 시험은 08:18:28 원격 데스크톱이 전경을 가져가면서 입력·포커스 보호에 의해 중단됐다. 로그에는 `직원: 직원 관리 목록 진입 실패`가 남았고 파견 완료로 기록하지 않았다. 이후 재시험 결과는 아래에 구분해 기록했다.
+- 08:20 재시험은 08:20:54 요원 1의 작업 중 상태를 건너뛰었다. 요원 2에 파견 요청을 보낸 뒤 08:21:08 결과 미확인으로 중단했으나, 08:22의 `%TEMP%\claude\earn-staff-agent2-result.png`에는 요원 2의 작업 중 상태가 보였다. 이 저장 화면은 기존 판독으로도 읽혀 최초 실패 원인을 확정하지 못했다. 같은 제목·선택 대상이 확인된 상태의 일시적인 설명 판독 실패는 재입력 없이 다시 읽도록 보완하고, 요청부터 60초인 절대 기한을 OCR까지 전파했다. 선택되지 않은 회색 요원명 누락과 기한 경계·취소·알 수 없는 문구를 추가한 당시 모의 검사 412건, 새 결과 화면 포함 430건을 통과했다. 이후 실전 결과는 아래 최종 직원 시험에 기록했다.
+- 08:28 시작한 나이트클럽 창고 시험은 실제 재고·직원 배정을 읽고 08:29:16 `이동할 만재 담당 직원 또는 빈 목적지 없음`으로 본문을 정상 마쳤다. 직원 재배정은 발생하지 않았다. 이후 MCT 종료에서 화면 전환을 기다리던 900ms가 부족해 08:30:04 터미널 화면 미확인으로 전체 작업은 실패했다. `%TEMP%\claude\earn-warehouse-check-0830.png`, `earn-warehouse-done.png`와 `%TEMP%\gta-earn.log`를 보존했다.
+- 08:38 직접 CEO를 해제하고 `Register as a Boss`를 확인했다. 근거는 `%TEMP%\claude\earn-ceo-cleanup-retire.png`, `earn-ceo-cleanup-unregistered.png`다. MCT 종료 코드는 확인된 터미널에서 Backspace를 한 번만 보낸 뒤 앉은 안내를 최대 8초 기다리도록 바뀌었다. 이 수정 뒤 실제 벙커 작업의 시작·본문·종료·CEO 해제 전체 성공은 별도 결과로 확인한다.
+- 수정 뒤 `EarnBunkerTask`는 08:40:03 시작해 08:40:11 CEO 등록, 08:40:25 재고 36%·보급 22% 판독, `wait_boundary`에 따라 다음 5칸 소모 경계 재관측 예약, 08:40:54 CEO 해제까지 마쳤다. 결과는 `EarnBunkerTask() = 1`, 58,641ms, 프로세스 종료 코드 0이다. `%TEMP%\earn-bunker-final.out`, `%TEMP%\gta-earn.log`, `%TEMP%\claude\earn-bunker-final.png`가 근거다. 이 실행에서는 보급이 남아 구매하지 않았으므로 새 가격 판독·결제 분기의 성공 근거로 사용하지 않는다.
+- DJ 시험은 08:42:04 Home 인기도 91%를 읽고 한 번 재고용했지만 08:42:09에도 91%로 읽혀 증가 미확인으로 중단됐다. 08:42:39 CEO는 해제됐다. 이후 추가 결제 없이 Home을 다시 열어 08:44:17 100% 화면을 확인했다. `%TEMP%\claude\earn-dj-final.png`, `earn-dj-inspect-home.png`와 `%TEMP%\earn-dj-final.out`이 근거다. 현재 코드는 결제 뒤 Home → MCT → Home을 한 번 다시 연 다음 최대 15초 읽기로 증가를 기다린다. 기존 시험 전체 성공과 보완 코드의 실전 재검증을 같은 것으로 기록하지 않는다.
+- MCT에서 일어나는 애니메이션 중 상호작용 메뉴 입력이 무시되는 일을 막기 위해, 앉은 안내가 사라진 뒤 3.5초 기다리고 접근 안내를 다시 확인하도록 보완했다. 08:47 `EarnCEO(false)` 자체 실행은 종료 코드 0으로 성공했고, 08:48:22 `%TEMP%\claude\earn-ceo-auto-unregistered.png`에서 `Register as a Boss`를 확인했다.
+- 08:49 직원 시험은 앱 메인이 보이는데도 위치 미확인으로 중단됐다. `%TEMP%\claude\earn-staff-final.png`의 일반 OCR은 투명 배경 위 `Manage Staff Members`를 잘라 읽었다. 메뉴 영역을 잘라 읽고 필요한 경우 같은 영역의 흰 글자 전처리로 정확한 전체 문구를 확인하도록 수정했다. 선택 행의 이름·위치·픽셀과 Enter 직전 재확인은 유지했다. 해당 메인 화면과 `earn-staff-select.png`를 추가한 실제 저장 화면 8장 검사 462건이 통과했다.
+- 08:52:17 시작한 DJ 작업은 08:52:43 새 Home 인기도 100%를 확인해 재고용 없이 08:53:18 CEO 해제까지 성공했다. 결과는 70,375ms, 종료 코드 0이다. 이 실행은 목표 도달 시 무구매와 작업 종료 경로를 검증했으며 결제 후 갱신 분기의 새 실측은 아니다.
+- 08:53:50 시작한 나이트클럽 창고 작업은 08:54:34 이동할 만재 담당 직원 또는 빈 목적지가 없어 배정을 유지하고 08:55:15 CEO 해제까지 성공했다. 결과는 94,531ms, 종료 코드 0이다. `%TEMP%\earn-warehouse-final.out`와 `%TEMP%\gta-earn.log`에 결과가 남았으며 실제 직원 이동은 발생하지 않았다.
+- 08:55:47부터 08:58:12까지 실제 `EarnVinewoodStaffTask` 전체 실행이 성공했다. 08:56:38 요원 1 파견을 확인하고 요원 2는 작업 중으로 건너뛰었다. Discount Retail Unit·Railyard Warehouse·Darnell Bros Warehouse·West Vinewood Backlot 네 창고에 각각 $7,500 조달을 요청한 뒤 작업 중 문구를 확인했고, Foreclosed Garage는 만재로 건너뛰었다. 앱 종료와 MCT 앞 복귀까지 마쳤으며 결과는 `EarnVinewoodStaffTask() = 1`, 153,922ms, 종료 코드 0이다. `%TEMP%\gta-earn.log`와 `%TEMP%\claude\earn-staff-verified.png`가 근거다.
+- 08:59:44 실제 금고 작업에서 Nightclub $150,000을 확인했다. 상한 미달로 수거하지 않고 앱 종료와 MCT 앞 복귀까지 마쳤다. 결과는 `EarnVinewoodSafeTask() = 1`, 36,515ms, 종료 코드 0이다. 실제 $250,000 수거 분기는 아직 검증하지 않았다.
+- 09:01:12 새 Main 프로세스 PID 10708을 시작했고, 09:01:19 실제 MCT 메뉴를 왕복한 AFK 로그를 확인했다. 이는 해당 시각의 시작·입력 관측이며 장시간 연속 운용 완료를 뜻하지 않는다.
+
+### 앱 직원 근거와 외부 검토
+
+사용자는 보석 집행 요원 파견과 스페셜 패키지 창고 직원 조달을 뜻한다고 확인했다. [Rockstar 1.72 패치노트](https://support.rockstargames.com/articles/0ExWSr9Bvq5Putzsn5w54/gtav-title-update-1-72-notes-ps5-ps4-xbox-series-x-or-s-xbox-one-pc-enhanced)는 앱에서 Bail Office·Warehouses·Hangar 직원에게 원격으로 일을 맡길 수 있다고 명시한다. [Rockstar 1.61 패치노트](https://support.rockstargames.com/articles/5aud9bTiQluHnVEP6x7YRp/gtav-title-update-1-61-notes-ps4-ps5-xbox-one-xbox-series-x-s-pc)는 스페셜 패키지 직원 조달의 기본 가격을 창고당 회당 $7,500로 명시한다. 이번 요청에 Hangar는 포함하지 않는다.
+
+기능·설정·스케줄러 배선과 입력 없는 검사는 구현됐다. 약 48분의 평시 복귀 관측을 무조건 재파견하는 타이머로 쓰지 않고 실제 대상·가격·준비 상태와 파견 후 상태를 확인한다. Bail Office 금고는 자동 수거 대상에 포함하지 않아 사용자가 관리해야 한다. 공식 근거와 플레이 관측의 구분, 정확한 화면 문구는 [앱 직원 정책](earner-policy.md#vinewood-앱-직원-파견)에 정리했다.
+
+기존 DJ·벙커 수익 정책은 ChatGPT Pro 5/5로 실제 받은 독립 검토 응답을 반영했다. 추가 직원 파견 검토는 별도 미완료다. 하위 에이전트는 부모 소유 탭에 연결하지 못했고, 부모도 기존 탭 재연결·선택 시도가 세 차례 실패해 프롬프트를 보내지 못했다. 기존 응답을 새 직원 기능의 검토 통과 근거로 쓰지 않는다. 조사 기록은 `%TEMP%\claude\earn-staff-research-20261003.md`, 보낼 프롬프트는 `%TEMP%\claude\earn-staff-chatgpt-prompt-20261003.txt`다.
+
+## 2026-09-27 작업 기록
 
 ### 2026-09-27 16:37 이후 AFK 보호와 복귀 판별
 
@@ -81,21 +147,23 @@
 - [실행 로그](evidence/2026-09-27-safe-return/run.log)에 위 성공·실패를 함께 보존했다. `Main.ahk`는 실행하지 않았으며 각 시험은 별도 `earntest.ahk` 프로세스였다.
 - 입력 없는 검사: EarnTasks 87건, Earner 21건, AntiAFK 15건, EarnNavLine 14건 통과. AHK Main 문법 검사 종료 코드 0. 이 결과는 실제 왕복이나 장시간 AFK 접속 유지 성공을 뜻하지 않는다.
 
-## 요청 (요청자: 사용자 일혁)
+## 현재 요청 (2026-10-03, 요청자: 사용자 일혁)
 
 `Main.ahk` 안에 스케줄러 하나를 두고 아래를 돌린다. 단축키는 F9 두 번(`Features/Earn/Earner.ahk`).
 
-1. 벙커 보급: 아케이드 지하 MCT 에서 산다. 보급 한 칸(20%)이 다 비었을 때만 산다(업그레이드 완료 기준 한 칸 28분). 재고가 가득이면(생산 멈춤) 사지 않는다. 막대를 못 읽으면 사지 말고 로그만 남긴다. 보급이 가득일 때 게임이 구매를 막는지도 확인한다.
-2. DJ 교체: MCT 에서 이미 고용한 DJ 끼리 바꾼다($10,000, 인기도 +10%). 인기도 95% 미만이면 95% 이상이 될 때까지, 한 번에 최대 10번. 바꿀 때마다 인기도가 올랐는지 확인하고, 안 올랐거나 못 읽으면 바로 멈춘다. 막대가 연속으로 차는지 20% 단위인지 실측한다.
-3. 나이트클럽 금고: 약 3.5시간마다 비운다(상한 $250,000).
-4. 현장 파견: 선택. 할 가치가 없으면 빼고 이유를 적는다. 스폰으로 못 가는 부동산은 사용자가 만든 워프 작업(즐겨찾기 11~17, Apse18)을 쓴다. 같은 것을 또 즐겨찾기하지 않는다.
+1. 벙커 보급은 현재 MCT에서 [완전한 보급 소모 경계와 실제 가격](earner-policy.md#벙커-보급)을 확인해 구매한다. 28분마다 구매하도록 고정하지 않는다.
+2. DJ는 이미 고용한 DJ끼리 $10,000에 바꾸고 인기도 증가를 확인한다. [기본 목표 95%의 순수입](earner-policy.md#dj-재고용)을 따른다.
+3. 금고가 $250,000에 도달하면 GTA+ Vinewood 앱에서 Nightclub 금고만 회수하고 빈 금고와 종료 상태를 확인한다.
+4. 만재 품목의 나이트클럽 창고 직원을 생산 가능한 미배정 품목으로 재배정한다. 정상 생산 중인 직원은 유지한다.
+5. Vinewood 앱에서 준비된 보석 집행 요원을 파견하고 스페셜 패키지 창고 직원에게 $7,500 조달을 맡긴다. 작업 중·만재는 건너뛰며 요청 뒤 작업 중 상태를 확인한다.
+6. 금고 방문·스폰 변경·아케이드 복귀와 기존 현장 파견 경로는 이번 매크로의 작업 목록에서 제외한다.
 
 ### 반드시 지킬 것
 
 - 금지: 결제·구독·크레딧 버튼, 게임에 Esc(Backspace 를 쓴다), 종료 확인창 Yes, 즐겨찾기 삭제, $100,000 짜리 새 DJ 고용 줄, 사용자에게 게임 조작을 부탁하기.
 - CEO·MC 는 평소 은퇴 상태다. MCT 작업 동안만 CEO 로 등록하고, 구매·교체가 끝나면 바로 Retire 한 뒤 M 메뉴에 "Register as a Boss" 가 보이는지 확인한다.
 - 키를 보내기 전마다 화면으로 확인한다. 확인이 안 되면 그 자리에서 멈추고 AFK 방지는 켜 둔다. 확인창의 Enter·클릭은 화면에서 문구를 확인한 뒤에만 보낸다.
-- 금고 가느라 아케이드를 떠난 동안 벙커는 쉬고, 돌아와 MCT 가 열리는 것을 확인한 뒤 이어서 한다.
+- MCT 작업과 Vinewood 앱 작업은 직렬로 수행한다. 현재 화면을 확인해 열고 닫으며 부동산 방문이나 세션 변경을 금고 작업에 섞지 않는다.
 - AFK 방지·End(전체 멈춤)와 같이 돌아야 한다.
 - 게임을 다시 켜야 하면 사용자와 먼저 맞춘다. 게임이 꺼진 동안 `settings.xml` 을 고치지 않는다.
 - 커밋·푸시는 묻지 않고 한다. 스테이징은 자기 변경분만 한다.
@@ -106,8 +174,13 @@
 | 파일 | 내용 |
 |---|---|
 | `Features/Earn/Earner.ahk` | 스케줄러. 5초마다 때가 된 작업 하나를 끝까지 한다. 사용자가 45초 안에 입력했거나 다른 매크로가 키를 보내는 중이면 기다린다. 위험하지 않은 실패는 `EarnSoftFail` 로 N분 뒤 다시(연속 12번이면 끈다), 나머지 실패는 전체를 끄고 AFK 방지를 켠다 |
-| `Features/Earn/EarnTasks.ahk` | 작업 본체. `EarnSafeTask`, `EarnGoHome`(MCT 로 복귀), `EarnRejoin`(초대 전용 세션으로 다시 들어가기), `EarnBunkerTask`(28분 규칙까지 구현, `EarnBunkerBuy` 는 멈추기만 함), `EarnDJTask`(`EarnDJSwapLoop` 는 멈추기만 함), `EarnDispatchTask`(빈 함수) |
-| `Features/Earn/EarnCore.ahk` | 공통 함수. 템플릿 확인, 상호작용 메뉴·스폰 위치, 미니맵 아이콘 찾기(`EarnBlip`), 길 찾기(`EarnNavPlan`, `EarnNavTo`), 카메라 돌리기(`EarnTurn`), MCT 열고 닫기, 막대 읽기(`EarnBarFill`), CEO 등록·은퇴(`EarnCEO`, 템플릿 미캡처), 인기도 읽기 |
+| `Features/Earn/EarnTasks.ahk` | 벙커 구매·DJ 재고용과 MCT 작업 시작/종료. 남아 있는 `EarnSafeTask`·이동 함수는 이전 방문 경로이며 현재 금고 소비처는 Vinewood 앱이다 |
+| `Features/Earn/EarnCore.ahk` | 템플릿, MCT 열기·닫기, 막대·인기도 판독, CEO 등록·은퇴. 이전 이동 경로의 미니맵·길찾기 함수도 포함한다 |
+| `Features/Earn/EarnPolicy.ahk` | 보급 소모 경계·실제 구매 가격 검사, 화면 용량을 사용하는 창고 직원 이동 계획 |
+| `Features/Earn/EarnVinewood.ahk` | Vinewood 앱 열기, Nightclub 상세 금액·선택 재확인, 만재 수거, 빈 금고·종료 상태 확인 |
+| `Features/Earn/EarnStaff.ahk` | Vinewood 앱의 보석 집행 요원 파견과 스페셜 패키지 창고별 $7,500 조달, 준비·작업 중·만재와 결과 확인 |
+| `Features/Earn/EarnWarehouse.ahk`, `Features/Earn/EarnWarehouseRead.ahk` | 나이트클럽 창고 재고·용량·직원 판독과 만재 품목 직원 재배정. 앱의 스페셜 패키지 직원 조달은 포함하지 않음 |
+| `Features/Earn/EarnScreen.ahk`, `Core/EarnOcr.ps1` | 영어 화면 OCR, 메뉴 선택과 엄격한 금액 판독 |
 | `Images/Earn/1920x1080/*.png` | 템플릿. 분홍(FF00FF) 칸은 투명 |
 | `Features/SessionSwitch.ahk` | 초대 전용 세션 이동. `JoinInviteOnlySession(false)` 는 End 신호를 지우지 않는다 |
 | `Core/Screen.ahk` | `TemplateSeen` |
@@ -115,7 +188,7 @@
 | `tools/earn-test/` | 시험 도구(아래 "시험 방법") |
 | `Features/RegisterCEO.ahk` | 기존 CEO 등록 메뉴 매크로(화면 확인 없이 정해진 횟수로 누름). `EarnCEO` 는 템플릿 확인 방식으로 따로 짰다 |
 
-## 실측 사실 (이 PC, 1920x1080)
+## 이전 이동 경로의 실측 사실 (2026-09-27, 1920x1080)
 
 ### 미니맵과 이동
 
@@ -158,19 +231,18 @@
 - 원인: `EarnSpawnRoute()` 가 노트북 아이콘이 가장자리에 걸린 경우(거리 999)를 받지 않는다. 조사에서 나이트클럽 스폰이 전부 1층이었으니, 이 조건으로는 길을 고를 수 없다.
 - 12번째로 다시 들어가다 세션 메뉴 제목을 확인하지 못해 멈췄다(`invite-only 중단`). 03:03:40 에 `Main.ahk` 쪽 수익 자동화가 켜졌다가 1초 만에 꺼진 기록이 있어, 누가 F9 를 눌렀거나 포커스가 빠진 것으로 보인다. 원인은 확인하지 못했다.
 
-## 다음 순서 (권장)
+## 남은 검증 (2026-10-03)
 
-1. 가장자리 노트북을 받는 코드 수정은 완료했다. 위 접속 중단 원인을 확인하고 초대 전용 온라인 접속을 검증한 뒤, `EarnNavTo("laptop")`이 1층 → 계단 → 사무실까지 가는지 실측한다. 가장자리 아이콘의 길 끝 거리를 진행 지표로 쓰는 동작은 유지했다.
-2. 사무실(같은 층)에 들어가면 금고 아이콘이 보인다. `EarnNavTo("safe", "safe_prompt")` 로 금고 앞까지 간다.
-3. 금고가 $0 이면 HUD 로 판정해 건너뛴다(이미 있음).
-4. 복귀는 스폰을 Arcade 로 두고 다시 들어가 차고 → 노트북 → MCT(`EarnGoHome`, `EarnWalkToMCT`).
-5. 끝까지 통과하면 커밋한다.
-6. CEO 메뉴 템플릿(`m_boss`, `m_boss_sel`, `m_ceo_sel`, `m_start_org_sel`, `m_securo`, `m_securo_sel`, `m_retire_sel`)을 떠서 `EarnCEO` 를 완성한다.
-7. CEO 상태로 MCT 에 들어가 벙커 보급 구매 화면과 DJ 화면을 실측하고 `EarnBunkerBuy`, `EarnDJSwapLoop` 을 짠다. DJ 는 $100,000 새 DJ 줄을 절대 누르지 않는다.
-8. 현장 파견을 할 가치가 있는지 판단한다.
-9. 사용자에게 최종 보고: 스폰 목록, 테러바이트 MCT 미확인, 고른 거점, 기능별 결과, 뺀 것과 이유, 커밋 해시.
+1. 새 가격 판독과 주문·배송 구분을 실제 벙커 결제로 확인한다. 9월의 구매 성공만으로 새 경계·가격 검사까지 통과했다고 기록하지 않는다.
+2. 실제 Nightclub 금고가 $250,000일 때 앱 수거를 한 번 실행하고 빈 금고·앱 종료·MCT 대기 상태를 확인한다.
+3. 만재·미포화 품목을 읽어 계획한 나이트클럽 직원을 실제로 재배정하고 결과 화면을 확인한다.
+4. 연결된 Main 스케줄러와 AFK 보호를 함께 운용해 장시간 관측·중단·재개 동작을 확인한다. 단위 검사와 개별 작업 성공을 장시간 게임 운용과 구분해 보고한다.
+
+새 직원 범위의 외부 검토는 아직 완료하지 않았다. 위 네 항목은 남은 실제 게임 검증이며, 개별 입력 없는 검사·외부 검토와 구분한다.
 
 ## 시험 방법
+
+현행 정책과 Vinewood 검사의 실행 명령은 [정책 문서의 검증 항목](earner-policy.md#검증)에 있다. 아래 `EarnSafeTask`·Census·Nav 예시는 9월 방문 경로 조사용으로 보존하며 현재 F9 금고 검증에는 사용하지 않는다.
 
 - 하네스: `tools/earn-test/earntest.ahk` 가 `Main.ahk` 없이 함수 하나를 부른다. 결과 한 줄은 표준 출력, 과정은 `%TEMP%\gta-earn.log`.
 

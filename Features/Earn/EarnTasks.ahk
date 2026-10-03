@@ -237,61 +237,54 @@ EarnSafeCollect() {
 ; 풀업그레이드 벙커는 보급 한 칸(20%)을 28분에 쓴다. 구매 값은 빈 양을 20% 단위로 올려 매기고 넘치는 양은 버리므로, 한 칸이 통째로 비었을 때만 산다.
 ; 재고가 가득 차면 생산이 멈춰 보급이 줄지 않는다 → 그동안은 사지 않고 타이머를 멈춘다. 재고를 판 뒤 보급이 가득 찬 시점부터 다시 센다.
 ; 막대는 MCT 첫 화면 벙커 카드(재고 초록 y 555, 보급 파랑 y 577, x 766~1154)에서 읽는다. 판단이 안 되면 사지 않고 로그만 남긴다.
-; 산 뒤 다음 시각은 구매 순간 + EarnBunkerIntervalSec (매크로 실행 시간은 주기에서 빠진다).
-global gBunkerFullSince := 0   ; 보급이 가득 찬 것을 마지막으로 본 시각 (A_TickCount). 0 이면 모름
+; 주문 시각을 배송 완료 시각으로 사용하지 않는다. 매번 갱신한 막대와 실제 가격으로 판단한다.
+global gEarnBunkerOrdered := false
 
 EarnBunkerTask() {
-    global config, gEarnNextDue, gBunkerFullSince
+    global config, gEarnNextDue, gEarnBunkerOrdered
     s := config["Settings"]
     if (!EarnTaskMCTBegin())
         return false
-    interval := s.Get("EarnMCTOnly", 0) ? Min(300, s["EarnBunkerIntervalSec"]) : s["EarnBunkerIntervalSec"]
-    stock := EarnBarFill(766, 1154, 555, "green")
-    supply := EarnBarFill(766, 1154, 577, "blue")
-    EarnLog(Format("벙커: 재고 {:.0f}% 보급 {:.0f}%", stock * 100, supply * 100))
-    if (stock < 0 || supply < 0) {
-        EarnTaskMCTEnd()
-        return EarnFail("벙커: 막대를 읽지 못함")
+    try {
+        stock := EarnBarFill(766, 1154, 555, "green")
+        supply := EarnBarFill(766, 1154, 577, "blue")
+        EarnLog(Format("벙커: 재고 {:.0f}% 보급 {:.0f}%", stock * 100, supply * 100))
+        if (stock < 0 || supply < 0)
+            return EarnFail("벙커: 막대를 읽지 못함")
+        plan := EarnBunkerOrderPlan(supply, stock, s["EarnBunkerIntervalSec"])
+        if (plan.reason = "invalid_read" || plan.reason = "invalid_interval")
+            return EarnFail(plan.reason = "invalid_read" ? "벙커: 막대 범위 오류"
+                : "벙커 주기는 1680초의 1~5배(28~140분)여야 함")
+        if (!plan.buy) {
+            EarnLog("벙커: " plan.reason " → 다음 " plan.bars "칸 소모 경계에서 재확인")
+            ; 생산 가속·정지·배송 도착을 벽시계로 추정하지 않고 최대 5분 후 새로 읽는다.
+            gEarnNextDue["bunker"] := A_TickCount + Max(5000, Min(300000, plan.waitMs))
+            ok := true
+        } else {
+            gEarnBunkerOrdered := false
+            ok := EarnBunkerBuy()
+            ; 배송 중 안내도 정상이다. 주문 완료와 보급 완료를 구분한다.
+            gEarnNextDue["bunker"] := A_TickCount + 600000
+        }
+    } finally {
+        ended := EarnTaskMCTEnd()
     }
-    ; 재고가 가득: 생산이 멈춘 상태. 사지 않고 다음 확인만 잡는다
-    if (stock >= 0.97) {
-        gBunkerFullSince := 0
-        EarnLog("벙커: 재고 가득 → 생산 정지 중이라 사지 않음 (재고를 판 뒤 다시 센다)")
-        gEarnNextDue["bunker"] := A_TickCount + interval * 1000
-        return EarnTaskMCTEnd()
-    }
-    ; 보급이 가득: 시각만 기록하고 다음 확인은 28분 뒤
-    if (supply >= 0.97) {
-        if (!gBunkerFullSince)
-            gBunkerFullSince := A_TickCount
-        EarnLog("벙커: 보급 가득, " Round(interval / 60) "분 뒤 다시 봄")
-        ; 가득 찬 것을 본 시각이 오래됐어도(껐다 켠 뒤) 최소 5분 뒤에 다시 본다
-        gEarnNextDue["bunker"] := Max(A_TickCount + 5 * 60000, gBunkerFullSince + interval * 1000)
-        return EarnTaskMCTEnd()
-    }
-    ; 한 칸(20%) 이상 통째로 비었을 때만 산다
-    if (supply > 0.81) {
-        EarnLog("벙커: 보급이 한 칸 다 비지 않아(" Round(supply * 100) "%) 이번엔 사지 않음")
-        gEarnNextDue["bunker"] := A_TickCount + 5 * 60000
-        return EarnTaskMCTEnd()
-    }
-    if (!EarnBunkerBuy()) {
-        return false
-    }
-    gBunkerFullSince := A_TickCount
-    gEarnNextDue["bunker"] := A_TickCount + interval * 1000
-    return EarnTaskMCTEnd()
+    return ok && ended
 }
 
 ; MCT에서 시작해 MCT로 복귀한다. 0927 저택 MCT 화면 기준.
 EarnBunkerBuy() {
+    global config, gEarnBunkerOrdered
     if (!EarnUIReady("mct_bunker_card"))
         return EarnFail("벙커: MCT 카드 없음")
     stock := EarnBarFill(766, 1154, 555, "green")
     supply := EarnBarFill(766, 1154, 577, "blue")
     if (stock < 0 || supply < 0)
         return EarnFail("벙커: 막대 판독 실패")
-    if (stock >= 0.97 || supply > 0.81)
+    plan := EarnBunkerOrderPlan(supply, stock, config["Settings"]["EarnBunkerIntervalSec"])
+    if (plan.reason = "invalid_read" || plan.reason = "invalid_interval")
+        return EarnFail("벙커: 보급 판독 또는 28분 배수 설정 오류")
+    if (!plan.buy)
         return true
     if (!EarnUIClick("mct_bunker_card", 960, 525))
         return false
@@ -317,6 +310,20 @@ EarnBunkerBuy() {
             return EarnFail("벙커: 구매/배송 안내 없음")
     }
     if (EarnSeen("bunker_confirm")) {
+        ; 버튼의 전송 성공으로 결제를 판정하지 않는다. 현재 확인창에 표시된 가격을 대조한다.
+        quote := EarnReadScreen([600, 420, 720, 210])
+        price := EarnReadDollars(EarnScreenText(quote))
+        ; 느린 OCR 도중 가격 구간이 바뀌어도 이전 견적으로 결제하지 않는다.
+        if (EarnBunkerPriceAllowed(price, plan.bars))
+            price := EarnReadDollars(EarnScreenText(EarnReadScreen([600, 420, 720, 210])))
+        if (!EarnBunkerPriceAllowed(price, plan.bars)) {
+            EarnLog("벙커: 가격 " price ", 예상 " plan.bars * 15000 " 불일치. 결제 취소")
+            if (!EarnUIClick("bunker_confirm", 850, 619)
+                || !EarnWaitGone("bunker_confirm", "", 3000)
+                || !EarnUIBackToMCT("bunker_page", 2))
+                return EarnFail("벙커 가격 불일치 뒤 취소 상태 미확인")
+            return price >= 0 || EarnFail("벙커: 확인창 금액 판독 실패")
+        }
         if (!EarnUIClick("bunker_confirm", 1065, 619)
             || !EarnWaitGone("bunker_confirm", "", 15000)
             || !EarnWaitSeen("bunker_buy", "", 5000))
@@ -325,6 +332,7 @@ EarnBunkerBuy() {
         if (!EarnUIClick("bunker_buy", 1150, 795)
             || !EarnWaitSeen("bunker_pending", "", 5000))
             return EarnFail("벙커: 배송 접수 미확인, 재구매 금지")
+        gEarnBunkerOrdered := true
     }
     if (!EarnUIClick("bunker_pending", 960, 619)
         || !EarnWaitGone("bunker_pending", "", 3000))
@@ -335,34 +343,34 @@ EarnBunkerBuy() {
 
 ; --- 나이트클럽 DJ 교체 (규칙은 사용자 지시 0926) ---
 ; 수입 최고 구간(95% 이상)을 목표로 기존 DJ를 $10,000에 교체(+10%p).
-; 교체마다 인기도가 올랐는지 화면으로 확인하고, 한 번이라도 오르지 않았거나 못 읽으면 즉시 멈춘다. 처음 부르는 DJ($100,000) 줄은 절대 고르지 않는다.
+; 교체마다 화면을 다시 열어 인기도 갱신을 제한 시간 동안 확인한다. 갱신이 없으면 추가 결제 없이 멈추며 신규 DJ($100,000)는 고르지 않는다.
 EarnDJTask() {
-    global config
-    s := config["Settings"]
     if (!EarnTaskMCTBegin())
         return false
-    pop := EarnPopularityMCTPct()
-    EarnLog("DJ: 인기도 " pop "%")
-    if (pop < 0) {
-        EarnTaskMCTEnd()
-        return EarnFail("DJ: 인기도를 읽지 못함")
+    try {
+        ok := EarnDJSwapLoop()
+    } finally {
+        ended := EarnTaskMCTEnd()
     }
-    if (!EarnDJNeedsRebook(pop, s["EarnDJPopularityPct"])) {
-        EarnLog("DJ: 목표 인기도 도달로 교체 안 함")
-        return EarnTaskMCTEnd()
-    }
-    ok := EarnDJSwapLoop(pop)
-    return ok && EarnTaskMCTEnd()
+    return ok && ended
 }
 
 EarnTaskMCTBegin() {
     global config
-    if (config["Settings"].Get("EarnMCTOnly", 0)) {
-        if (!EarnUIReady("mct_title", [0.3,0,0.7,0.1]))
-            return EarnFail("MCT 전용: 먼저 사업장 목록을 열어야 함")
-        return EarnMCTRefresh()
+    if (EarnAtMCT() && !EarnMCTClose())
+        return false
+    ; 이 자동화는 사용자가 둔 MCT 앞에서만 동작한다. 부동산 재접속·임의 길찾기는 하지 않는다.
+    if (!EarnSeen("mct_sit", [0,0,0.3,0.1]))
+        return EarnFail("MCT 앞에 서 있거나 사업장 목록을 연 상태에서 시작해야 함")
+    opened := false
+    try {
+        opened := EarnCEO(true) && EarnMCTOpen() && EarnMCTRefresh()
+        return opened
+    } finally {
+        ; 등록 또는 화면 판독 예외에도 확인된 화면에서만 닫고 CEO를 해제한다.
+        if (!opened)
+            EarnTaskMCTEnd()
     }
-    return EarnGoHome() && EarnMCTOpen()
 }
 
 ; MCT 막대는 화면에 재진입해 갱신한다. 사업장 진입 화면에서는 결제 없이 뒤로 돌아온다.
@@ -381,23 +389,72 @@ EarnMCTRefresh() {
 }
 
 EarnTaskMCTEnd() {
-    global config
-    if (config["Settings"].Get("EarnMCTOnly", 0))
-        return EarnUIReady("mct_title", [0.3,0,0.7,0.1]) || EarnFail("MCT 전용: 목록 복귀 미확인")
-    return EarnMCTClose()
+    global gEarnFail
+    originalFailure := IsSet(gEarnFail) ? gEarnFail : ""
+    try {
+        if (EarnAborted())
+            return false
+        if (EarnUIReady("bunker_confirm")) {
+            if (!EarnUIClick("bunker_confirm", 850, 619)
+                || !EarnWaitGone("bunker_confirm", "", 3000))
+                return EarnFail("MCT 정리: 벙커 구매 취소 미확인")
+        } else if (EarnUIReady("bunker_pending")) {
+            if (!EarnUIClick("bunker_pending", 960, 619)
+                || !EarnWaitGone("bunker_pending", "", 3000))
+                return EarnFail("MCT 정리: 벙커 배송 알림 닫기 미확인")
+        } else {
+            for confirmation in ["dj_confirm_solomun", "dj_confirm_tale"] {
+                if (EarnUIReady(confirmation)) {
+                    ; 두 실측 DJ 재고용 확인창의 왼쪽 Cancel만 누른다.
+                    if (!EarnUIClick(confirmation, 750, 628)
+                        || !EarnWaitGone(confirmation, "", 3000))
+                        return EarnFail("MCT 정리: DJ 재고용 취소 미확인")
+                    break
+                }
+            }
+        }
+        if (EarnUIReady("bunker_page", [0.15,0,0.35,0.12])) {
+            if (!EarnUIBackToMCT("bunker_page", 2))
+                return EarnFail("MCT 정리: 벙커 페이지 복귀 미확인")
+        } else if (EarnUIReady("bunker_entry", [0.34,0.54,0.64,0.64])) {
+            if (!EarnUIBackToMCT("bunker_entry", 1))
+                return EarnFail("MCT 정리: 벙커 시작 화면 복귀 미확인")
+        } else if (EarnUIReady("nc_dj_menu")) {
+            if (!EarnUIClick("nc_dj_menu", 495, 596) || !EarnSleep(500)
+                || !EarnUIBackToMCT("nc_dj_menu", 1))
+                return EarnFail("MCT 정리: 나이트클럽 Home 복귀 미확인")
+        }
+        if (EarnUIReady("mct_sit", [0,0,0.3,0.1]))
+            return EarnCEO(false)
+        if (!EarnUIReady("mct_title", [0.3,0,0.7,0.1])
+            && !EarnUIReady("mct_seated", [0,0,0.3,0.1]) && !EarnUIReady("mct_need_ceo"))
+            return EarnFail("MCT 정리: 확인된 복귀 경로 없음. 화면 확인 후 보스 해제 필요")
+        return EarnMCTClose() && EarnCEO(false)
+    } catch as e {
+        return EarnFail("MCT 정리 오류: " e.Message)
+    } finally {
+        ; 정리 실패는 EarnFail 로그에 남기되 작업 본래의 중단 사유를 보존한다.
+        if (originalFailure != "")
+            gEarnFail := originalFailure
+    }
 }
 
-EarnDJSwapLoop(pop) {
+; 진입: MCT 사업장 목록 또는 Nightclub Home. 성공하면 MCT 목록으로 돌아온다.
+; 옛 MCTSmoke가 넘기는 MCT 판독값은 진단 인수로만 받으며 지출 판단에 쓰지 않는다.
+EarnDJSwapLoop(previousMCTReading := "") {
     global config
+    if (!EarnDJHomeOpen())
+        return false
     Loop 10 {
-        pop := EarnPopularityMCTPct()
+        pop := EarnPopularityHomePct()
         if (pop < 0)
-            return EarnFail("DJ: MCT 인기도 미확인")
-        if (!EarnDJNeedsRebook(pop, config["Settings"]["EarnDJPopularityPct"]))
-            return true
-        if (!EarnUIClick("mct_nightclub_card", 520, 525)
-            || !EarnWaitSeen("nc_dj_menu", "", 5000)
-            || !EarnUIClick("nc_dj_menu", 495, 759)
+            return EarnFail("DJ: Nightclub Home 인기도 미확인")
+        EarnLog("DJ: Home 인기도 " pop "%")
+        if (!EarnDJNeedsRebook(pop, config["Settings"]["EarnDJPopularityPct"])) {
+            EarnLog("DJ: 목표 인기도 도달로 교체 안 함")
+            return EarnUIBackToMCT("nc_dj_menu", 1)
+        }
+        if (!EarnUIClick("nc_dj_menu", 495, 759)
             || !EarnWaitSeen("dj_solomun", "", 5000))
             return EarnFail("DJ: 목록 이동 실패")
         ; 캡처로 확인한 $10,000 Rebook만 클릭. 신규 고용은 선택하지 않는다.
@@ -420,14 +477,62 @@ EarnDJSwapLoop(pop) {
             || !EarnWaitSeen(resident, area, 5000))
             return EarnFail("DJ: 교체 결과 미확인")
         if (!EarnUIClick("nc_home", 495, 596)
-            || !EarnSleep(500) || !EarnUIBackToMCT("nc_dj_menu", 1))
+            || !EarnWaitSeen("nc_popularity_home", [0.38,0.14,0.54,0.19], 5000)
+            || !EarnSleep(500))
             return false
-        updated := EarnPopularityMCTPct()
+        updated := EarnDJWaitForIncrease(pop)
         EarnLog("DJ: 인기도 " pop " → " updated)
         if (updated <= pop)
             return EarnFail("DJ: 교체 후 인기도 증가 미확인")
     }
-    return EarnFail("DJ: 교체 10회 제한")
+    finalPop := EarnPopularityHomePct()
+    if (finalPop < config["Settings"]["EarnDJPopularityPct"])
+        return EarnFail("DJ: 교체 10회 제한")
+    return EarnUIBackToMCT("nc_dj_menu", 1)
+}
+
+EarnDJWaitForIncrease(previous, timeoutMs := 15000) {
+    ; Resident 변경 직후 Home은 이전 값을 보일 수 있다. 결제 화면으로 가지 않고
+    ; 확인된 Home → MCT → Home을 한 번 다시 연 뒤 읽기만 반복한다.
+    if (!EarnUIReady("nc_popularity_home", [0.38,0.14,0.54,0.19])
+        || !EarnUIBackToMCT("nc_dj_menu", 1) || !EarnDJHomeOpen())
+        return -1
+    deadline := A_TickCount + timeoutMs
+    Loop {
+        if (EarnAborted())
+            return -1
+        updated := EarnPopularityHomePct()
+        if (updated > previous)
+            return updated
+        ; 문맥이 사라졌으면 읽기 재시도도 중단한다. 인기도만 늦게 바뀌면 기다린다.
+        if (!EarnUIReady("nc_popularity_home", [0.38,0.14,0.54,0.19]))
+            return -1
+        remaining := deadline - A_TickCount
+        if (remaining <= 0 || !EarnSleep(Min(500, remaining)))
+            return -1
+    }
+}
+
+EarnDJHomeOpen() {
+    if (EarnUIReady("mct_title", [0.3,0,0.7,0.1])) {
+        if (!EarnUIClick("mct_nightclub_card", 520, 525)
+            || !EarnWaitSeen("nc_home", "", 5000))
+            return EarnFail("DJ: 나이트클럽 Home 진입 실패")
+    } else if (!EarnUIReady("nc_popularity_home", [0.38,0.14,0.54,0.19])) {
+        return EarnFail("DJ: MCT 목록 또는 Nightclub Home에서 시작해야 함")
+    }
+    ; Home을 새로 열어 확인한다. 실제 캡처에서 값이 달랐던 MCT 카드 막대는 쓰지 않는다.
+    return EarnUIClick("nc_home", 495, 596)
+        && EarnWaitSeen("nc_popularity_home", [0.38,0.14,0.54,0.19], 5000)
+        && EarnSleep(500)
+}
+
+EarnPopularityHomePct() {
+    ; 2026-10-03 실제 Home의 Nightclub Popularity 문맥과 막대 내부 좌표.
+    if (!EarnUIReady("nc_popularity_home", [0.38,0.14,0.54,0.19]))
+        return -1
+    value := EarnBarFill(1069, 1584, 173, "pop")
+    return value < 0 || value > 1 ? -1 : Round(value * 100)
 }
 
 EarnUIReady(name, area := "") {
@@ -459,6 +564,8 @@ EarnUIClick(guard, x, y, area := "") {
         } finally {
             SendEvent("{Blind}{LButton up}")
         }
+        if (EarnAborted())
+            return false
         DllCall("SetCursorPos", "int", cx+40, "int", cy+130)
         return EarnSleep(450)
     } finally {

@@ -21,6 +21,11 @@ $workingTree = $null
 $runtimeVersion = $null
 $runtimeHash = $null
 $sourceHashes = @()
+$ahkSuites = @('test-earner', 'test-antiafk', 'test-altf4teleport', 'test-earnnav', 'test-earntasks', 'test-earnblip',
+    'test-earnpolicy', 'test-earnscreen', 'test-earnscreen-command', 'test-earnvinewood', 'test-earnwarehouse-read', 'test-earnwarehouse',
+    'test-earnstaff', 'test-afk-notification-command', 'test-afk-input-lock')
+$expectedChecks = @('syntax-powershell', 'syntax-python', 'validate-main') + $ahkSuites + @(
+    'test-earnocr', 'test-mct-seated-template', 'test-notification-dismiss', 'test-session-guard', 'test-gui-input', 'test-perf-watch', 'test-screen-capture')
 $started = [DateTime]::UtcNow
 . (Join-Path $PSScriptRoot 'common.ps1')
 
@@ -147,11 +152,15 @@ try {
     # The verified 2.0.28 interpreter never executes Main.ahk here.
     Invoke-LoggedCheck 'validate-main' $AhkPath @('/validate', '/ErrorStdOut', '/CP65001', (Join-Path $repositoryRoot 'Main.ahk')) 30 -RequireEmptyStderr
     # Explicit allowlist: never discover/run arbitrary *test* scripts or Main.ahk.
-    foreach ($suite in @('test-earner', 'test-antiafk', 'test-altf4teleport', 'test-earnnav', 'test-earntasks', 'test-earnblip')) {
+    foreach ($suite in $ahkSuites) {
         $scriptPath = Join-Path $repositoryRoot ('tools\earn-test\' + $suite + '.ps1')
         Invoke-LoggedCheck $suite $powershell ($psArguments + @($scriptPath, '-AhkPath', $AhkPath))
     }
+    Invoke-LoggedCheck 'test-earnocr' $powershell ($psArguments + @((Join-Path $repositoryRoot 'tools\earn-test\test-earnocr.ps1')))
+    Invoke-LoggedCheck 'test-notification-dismiss' $powershell ($psArguments + @((Join-Path $repositoryRoot 'tools\earn-test\test-notification-dismiss.ps1')))
+    Invoke-LoggedCheck 'test-mct-seated-template' $powershell ($psArguments + @((Join-Path $repositoryRoot 'tools\earn-test\test-mct-seated-template.ps1')))
     Invoke-LoggedCheck 'test-session-guard' $AhkPath @('/ErrorStdOut', '/CP65001', (Join-Path $repositoryRoot 'tools\earn-test\test-session-guard.ahk')) 30
+    Invoke-LoggedCheck 'test-gui-input' $AhkPath @('/ErrorStdOut', '/CP65001', (Join-Path $repositoryRoot 'tools\earn-test\gui-input.ahk'), '--self-test') 30
     Invoke-LoggedCheck 'test-perf-watch' $powershell ($psArguments + @(
         (Join-Path $repositoryRoot 'tools\tests\gta-perf-watch.tests.ps1'),
         '-FixtureDir', (Join-Path $outputPath 'perf-fixtures')
@@ -167,13 +176,16 @@ try {
     Write-Host $failure
 } finally {
     $failedChecks = @($results | Where-Object { -not $_.passed })
-    $passed = -not $failure -and $results.Count -eq 12 -and $failedChecks.Count -eq 0
+    $missingChecks = @($expectedChecks | Where-Object { $_ -notin $results.name })
+    $passed = -not $failure -and $results.Count -eq $expectedChecks.Count -and
+        $failedChecks.Count -eq 0 -and $missingChecks.Count -eq 0
     [ordered]@{
         passed = $passed; revision = $revision; workingTree = $workingTree
         startedUtc = $started.ToString('o'); finishedUtc = [DateTime]::UtcNow.ToString('o')
         powershell = $PSVersionTable.PSVersion.ToString()
         autoHotkeyVersion = $runtimeVersion; autoHotkeySha256 = $runtimeHash
-        repositoryRoot = $repositoryRoot; failure = $failure; checks = @($results.ToArray()); sources = $sourceHashes
+        repositoryRoot = $repositoryRoot; failure = $failure; missingChecks = $missingChecks
+        checks = @($results.ToArray()); sources = $sourceHashes
     } | ConvertTo-Json -Depth 7 | Set-Content -LiteralPath (Join-Path $outputPath 'results.json') -Encoding UTF8
     Write-Host ('Results: ' + (Join-Path $outputPath 'results.json'))
 }

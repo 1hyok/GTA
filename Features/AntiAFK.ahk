@@ -1,6 +1,6 @@
 ; === AFK 방지 (GTA Online idle 킥 방지) ===
 ; 사용자가 AFKUserIdleSec 초 동안 키보드·마우스를 안 만졌을 때만, AFKIntervalSec 초(±AFKJitterSec) 간격으로
-; 일반 모드는 W/S 왕복, MCT 모드는 선택을 바꾸지 않는 상대 마우스 왕복을 보낸다.
+; 일반 모드는 W/S 왕복, MCT 모드는 확인된 메뉴를 열고 닫아 시작 화면으로 돌아온다.
 ; GTA가 앞일 때만 입력한다. 다른 창이 앞이면 물리 입력과, 이 매크로 밖에서 주입된 입력(크롬 원격 데스크톱·computer-use·코덱스 등)이
 ; 둘 다 AFKRefocusIdleSec 초(기본 300, 0 이면 끔) 넘게 없을 때만 GTA 를 앞으로 가져오고(최소화면 복원), AFKRefocusSettleMs 기다린 뒤
 ; 같은 입력 판정을 다시 거친다. 그보다 짧으면 누가 자리에 있거나 다른 창을 쓰는 중이라고 보고 포커스를 뺏지 않는다.
@@ -14,6 +14,8 @@ global gAFKBusy := false
 global afkRefocusFails := 0      ; 같은 유휴 구간에서 입력까지 못 가고 연달아 실패한 전면화 횟수
 global afkRefocusStretch := 0    ; 그 유휴 구간이 시작된 시각(A_TickCount - A_TimeIdlePhysical)
 global afkRefocusLastErr := ""   ; 마지막으로 로그에 적은 실패 까닭. 같은 까닭은 다시 적지 않는다
+global afkRefocusWindow := ""    ; 같은 앞 창/유휴 구간의 복귀는 세 번까지만 시도한다
+global afkMCTLastErr := ""       ; 같은 미확인 메뉴 경고는 한 번만 표시한다
 global afkHookTick := 0          ; SetAntiAFK 가 키보드·마우스 훅을 처음 깐 시각(A_TickCount)
 global afkSelfFrom := 0          ; 이 매크로가 입력(W/S·마우스 왕복·전면화 중 Alt)을 넣기 시작한 시각
 global afkSelfTo := 0            ; 그 입력을 끝낸 시각. 0 이면 아직 넣는 중
@@ -63,6 +65,14 @@ AntiAFKTick() {
     ; 그때 끼어든 W/S 나 GTA 전면화가 그쪽의 알림 판정·스팀 클릭 사이에 들어간다
     if (IsTeleportRunning())
         return
+    try inputLock := AFKInputLockAcquire()
+    catch as err {
+        AFKLog("input lock blocked: " err.Message)
+        afkNextDue := A_TickCount + 120000
+        return
+    }
+    if (!IsObject(inputLock))
+        return
     idleSec := Round(AFKPhysicalIdleMs() / 1000)
     gAFKBusy := true
     try {
@@ -93,14 +103,13 @@ AntiAFKTick() {
         }
         if (!AFKInputAllowed())
             return
-        ; MCT 모드에서는 W/S가 목록 선택을 바꾸므로 클릭 없는 상대 마우스 왕복만 보낸다.
-        ; 수익 작업이 화면 오류로 멈춰도 AFK 타이머는 살아 있고 이동 키를 보내지 않는다.
+        ; MCT에서는 화면 전환의 왕복을 확인한다. 걷기/시점 회전/구매·선택은 하지 않는다.
         AFKSelfInput(true)
         try {
             if (config["Settings"].Get("EarnMCTOnly", 0)) {
-                if (!AFKMousePulse())
+                if (!AFKMCTPulse())
                     return
-                action := "mouse pulse (MCT)"
+                action := "MCT 메뉴 왕복 확인"
             } else {
                 keys := afkFlip ? ["s", "w"] : ["w", "s"]
                 for k in keys {
@@ -130,6 +139,48 @@ AntiAFKTick() {
         afkRefocusLastErr := ""
     } finally {
         gAFKBusy := false
+        AFKInputLockRelease(inputLock)
+    }
+}
+
+; GUI receiver는 이름 존재로 진입을 막으므로 그 이름도 AFK 종료까지 예약한다.
+; standalone afk-guard가 같은 스레드에서 이미 가진 macro mutex는 재귀 취득/해제가 된다.
+AFKInputLockAcquire(macroName := "Local\GtaMacroInput", guiName := "Local\GtaGuiInput") {
+    guiHandle := DllCall("CreateMutexW", "ptr", 0, "int", 0, "str", guiName, "ptr")
+    existed := A_LastError = 183
+    if (!guiHandle)
+        throw Error("GUI 입력 잠금을 만들지 못함")
+    if (existed) {
+        DllCall("CloseHandle", "ptr", guiHandle)
+        return 0
+    }
+    macroHandle := 0
+    try {
+        macroHandle := DllCall("CreateMutexW", "ptr", 0, "int", 0, "str", macroName, "ptr")
+        if (!macroHandle)
+            throw Error("매크로 입력 잠금을 만들지 못함")
+        acquired := DllCall("WaitForSingleObject", "ptr", macroHandle, "uint", 0, "uint")
+        if (acquired = 0 || acquired = 0x80)
+            return {macro: macroHandle, gui: guiHandle}
+        if (acquired != 0x102)
+            throw Error("매크로 입력 잠금 상태를 확인하지 못함")
+    } catch as err {
+        if (macroHandle)
+            DllCall("CloseHandle", "ptr", macroHandle)
+        DllCall("CloseHandle", "ptr", guiHandle)
+        throw err
+    }
+    DllCall("CloseHandle", "ptr", macroHandle)
+    DllCall("CloseHandle", "ptr", guiHandle)
+    return 0
+}
+
+AFKInputLockRelease(inputLock) {
+    try {
+        DllCall("ReleaseMutex", "ptr", inputLock.macro)
+    } finally {
+        DllCall("CloseHandle", "ptr", inputLock.macro)
+        DllCall("CloseHandle", "ptr", inputLock.gui)
     }
 }
 
@@ -138,15 +189,22 @@ AntiAFKTick() {
 ; 다만 AHK 의 WinActivate 는 부드러운 방법이 실패하면 스스로 Alt 를 두 번 누를 수 있다(AHK 소스 기준, 실측 안 함).
 ; 이 Alt 들은 AFKSelfInput 구간 안에 있어 주입 포함 유휴를 되돌리지 않는다(되돌리면 실패 뒤 재시도가 기준 시간만큼 밀린다).
 AFKRefocusGTA(idleSec, othersMs) {
-    global GTA_WIN, afkRefocusFails, afkRefocusStretch, afkRefocusLastErr
+    global GTA_WIN, afkRefocusFails, afkRefocusStretch, afkRefocusLastErr, afkRefocusWindow, afkNextDue
+    if (!AFKRefocusAllowed())
+        return AFKRefocusCanceled()
     ; 그사이 물리 입력이 한 번이라도 있었으면 새 유휴 구간이다. 실패 횟수와 적어 둔 까닭을 비운다.
     stretch := A_TickCount - AFKPhysicalIdleMs()
-    if (Abs(stretch - afkRefocusStretch) > 2000) {
+    fgLabel := AFKForegroundLabel()
+    if (Abs(stretch - afkRefocusStretch) > 2000 || fgLabel != afkRefocusWindow) {
         afkRefocusStretch := stretch
         afkRefocusFails := 0
         afkRefocusLastErr := ""
+        afkRefocusWindow := fgLabel
     }
-    fgLabel := AFKForegroundLabel()
+    if (afkRefocusFails >= 3) {
+        afkNextDue := A_TickCount + 120000
+        return false
+    }
     gtaHwnd := WinExist(GTA_WIN)
     if (!gtaHwnd)
         return AFKRefocusFailed("GTA 창 없음", idleSec, fgLabel)
@@ -155,16 +213,29 @@ AFKRefocusGTA(idleSec, othersMs) {
     try {
         if (WinGetMinMax("ahk_id " gtaHwnd) = -1)
             WinRestore("ahk_id " gtaHwnd)
+        if (!AFKRefocusAllowed())
+            return AFKRefocusCanceled()
         WinActivate("ahk_id " gtaHwnd)
         activated := WinWaitActive("ahk_id " gtaHwnd, , 2)
         ; 0926 14:49~15:18 에 TextInputHost 가 앞에 있는 동안 전면화가 계속 실패해 방치 킥을 당했다. 그 경우와 앞 창이 없을 때만
         ; Alt 를 한 번 눌렀다 떼고 한 번 더 가져온다. 브라우저·탐색기에서는 Alt 가 메뉴 바를 켜므로 쓰지 않는다.
         if (!activated) {
+            if (!AFKRefocusAllowed())
+                return AFKRefocusCanceled()
             fg := WinExist("A")
             fgExe := ""
             if (fg)
                 try fgExe := WinGetProcessName("ahk_id " fg)
-            if (!fg || fgExe = "TextInputHost.exe") {
+            if (fg && fgExe = "ShellExperienceHost.exe" && WinGetTitleSafe(fg) == "New notification") {
+                dismissal := AFKDismissNotification(fg)
+                if (!AFKRefocusAllowed())
+                    return AFKRefocusCanceled()
+                if (dismissal != "dismissed")
+                    return AFKRefocusFailed("알림 복귀 " dismissal, idleSec, fgLabel)
+                via := " (알림을 알림 센터로 이동)"
+                WinActivate("ahk_id " gtaHwnd)
+                activated := WinWaitActive("ahk_id " gtaHwnd, , 2)
+            } else if (!fg || fgExe = "TextInputHost.exe") {
                 via := " (Alt 보조: " (fg ? fgExe : "앞 창 없음") ")"
                 Send("{Alt down}{Alt up}")
                 WinActivate("ahk_id " gtaHwnd)
@@ -181,6 +252,97 @@ AFKRefocusGTA(idleSec, othersMs) {
     AFKLog("refocus ok idle=" idleSec "s 주입 포함 idle=" Round(othersMs / 1000) "s 앞 창=" fgLabel via
         . (afkRefocusFails ? " (앞선 실패 " afkRefocusFails "회 뒤)" : ""))
     return true
+}
+
+; 긴 창 활성화/OCR 대기 사이에도 최근 입력과 다른 매크로의 소유권을 다시 확인한다.
+AFKRefocusAllowed() {
+    global afkOn, config, clawLoopRunning, gEarnBusy, gMenuBusy
+    threshold := config["Settings"].Get("AFKRefocusIdleSec", 300)
+    return afkOn && threshold > 0
+        && AFKPhysicalIdleMs() >= Max(1, threshold, config["Settings"]["AFKUserIdleSec"]) * 1000
+        && AFKOthersIdleMs() >= threshold * 1000
+        && !(IsSet(clawLoopRunning) && clawLoopRunning)
+        && !(IsSet(gEarnBusy) && gEarnBusy) && !(IsSet(gMenuBusy) && gMenuBusy)
+        && !IsTeleportRunning() && !AnyInputToggleOn()
+}
+
+AFKRefocusCanceled() {
+    global afkNextDue
+    afkNextDue := A_TickCount + 30000
+    AFKLog("refocus 취소: 최근 입력 또는 다른 매크로. 전면화/알림 조작 중단")
+    return false
+}
+
+; 현재 관측된 Windows 알림의 닫기 버튼만 UIA로 누른다. 승인/거절 버튼은 대상이 아니다.
+; 자식은 HWND/PID/제목/마지막 입력 tick을 Invoke 직전 다시 확인한다.
+AFKDismissNotification(hwnd) {
+    global afkSelfBefore
+    if (!AFKRefocusAllowed() || WinExist("A") != hwnd
+        || WinGetProcessName("ahk_id " hwnd) != "ShellExperienceHost.exe"
+        || WinGetTitleSafe(hwnd) !== "New notification")
+        return "blocked:foreground-or-input"
+    notificationPid := WinGetPID("ahk_id " hwnd)
+    lastInput := Buffer(8, 0)
+    NumPut("uint", 8, lastInput)
+    if (!DllCall("GetLastInputInfo", "ptr", lastInput))
+        return "error:last-input"
+    lastInputTick := NumGet(lastInput, 4, "uint")
+    SplitPath(A_LineFile, , &sourceDir)
+    output := A_Temp "\gta-afk-notification-" DllCall("GetCurrentProcessId") "-" A_TickCount ".txt"
+    command := '"' A_WinDir '\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "'
+        . sourceDir '\..\Core\NotificationDismiss.ps1" -WindowHandle ' hwnd ' -ProcessId ' notificationPid
+        . ' -LastInputTick ' lastInputTick ' -OutputPath "' output '"'
+    handle := 0, childPid := 0
+    try {
+        Run(command, , "Hide", &childPid)
+        handle := DllCall("OpenProcess", "uint", 0x101001, "int", false, "uint", childPid, "ptr")
+        if (!handle) {
+            if (ProcessExist(childPid))
+                ProcessClose(childPid)
+            return "error:process-handle"
+        }
+        deadline := A_TickCount + 8000
+        while (DllCall("WaitForSingleObject", "ptr", handle, "uint", 0, "uint") = 0x102) {
+            allowed := AFKRefocusAllowed()
+            if (!allowed || A_TickCount > deadline) {
+                DllCall("TerminateProcess", "ptr", handle, "uint", 1)
+                DllCall("WaitForSingleObject", "ptr", handle, "uint", 2000)
+                return allowed ? "error:timeout" : "blocked:recent-input"
+            }
+            Sleep(25)
+        }
+        code := 1
+        if (!DllCall("GetExitCodeProcess", "ptr", handle, "uint*", &code) || !FileExist(output))
+            return "error:missing-result"
+        result := Trim(FileRead(output, "UTF-8"))
+        ; 알림을 읽는 동안의 외부 입력을 자기 WinActivate의 Alt로 오인해 숨기지 않는다.
+        if (result = "blocked:input-changed")
+            afkSelfBefore := A_TickCount - A_TimeIdle
+        if (code = 0 && result = "dismissed") {
+            ; 자식 종료 직후 마지막 입력이 바뀌었으면 자기 입력이라고 추측하지 않는다.
+            if (!DllCall("GetLastInputInfo", "ptr", lastInput))
+                return "error:last-input"
+            if (NumGet(lastInput, 4, "uint") != lastInputTick) {
+                afkSelfBefore := A_TickCount - A_TimeIdle
+                return "blocked:recent-input"
+            }
+            if (!AFKRefocusAllowed())
+                return "blocked:recent-input"
+            return result
+        }
+        return RegExMatch(result, "^(blocked|error):[a-z0-9_-]+$") ? result : "error:invalid-result"
+    } catch {
+        if (handle && DllCall("WaitForSingleObject", "ptr", handle, "uint", 0, "uint") = 0x102) {
+            DllCall("TerminateProcess", "ptr", handle, "uint", 1)
+            DllCall("WaitForSingleObject", "ptr", handle, "uint", 2000)
+        }
+        return "error:helper"
+    } finally {
+        if (handle)
+            DllCall("CloseHandle", "ptr", handle)
+        if (FileExist(output))
+            FileDelete(output)
+    }
 }
 
 ; 물리 입력 유휴(ms). A_TimeIdlePhysical 은 훅을 깐 순간부터 다시 세므로 Main 을 켠 직후에는 실제보다 짧다
@@ -217,7 +379,7 @@ AFKSelfInput(start) {
     }
 }
 
-; 전면화 실패를 센다. 다음 시도는 30 → 60 → 120초 뒤(그 뒤로 120초 간격)로 미뤄 15분 방치 킥 전에 몇 번 더 해 본다.
+; 첫 두 실패 뒤 30초/60초 대기. 세 번째도 실패하면 같은 앞 창/유휴 구간의 재시도를 막고 경고한다.
 ; 로그는 유휴 구간의 첫 실패와 까닭이 바뀐 때만 남긴다. 항상 false 를 돌려준다.
 AFKRefocusFailed(reason, idleSec, fgLabel := "") {
     global afkNextDue, afkRefocusFails, afkRefocusLastErr
@@ -228,6 +390,10 @@ AFKRefocusFailed(reason, idleSec, fgLabel := "") {
         AFKLog("refocus 실패: " reason " idle=" idleSec "s 앞 창=" (fgLabel = "" ? AFKForegroundLabel() : fgLabel)
             . " (다음 시도 " waitSec "초 뒤, 같은 까닭은 다시 적지 않음)")
     afkRefocusLastErr := reason
+    if (afkRefocusFails = 3) {
+        AFKLog("refocus blocked: 3회 실패. 앞 창/사용자 유휴 구간이 바뀌기 전 추가 전면화 없음. AFK 입력 미확인: " reason)
+        ShowTooltip("⚠ AFK 복귀 막힘: GTA 포커스와 알림을 확인하세요. " reason, 10000)
+    }
     return false
 }
 
@@ -259,15 +425,69 @@ AFKWait(ms) {
     return AFKInputAllowed()
 }
 
-AFKMousePulse() {
-    for dx in [2, -2] {
+AFKMCTPulse() {
+    global afkMCTLastErr
+    if (!AFKInputAllowed())
+        return false
+    start := "", middle := "", openKey := "", closeKey := ""
+    if (AFKMenuSeen("mct_title")) {
+        start := "mct_title", middle := "mct_seated", openKey := "Backspace", closeKey := "Enter"
+    } else if (AFKMenuSeen("mct_seated")) {
+        start := "mct_seated", middle := "mct_title", openKey := "Enter", closeKey := "Backspace"
+    } else if (AFKMenuSeen("mct_sit")) {
+        start := "mct_sit", middle := "m_title", openKey := "m", closeKey := "m"
+    } else {
+        return AFKMCTBlocked("전화/앱/미확인 화면. 확인된 MCT 대기 화면에서만 입력")
+    }
+    if (!AFKMenuSeen(start) || !AFKMenuTap(openKey) || !AFKWaitMenu(middle, 8000))
+        return AFKMCTBlocked("메뉴 진입 미확인: " start " → " middle)
+    if (!AFKMenuSeen(middle) || !AFKMenuTap(closeKey) || !AFKWaitMenu(start, 8000))
+        return AFKMCTBlocked("시작 화면 복귀 미확인: " middle " → " start)
+    afkMCTLastErr := ""
+    AFKLog("MCT state confirmed: " start " → " middle " → " start)
+    return true
+}
+
+AFKMenuSeen(name) {
+    area := name = "m_title" ? [0,0,0.27,0.55] : name = "mct_title" ? [0.3,0,0.7,0.1] : [0,0,0.3,0.1]
+    if (name = "mct_seated" && TemplateSeen("Earn", "mct_seated_mansion", area))
+        return true
+    return TemplateSeen("Earn", name, area)
+}
+
+AFKMenuTap(key) {
+    if (!AFKInputAllowed())
+        return false
+    try {
+        Send("{" key " down}")
+        return AFKWait(100)
+    } finally {
+        if (!GetKeyState(key, "P"))
+            Send("{" key " up}")
+    }
+}
+
+AFKWaitMenu(name, timeoutMs) {
+    deadline := A_TickCount + timeoutMs
+    Loop {
         if (!AFKInputAllowed())
             return false
-        DllCall("mouse_event", "uint", 1, "int", dx, "int", 0, "uint", 0, "uptr", 0)
-        if (!AFKWait(100))
+        if (AFKMenuSeen(name))
+            return true
+        if (A_TickCount >= deadline || !AFKWait(100))
             return false
     }
-    return true
+}
+
+AFKMCTBlocked(reason) {
+    global afkNextDue, afkMCTLastErr
+    afkNextDue := A_TickCount + 30000
+    if (reason != afkMCTLastErr) {
+        AFKLog("MCT AFK blocked: " reason " (게임 입력 수신/시작 화면 복귀 미확인)")
+        ShowTooltip("⚠ AFK 대기: " reason, 7000)
+        afkMCTLastErr := reason
+    }
+    return false
 }
 
 ; 다른 창이 앞에 있어도 GTA 를 앞으로 가져온다. 일반 WinActivate 는 Windows 가 거부하는 경우가 있어
