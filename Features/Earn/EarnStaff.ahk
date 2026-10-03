@@ -61,8 +61,10 @@ EarnStaffRoot() {
             white := EarnReadScreen([25,125,450,263], true)
             if (!EarnStaffUniqueRow(white, "i)^THE VINEWOOD CLUB APP$"))
                 return EarnFail("직원: Vinewood 앱 제목 재확인 실패")
+            ; 작업 중인 요원 행은 밝은 막대 위 회색 글자라 일반 판독이 깨진다(1004 02:01 실측: "I Agent 2").
             if (EarnStaffUniqueRow(white, "i)^Manage Staff Members$")
-                || (EarnStaffUniqueRow(white, "i)^Warehouse$") && EarnStaffUniqueRow(white, "i)^Bail Office$")))
+                || (EarnStaffUniqueRow(white, "i)^Warehouse$") && EarnStaffUniqueRow(white, "i)^Bail Office$"))
+                || EarnStaffBailIdentity(white, 1) || EarnStaffBailIdentity(white, 2))
                 lines := white
         }
         if (EarnStaffUniqueRow(lines, "i)^Warehouse$") && EarnStaffUniqueRow(lines, "i)^Bail Office$"))
