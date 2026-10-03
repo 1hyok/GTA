@@ -1844,7 +1844,8 @@ cases := [["already-open",Map("scene","mct_title"),true,"",0,0],
     ["CEO-prompt-delay",Map("promptAt",1200,"seatedAfter",600,"titleAfter",400),true,"e;Enter;",4500,1],
     ["prompt-timeout",Map("promptAt",9000),false,"",8000,1],
     ["abort-prompt",Map("promptAt",1200,"abortAt",400),false,"",400,1],
-    ["seated-timeout",Map("scene","mct_sit","seatedAfter",9000),false,"e;",8000,1],
+    ["seated-after-notification",Map("scene","mct_sit","seatedAfter",13000),true,"e;Enter;",15300,1],
+    ["seated-timeout",Map("scene","mct_sit","seatedAfter",21000),false,"e;",20000,1],
     ["title-timeout",Map("scene","mct_seated","titleAfter",9000),false,"Enter;",8000,0],
     ["abort-seating",Map("scene","mct_sit","seatedAfter",1200,"abortAt",400),false,"e;",400,1],
     ["sit-key-rejected",Map("scene","mct_sit","rejectKey","e"),false,"",0,1],
@@ -1870,8 +1871,9 @@ EarnSeen(name,area := "") {
 }
 EarnWaitSeen(name,area,timeoutMs) {
     global promptWaits
-    if (timeoutMs != 8000)
-        throw Error("MCT transitions require one bounded eight-second wait")
+    ; 앉은 안내는 게임 알림이 가릴 수 있어 20초까지 기다린다(1003 23:24 실측).
+    if (timeoutMs != (name = "mct_seated" ? 20000 : 8000))
+        throw Error("MCT transitions require one bounded wait (seated 20s, others 8s)")
     if (name = "mct_sit") {
         if (!(area is Array) || area.Length != 4 || area[1] != 0 || area[2] != 0 || area[3] != 0.3 || area[4] != 0.1)
             throw Error("Standing prompt wait must use the prompt region")
