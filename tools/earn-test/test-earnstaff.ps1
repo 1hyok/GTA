@@ -112,6 +112,7 @@ RunTests() {
         ["missing_unselected_agent", ["ready","ready"], true, 2],
         ["missing_selected_agent", ["ready","busy"], false, 0],
         ["bail_double_selection", ["ready","busy"], false, 0],
+        ["garbled_after_busy", ["ready","busy"], true, 1],
         ["cancel_select", ["ready","ready"], false, 0]
     ]
     for c in cases {
@@ -440,6 +441,9 @@ MockReadScreen(area, whiteText) {
         lines.RemoveAt(selected = "Agent 1" ? 3 : 2)
     if (mode = "missing_selected_agent")
         lines.RemoveAt(selected = "Agent 1" ? 2 : 3)
+    ; 1004 05:24 실측: 작업 중으로 바뀐 직후 일반 판독이 "j Agent 2" 처럼 깨진다.
+    if (mode = "garbled_after_busy" && requests[1] && !whiteText && area[4] = 115)
+        lines[selected = "Agent 1" ? 2 : 3].text := "j " selected
     if (mode = "garbled_busy_root" && !whiteText)
         lines[selected = "Agent 1" ? 2 : 3].text := "I " selected
     if (requests[1]) {
