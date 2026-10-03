@@ -14,6 +14,8 @@
 - 이번 실제 앱 화면에서 메인·사업장 목록의 동일한 제목, Nightclub 빈 금고 문구, Arcade의 `Claim $5000 from your Arcade safe.` 상세 문구를 확인했다. Arcade 금액은 화면 형식 확인 자료이며 수거 대상이 아니다. 하위 목록과 메인에서 Backspace로 나와 MCT 대기 안내가 나타나는 경로도 확인했다.
 - Main의 모듈 포함과 스케줄러의 `EarnVinewoodSafeTask`·`EarnWarehouseTask`·`EarnVinewoodStaffTask` 소비가 연결돼 있다. CEO 하위 메뉴의 제목과 `Retire` 문맥을 놓치던 판독을 수정했다. 실제 직원 모듈의 파견·건너뛰기·앱 종료·MCT 앞 복귀와 금고 $150,000 무수거 복귀를 확인했다. 새 벙커 결제, 실제 $250,000 앱 수거, 나이트클럽 직원 재배정과 스케줄러 장시간 운용은 별도 검증 대상이다.
 
+09:15 추가 보완은 MCT 접근 안내가 없어도 전화·앱·메뉴가 없는 HUD를 확인한 뒤 상호작용 메뉴를 왕복한다. 필수 전화 프레임·Vinewood 표제 자산이 없으면 중단하며, 카메라나 캐릭터를 이동시키지 않는다. Main PID 13132에서 09:15:14 `game_hud → m_title → game_hud` 실제 왕복을 확인했다. 별도 AFK 실행기도 같은 판독을 소비한다. 이 보완을 포함한 전체 검사 29개도 통과했으며 최종 결과는 `%TEMP%\gta-earn-ci-20261003-final-0917\results.json`이다. 전화·앱 자산 검사는 CI의 고정 자료 4건과 실제 캡처를 추가한 16건을 구분한다.
+
 ### 입력 없는 검증
 
 | 검사 | 확인한 건수 | 범위 |
@@ -27,7 +29,7 @@
 | `test-earnstaff -FixtureDirectory` | 462 | 위 검사와 실제 저장 화면 8장의 OCR·선택 픽셀 판독 |
 | `test-earnscreen` / `test-earnscreen-command` | 48 / 39 | 화면·금액 판독과 OCR 명령 구성·외부 절대 기한 |
 | `test-earnocr` | 9, 실제 자료 포함 15 | Windows OCR·영문 앱 문구·좌표 |
-| `test-antiafk` / `test-afk-notification-command` / `test-afk-input-lock` | 48 / 60 / 35 | AFK 상태, 알림 처리 명령, 입력 잠금 |
+| `test-antiafk` / `test-afk-notification-command` / `test-afk-input-lock` | 67 / 60 / 35 | AFK 상태, 알림 처리 명령, 입력 잠금 |
 | `test-notification-dismiss` | 52 | 알림 신원·버튼·취소·경쟁 상태 |
 | `test-mct-seated-template` | Nightclub 18 + MCT 9 | 메뉴·앉은 안내 판독과 템플릿 생성 결과 재현. 실제 앉은 화면 추가 시 MCT 10건 |
 

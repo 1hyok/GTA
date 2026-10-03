@@ -2,7 +2,7 @@
 param([string]$AhkPath = "$env:LOCALAPPDATA\Programs\AutoHotkey\v2\AutoHotkey64.exe")
 $ErrorActionPreference = 'Stop'
 $source = Get-Content (Join-Path $PSScriptRoot '..\..\Features\AntiAFK.ahk') -Raw -Encoding UTF8
-$functions = @('AntiAFKTick', 'AFKInputAllowed', 'AFKMCTPulse', 'AFKMenuSeen', 'AFKMenuTap', 'AFKWaitMenu', 'AFKMCTBlocked',
+$functions = @('AntiAFKTick', 'AFKInputAllowed', 'AFKMCTPulse', 'AFKMenuSeen', 'AFKMenuTap', 'AFKWaitMenu', 'AFKMCTBlocked', 'AFKFreeHud', 'AFKHudVisible',
     'AFKRefocusGTA', 'AFKRefocusFailed', 'AFKForegroundLabel', 'AFKPhysicalIdleMs', 'AFKOthersIdleMs', 'AFKSelfInput',
     'AFKRefocusAllowed', 'AFKRefocusCanceled') | ForEach-Object {
     $body = [regex]::Match($source, ('(?ms)^' + $_ + '\([^)\r\n]*\) \{.*?^\}')).Value
@@ -16,6 +16,7 @@ $driver = @'
 #SingleInstance Off
 #NoTrayIcon
 #Warn All, StdOut
+global checkCount := 0
 Reset()
 afkOn := false
 AntiAFKTick()
@@ -248,7 +249,62 @@ menuCloseWorks := false, failMenuWaitAt := 3
 AntiAFKTick()
 Check(events.Length = 4 && menuState = "mct_seated" && LogHas("시작 화면 복귀 미확인") && !LogHas("MCT 메뉴 왕복 확인"),
     "missing final screen does not report verified activity")
-FileAppend("PASS AntiAFK: 48 cases; no game input`n", "*")
+Reset()
+menuState := "ground", hudVisible := true, hudOriginX := -2560, hudOriginY := 100
+AntiAFKTick()
+Check(events.Length = 4 && events[1] = "{m down}" && events[3] = "{m down}" && menuState = "ground"
+    && releases = 1 && LogHas("game_hud → m_title → game_hud"), "plain gameplay HUD opens and closes interaction menu without movement")
+Reset()
+menuState := "ground"
+AntiAFKTick()
+Check(events.Length = 0, "unknown screen without health HUD receives no input")
+for overlay in ["afk_phone_frame", "afk_vinewood_title", "ph_joblist_sel", "ph_vinewood_sel", "m_pref_title", "m_sub_boss", "m_sub_securo"] {
+    Reset()
+    menuState := "ground", hudVisible := true, visibleOverlay := overlay
+    AntiAFKTick()
+    Check(events.Length = 0 && releases = 1, "HUD with " overlay " is blocked")
+}
+Reset()
+menuState := "m_title", hudVisible := true
+AntiAFKTick()
+Check(events.Length = 0, "already-open interaction menu is not mistaken for a free HUD")
+Reset()
+menuState := "ground", hudVisible := true, guardAssetMissing := true
+AntiAFKTick()
+Check(events.Length = 0, "missing overlay guard assets fail closed")
+Reset()
+menuState := "ground", hudVisible := true, hudWidth := 1280
+AntiAFKTick()
+Check(events.Length = 0 && hudReads = 0, "unsupported client size never searches or starts fallback")
+Reset()
+menuState := "ground", hudVisible := true, hudWindowError := true
+AntiAFKTick()
+Check(events.Length = 0, "client window failure is not a free HUD")
+Reset()
+menuState := "ground", hudVisible := true, hideHudAfter := 1
+AntiAFKTick()
+Check(events.Length = 0, "health HUD is rechecked immediately before opening menu")
+Reset()
+menuState := "ground", hudVisible := true, menuOpenWorks := false, failMenuWaitAt := 2
+AntiAFKTick()
+Check(events.Length = 2 && !LogHas("MCT 메뉴 왕복 확인"), "HUD alone does not prove interaction menu opened")
+Reset()
+menuState := "ground", hudVisible := true, menuCloseWorks := false, failMenuWaitAt := 3
+AntiAFKTick()
+Check(events.Length = 4 && menuState = "m_title" && !LogHas("MCT 메뉴 왕복 확인"), "HUD behind unclosed interaction menu cannot prove return")
+Reset()
+menuState := "ground", hudVisible := true, hideHudOnClose := true, failMenuWaitAt := 3
+AntiAFKTick()
+Check(events.Length = 4 && !LogHas("MCT 메뉴 왕복 확인"), "closed menu must return to confirmed health HUD")
+Reset()
+menuState := "ground", hudVisible := true, interrupt := true
+AntiAFKTick()
+Check(events.Length = 2 && !gAFKBusy && releases = 1, "user input during fallback releases held M and input lock")
+Reset()
+menuState := "ground", hudVisible := true, stealBack := true
+AntiAFKTick()
+Check(events.Length = 2 && !gAFKBusy && releases = 1, "focus loss during fallback stops further navigation")
+FileAppend("PASS AntiAFK: " checkCount " cases; no game input`n", "*")
 ExitApp(0)
 Reset() {
     global
@@ -265,6 +321,8 @@ Reset() {
     externalNotificationInput := false
     lockAvailable := true, lockError := false, releases := 0
     menuState := "mct_title", menuReads := 0, hideBeforeMenuKey := false, menuOpenWorks := true, menuCloseWorks := true, menuChanges := 0, failMenuWaitAt := 0
+    hudVisible := false, hudReads := 0, hideHudAfter := 0, hideHudOnClose := false, hudOriginX := 0, hudOriginY := 0,
+        hudWidth := 1920, hudHeight := 1080, hudWindowError := false, visibleOverlay := "", guardAssetMissing := false, menuReturnState := "", gImageRoot := "fake"
     logs := [], waits := [], warnings := []
     config := Map("Settings", Map("AFKUserIdleSec",45,"AFKJitterSec",0,"AFKIntervalSec",200,"AFKTapMs",100,"AFKGapMs",100,"EarnMCTOnly",1,
         "AFKRefocusIdleSec",300,"AFKRefocusSettleMs",800))
@@ -282,10 +340,12 @@ LogHas(text) {
     return false
 }
 Check(ok, label) {
+    global checkCount
     if (!ok) {
         FileAppend("FAIL " label "`n", "*")
         ExitApp(1)
     }
+    checkCount++
 }
 WinExist(title := "") => title = "A" ? frontExists : windowExists
 IsGTAActive() => focused
@@ -293,7 +353,7 @@ IsTeleportRunning() => teleportBusy
 AnyInputToggleOn() => false
 GetKeyState(*) => false
 Send(value) {
-    global events, anyInjectedAt, altSent, menuState, menuChanges
+    global events, anyInjectedAt, altSent, menuState, menuChanges, menuReturnState, hudVisible
     if (!gAFKBusy)
         throw Error("input without ownership")
     events.Push(value)
@@ -308,17 +368,41 @@ Send(value) {
             menuState := "mct_seated"
         else if (value = "{Enter down}" && menuState = "mct_seated")
             menuState := "mct_title"
-        else if (value = "{m down}" && menuState = "mct_sit")
-            menuState := "m_title"
-        else if (value = "{m down}" && menuState = "m_title")
-            menuState := "mct_sit"
+        else if (value = "{m down}" && (menuState = "mct_sit" || menuState = "ground"))
+            menuReturnState := menuState, menuState := "m_title"
+        else if (value = "{m down}" && menuState = "m_title") {
+            menuState := menuReturnState
+            if (hideHudOnClose)
+                hudVisible := false
+        }
         else
             throw Error("Unknown game state received menu input")
     }
 }
 DllCall(name, args*) {
+    if (name = "SetThreadDpiAwarenessContext")
+        return 1
     throw Error("No mouse movement/native input should be needed: " name)
 }
+WinGetClientPos(&x, &y, &w, &h, *) {
+    if (hudWindowError)
+        throw Error("test window disappeared")
+    x := hudOriginX, y := hudOriginY, w := hudWidth, h := hudHeight
+}
+CoordMode(kind, mode) {
+    if (kind != "Pixel" || mode != "Screen")
+        throw Error("Unexpected coordinate-mode mutation")
+}
+PixelSearch(&x, &y, x1, y1, x2, y2, color, tolerance) {
+    global hudReads
+    if (x1 != hudOriginX+40 || y1 != hudOriginY+1050 || x2 != hudOriginX+96 || y2 != hudOriginY+1056
+        || color != 0x4C8F4C || tolerance != 30)
+        throw Error("HUD search does not use the physical health-bar rectangle")
+    hudReads++
+    x := x1, y := y1
+    return hudVisible && (!hideHudAfter || hudReads <= hideHudAfter)
+}
+FileExist(path) => guardAssetMissing ? "" : "A"
 AFKWait(ms) {
     global idleMs, hookExtraMs, focused
     waits.Push(ms)
@@ -373,10 +457,10 @@ AFKDismissNotification(*) {
 ShowTooltip(message,*) => warnings.Push(message)
 TemplateSeen(folder,name,*) {
     global menuReads
-    if (folder != "Earn")
+    if (folder != "Earn" && folder != "JobWarp")
         throw Error("Unexpected template namespace")
     menuReads++
-    return name = menuState && !(hideBeforeMenuKey && menuReads >= 2)
+    return (name = menuState || name = visibleOverlay) && !(hideBeforeMenuKey && menuReads >= 2)
 }
 AFKInputLockAcquire(*) {
     if (lockError)
@@ -408,7 +492,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'AFK test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS AntiAFK: 48 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -notmatch '^PASS AntiAFK: [0-9]+ cases; no game input$') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout

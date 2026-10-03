@@ -16,7 +16,7 @@ InstallMouseHook()
 DetectHiddenWindows(true)
 SetTitleMatchMode(2)
 global config := Map("Settings", Map("AFKUserIdleSec",45,"AFKIntervalSec",120,
-    "AFKJitterSec",0,"AFKTapMs",150,"AFKGapMs",150,"EarnMCTOnly",0))
+    "AFKJitterSec",0,"AFKTapMs",150,"AFKGapMs",150,"EarnMCTOnly",1))
 global gImageRoot := A_ScriptDir "\..\..\Images"
 global afkOn := true
 global gAbort := false
@@ -63,18 +63,17 @@ GuardTick() {
                 return
             ; 크롬 원격 데스크톱·computer-use·코덱스의 입력은 주입 입력이라 A_TimeIdlePhysical 에 안 잡힌다. 그 입력이 45초 안에 있었으면
             ; 누가 다른 창을 쓰는 중이므로 GTA 를 가져오지 않는다(가져오면 그 클릭·타이핑이 게임으로 들어간다). A_TimeIdle 은 이 실행기의
-            ; W/S 와 WinActivate 가 실패 때 누를 수 있는 Alt 도 세므로, 그 뒤 45초는 다시 가져오지 않는다.
+            ; 메뉴 입력과 WinActivate 가 실패 때 누를 수 있는 Alt 도 세므로, 그 뒤 45초는 다시 가져오지 않는다.
             if (A_TimeIdle < 45000)
                 return
             WinActivate(GTA_WIN)
             if (!WinWaitActive(GTA_WIN,,2) || A_TimeIdlePhysical < 45000)
                 return
         }
-        terminal := TemplateSeen("Earn","mct_title",[0.3,0,0.7,0.1])
-            || TemplateSeen("Earn","mct_seated",[0,0,0.3,0.1])
-        if (!terminal && !SessionHudVisible())
+        if (!AFKMenuSeen("mct_title") && !AFKMenuSeen("mct_seated")
+            && !AFKMenuSeen("mct_sit") && !AFKFreeHud())
             return
-        config["Settings"]["EarnMCTOnly"] := terminal ? 1 : 0
+        config["Settings"]["EarnMCTOnly"] := 1
         AntiAFKTick()
     } finally {
         DllCall("ReleaseMutex", "ptr",gGuardMutex)

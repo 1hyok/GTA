@@ -436,8 +436,10 @@ AFKMCTPulse() {
         start := "mct_seated", middle := "mct_title", openKey := "Enter", closeKey := "Backspace"
     } else if (AFKMenuSeen("mct_sit")) {
         start := "mct_sit", middle := "m_title", openKey := "m", closeKey := "m"
+    } else if (AFKFreeHud()) {
+        start := "game_hud", middle := "m_title", openKey := "m", closeKey := "m"
     } else {
-        return AFKMCTBlocked("전화/앱/미확인 화면. 확인된 MCT 대기 화면에서만 입력")
+        return AFKMCTBlocked("전화/앱/미확인 화면. MCT 또는 메뉴 없는 HUD에서만 입력")
     }
     if (!AFKMenuSeen(start) || !AFKMenuTap(openKey) || !AFKWaitMenu(middle, 8000))
         return AFKMCTBlocked("메뉴 진입 미확인: " start " → " middle)
@@ -449,10 +451,52 @@ AFKMCTPulse() {
 }
 
 AFKMenuSeen(name) {
+    if (name = "game_hud")
+        return AFKFreeHud()
     area := name = "m_title" ? [0,0,0.27,0.55] : name = "mct_title" ? [0.3,0,0.7,0.1] : [0,0,0.3,0.1]
     if (name = "mct_seated" && TemplateSeen("Earn", "mct_seated_mansion", area))
         return true
     return TemplateSeen("Earn", name, area)
+}
+
+; 시점이 바뀌어 MCT 접근 안내가 없어도 위치·카메라를 움직이지 않는다.
+; 전화와 Vinewood 앱에서도 미니맵은 보이므로 HUD만 보고 M을 누르지 않는다.
+AFKFreeHud() {
+    global gImageRoot
+    if (!AFKInputAllowed() || !AFKHudVisible())
+        return false
+    for name in ["afk_phone_frame", "afk_vinewood_title"]
+        if (!FileExist(gImageRoot "\Earn\1920x1080\" name ".png"))
+            return false
+    if (TemplateSeen("Earn", "afk_phone_frame", [0.83,0.58,0.98,0.72])
+        || TemplateSeen("Earn", "ph_joblist_sel", [0.83,0.66,0.98,0.73])
+        || TemplateSeen("Earn", "ph_vinewood_sel", [0.83,0.66,0.98,0.73])
+        || TemplateSeen("Earn", "afk_vinewood_title", [0,0,0.27,0.2]))
+        return false
+    area := [0,0,0.27,0.55]
+    return !TemplateSeen("Earn", "m_title", area) && !TemplateSeen("Earn", "m_pref_title", area)
+        && !TemplateSeen("JobWarp", "m_sub_boss", area) && !TemplateSeen("JobWarp", "m_sub_securo", area)
+        && AFKInputAllowed()
+}
+
+; EarnCore 없이 standalone AFK에서도 같은 실측 체력 막대를 확인한다.
+AFKHudVisible() {
+    if (!AFKInputAllowed())
+        return false
+    hwnd := IsGTAActive()
+    if (!hwnd)
+        return false
+    previous := DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
+    try {
+        WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
+        if (cw != 1920 || ch != 1080)
+            return false
+        CoordMode("Pixel", "Screen")
+        return PixelSearch(&x, &y, cx+Round(cw*0.021), cy+Round(ch*0.972),
+            cx+Round(cw*0.05), cy+Round(ch*0.978), 0x4C8F4C, 30)
+    } catch {
+        return false
+    } finally DllCall("SetThreadDpiAwarenessContext", "ptr", previous, "ptr")
 }
 
 AFKMenuTap(key) {

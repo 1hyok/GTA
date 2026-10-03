@@ -25,7 +25,7 @@ $ahkSuites = @('test-earner', 'test-antiafk', 'test-altf4teleport', 'test-botwar
     'test-earnpolicy', 'test-earnscreen', 'test-earnscreen-command', 'test-earnvinewood', 'test-earnwarehouse-read', 'test-earnwarehouse',
     'test-earnstaff', 'test-afk-notification-command', 'test-afk-input-lock')
 $expectedChecks = @('syntax-powershell', 'syntax-python', 'validate-main') + $ahkSuites + @(
-    'test-earnocr', 'test-mct-seated-template', 'test-notification-dismiss', 'test-session-guard', 'test-gui-input', 'test-perf-watch', 'test-screen-capture')
+    'test-earnocr', 'test-mct-seated-template', 'test-afk-overlays', 'test-notification-dismiss', 'test-session-guard', 'test-gui-input', 'test-perf-watch', 'test-screen-capture')
 $started = [DateTime]::UtcNow
 . (Join-Path $PSScriptRoot 'common.ps1')
 
@@ -159,6 +159,7 @@ try {
     Invoke-LoggedCheck 'test-earnocr' $powershell ($psArguments + @((Join-Path $repositoryRoot 'tools\earn-test\test-earnocr.ps1')))
     Invoke-LoggedCheck 'test-notification-dismiss' $powershell ($psArguments + @((Join-Path $repositoryRoot 'tools\earn-test\test-notification-dismiss.ps1')))
     Invoke-LoggedCheck 'test-mct-seated-template' $powershell ($psArguments + @((Join-Path $repositoryRoot 'tools\earn-test\test-mct-seated-template.ps1')))
+    Invoke-LoggedCheck 'test-afk-overlays' $powershell ($psArguments + @((Join-Path $repositoryRoot 'tools\earn-test\test-afk-overlays.ps1')))
     Invoke-LoggedCheck 'test-session-guard' $AhkPath @('/ErrorStdOut', '/CP65001', (Join-Path $repositoryRoot 'tools\earn-test\test-session-guard.ahk')) 30
     Invoke-LoggedCheck 'test-gui-input' $AhkPath @('/ErrorStdOut', '/CP65001', (Join-Path $repositoryRoot 'tools\earn-test\gui-input.ahk'), '--self-test') 30
     Invoke-LoggedCheck 'test-perf-watch' $powershell ($psArguments + @(
