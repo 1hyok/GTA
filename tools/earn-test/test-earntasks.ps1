@@ -1636,14 +1636,16 @@ global backOptions := Map(), backClockMs := 0, backAborted := false, backspaces 
 ; Options, result, Backspace count, elapsed time.
 for c in [[Map("alreadyMCT",true),true,0,0],
     [Map("mctAfterFirst",1200,"secondPageAfter",9000),true,1,1250],
-    [Map("mctAfterFirst",4000,"secondPageAfter",9000),false,1,3650],
+    [Map("mctAfterFirst",4000,"secondPageAfter",9000),true,1,4010],
+    [Map("mctAfterFirst",9000,"secondPageAfter",9000),false,1,8650],
     [Map("mctAfterFirst",1200,"secondPageAfter",9000,"abortAt",900),false,1,1010],
     [Map("mctAfterFirst",1200,"secondPageAfter",9000,"focusLostAt",900),false,1,1010],
     [Map("pageAt",1200),true,2,2500],
-    [Map("pageAt",4000),false,0,3000],
+    [Map("pageAt",4000),true,2,5380],
+    [Map("pageAt",9000),false,0,8000],
     [Map("pageAt",1200,"abortAt",400),false,0,480],
     [Map("secondPageAfter",1200),true,2,1900],
-    [Map("secondPageAfter",9000),false,1,3650],
+    [Map("secondPageAfter",9000),false,1,8650],
     [Map("mctAfterLast",1200),true,2,1900],
     [Map("alreadyMCT",true,"aborted",true),false,0,0]] {
     backOptions := c[1], backClockMs := 0, backAborted := backOptions.Get("aborted",false), backspaces := 0,
@@ -1652,7 +1654,7 @@ for c in [[Map("alreadyMCT",true),true,0,0],
     if (result != c[2] || backspaces != c[3] || backClockMs != c[4])
         throw Error("Return wait result=" result " inputs=" backspaces " elapsed=" backClockMs)
 }
-FileAppend("PASS UIBackToMCT cases=12`n", "*")
+FileAppend("PASS UIBackToMCT cases=14`n", "*")
 ExitApp(0)
 EarnSeen(name,*) {
     if (name = "mct_title")
@@ -1700,7 +1702,7 @@ BackClock() => backClockMs
     $savedBackSource = $sourceText
     try {
         $sourceText = $sourceText.Replace('A_TickCount', 'BackClock()')
-        Invoke-EarnOfflineCheck 'UIBackToMCT' 'EarnUIBackToMCT' $uiBackDriver 12
+        Invoke-EarnOfflineCheck 'UIBackToMCT' 'EarnUIBackToMCT' $uiBackDriver 14
     } finally { $sourceText = $savedBackSource }
     $sourceText = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\Earner.ahk') -Raw -Encoding UTF8
     $listDriver = @'
