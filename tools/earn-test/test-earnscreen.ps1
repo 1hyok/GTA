@@ -123,11 +123,12 @@ EarnMenuRowSelected(row) {
 }
 EarnPress(key) {
     global presses, allowPress
-    if (key != "Down")
+    if (key != "Down" && key != "Up")
         throw Error("Selection attempted an unsafe key: " key)
     presses++
     return allowPress
 }
+EarnLog(*) => true
 EarnAborted() {
     return false
 }
