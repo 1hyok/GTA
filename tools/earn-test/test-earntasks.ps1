@@ -1826,14 +1826,15 @@ global EARN_PROMPT_AREA := [0,0,0.3,0.1], openOptions := Map(), openScene := "",
 ; Initial scene/options, result, input order, elapsed time, standing-prompt waits.
 cases := [["already-open",Map("scene","mct_title"),true,"",0,0],
     ["already-seated",Map("scene","mct_seated"),true,"Enter;",800,0],
-    ["standing",Map("scene","mct_sit"),true,"e;Enter;",800,1],
-    ["CEO-prompt-delay",Map("promptAt",1200,"seatedAfter",600,"titleAfter",400),true,"e;Enter;",3000,1],
+    ["standing",Map("scene","mct_sit"),true,"e;Enter;",2300,1],
+    ["CEO-prompt-delay",Map("promptAt",1200,"seatedAfter",600,"titleAfter",400),true,"e;Enter;",4500,1],
     ["prompt-timeout",Map("promptAt",9000),false,"",8000,1],
     ["abort-prompt",Map("promptAt",1200,"abortAt",400),false,"",400,1],
     ["seated-timeout",Map("scene","mct_sit","seatedAfter",9000),false,"e;",8000,1],
     ["title-timeout",Map("scene","mct_seated","titleAfter",9000),false,"Enter;",8000,0],
     ["abort-seating",Map("scene","mct_sit","seatedAfter",1200,"abortAt",400),false,"e;",400,1],
-    ["sit-key-rejected",Map("scene","mct_sit","rejectKey","e"),false,"",0,1]]
+    ["sit-key-rejected",Map("scene","mct_sit","rejectKey","e"),false,"",0,1],
+    ["enter-swallowed",Map("scene","mct_seated","swallow",1),true,"Enter;Enter;",8800,0]]
 for c in cases {
     openOptions := c[2], openScene := openOptions.Get("scene","transition"), openOrder := "",
         openClockMs := 0, openAborted := false, promptWaits := 0, seatedAfterAt := -1, titleAfterAt := -1
@@ -1841,7 +1842,7 @@ for c in cases {
     if (result != c[3] || openOrder != c[4] || openClockMs != c[5] || promptWaits != c[6])
         throw Error("MCT open " c[1] " result=" result " input=" openOrder " elapsed=" openClockMs " waits=" promptWaits)
 }
-FileAppend("PASS MCTOpen cases=10`n", "*")
+FileAppend("PASS MCTOpen cases=11`n", "*")
 ExitApp(0)
 EarnSeen(name,area := "") {
     global openScene
@@ -1870,6 +1871,8 @@ EarnPress(key) {
         return false
     if (key = "e" && openScene = "mct_sit")
         openScene := "seating", seatedAfterAt := openClockMs + openOptions.Get("seatedAfter",0)
+    else if (key = "Enter" && openScene = "mct_seated" && openOptions.Get("swallow",0) > 0)
+        openOptions["swallow"] -= 1
     else if (key = "Enter" && openScene = "mct_seated")
         openScene := "opening", titleAfterAt := openClockMs + openOptions.Get("titleAfter",0)
     else
@@ -1888,12 +1891,12 @@ Sleep(ms) {
 EarnFail(*) => false
 '@
     $openWaitBody = (Get-EarnFunctionBody $sourceText 'EarnWaitSeen').Replace('EarnWaitSeen(', 'FixtureOpenWaitSeen(').Replace('A_TickCount', 'OpenClock()')
-    $mctOpenDriver += "`n" + $openWaitBody
-    Invoke-EarnOfflineCheck 'MCTOpen' 'EarnMCTOpen' $mctOpenDriver 10
+    $mctOpenDriver += "`n" + $openWaitBody + "`n" + (Get-EarnFunctionBody $sourceText 'EarnSleep').Replace('A_TickCount', 'OpenClock()')
+    Invoke-EarnOfflineCheck 'MCTOpen' 'EarnMCTOpen' $mctOpenDriver 11
     $mctCloseDriver = @'
 global EARN_PROMPT_AREA := [], config := Map("Settings",Map("EarnTurnUnitsPerDeg",29))
 global closeCase := Map(), scene := "", aborted := false, backspaces := 0, clicks := [], promptReads := 0, turns := 0, turnUnits := 0,
-    closeClockMs := 0, seatedWaits := 0, seatedReads := 0, seatedAt := -1, stoodAt := -1, abortInputs := -1
+    closeClockMs := 0, seatedWaits := 0, seatedReads := 0, seatedAt := -1, stoodAt := -1, abortInputs := -1, steps := []
 ; Options, result, Backspace presses, right-button events, camera turns, prompt waits.
 cases := [
     ["list",Map("scene","mct_title"),true,1,2,0,1],
@@ -1904,13 +1907,14 @@ cases := [
     ["press-failed",Map("scene","mct_title","press",false),false,0,0,0,0],
     ["abort-before-click",Map("abortAt","start"),false,0,0,0,0],
     ["still-seated",Map("gone",false),false,0,2,0,0],
-    ["reverse-wall",Map("prompt",false),true,0,2,1,2],
-    ["prompt-still-missing",Map("prompt",false,"afterTurn",false),false,0,2,1,2],
-    ["turn-failed",Map("prompt",false,"turn",false),false,0,2,0,1],
+    ["reverse-wall",Map("prompt",false),true,0,2,0,2],
+    ["prompt-still-missing",Map("prompt",false,"foundAt",0),false,0,2,3,5],
+    ["back-to-chair",Map("prompt",false,"foundAt",4),true,0,2,2,4],
+    ["turn-failed",Map("prompt",false,"foundAt",0,"turn",false),false,0,2,0,2],
     ["abort-during-prompt",Map("abortAt","prompt"),false,0,2,0,1],
     ["abort-button-held",Map("abortAt","held"),false,0,2,0,0],
     ["abort-after-back",Map("scene","mct_title","abortAt","back"),false,1,0,0,0],
-    ["calibrated-turn",Map("prompt",false,"sensitivity",15),true,0,2,1,2],
+    ["calibrated-turn",Map("prompt",false,"foundAt",3,"sensitivity",15),true,0,2,1,3],
     ["delayed-seated",Map("scene","mct_title","seatedAfter",1200),true,1,2,0,1],
     ["abort-transition",Map("scene","mct_title","seatedAfter",1200,"abortAt","transition"),false,1,0,0,0],
     ["transient-stand-prompt",Map(),true,0,2,0,1],
@@ -1918,7 +1922,7 @@ cases := [
 for scenario in cases {
     closeCase := scenario[2], scene := closeCase.Get("scene","mct_seated")
     aborted := closeCase.Get("abortAt","") = "start", backspaces := 0, clicks := [], promptReads := 0, turns := 0, turnUnits := 0,
-        closeClockMs := 0, seatedWaits := 0, seatedReads := 0, seatedAt := -1, stoodAt := -1, abortInputs := -1
+        closeClockMs := 0, seatedWaits := 0, seatedReads := 0, seatedAt := -1, stoodAt := -1, abortInputs := -1, steps := []
     config["Settings"]["EarnTurnUnitsPerDeg"] := closeCase.Get("sensitivity",29)
     result := EarnMCTClose()
     if (result != scenario[3] || backspaces != scenario[4] || clicks.Length != scenario[5]
@@ -1926,8 +1930,13 @@ for scenario in cases {
         throw Error("MCT close " scenario[1] " result=" result " keys=" backspaces " clicks=" clicks.Length " turns=" turns " waits=" promptReads)
     if (clicks.Length && (clicks[1] != "Right Down" || clicks[2] != "Right Up"))
         throw Error("Right button must be released even after interruption")
-    if (turns && turnUnits != Round(180*config["Settings"]["EarnTurnUnitsPerDeg"]))
-        throw Error("Recovery must use one calibrated half-turn")
+    if (steps.Length != Max(0, promptReads-1))
+        throw Error("MCT close " scenario[1] " must take one short step before each later prompt read")
+    for step in steps
+        if (step != "w:150")
+            throw Error("Recovery steps must be short forward taps")
+    if (turns && turnUnits != Round(90*config["Settings"]["EarnTurnUnitsPerDeg"]))
+        throw Error("Recovery must use calibrated quarter-turns")
     if (backspaces > 1 || (scenario[1] = "seated" && seatedWaits))
         throw Error("A known seated state needs no close key; a transition must never resend it")
     if (scenario[1] = "delayed-seated" && (seatedWaits != 1 || seatedReads < 7 || seatedAt != 1200))
@@ -1944,7 +1953,7 @@ for scenario in cases {
         || abortInputs != backspaces + clicks.Length + turns))
         throw Error("Stand wait did not stop promptly without further input")
 }
-FileAppend("PASS MCTClose cases=19`n", "*")
+FileAppend("PASS MCTClose cases=20`n", "*")
 ExitApp(0)
 EarnSeen(name,*) {
     global scene, closeCase, seatedReads, seatedAt
@@ -2002,7 +2011,7 @@ EarnWaitGone(name,area,timeoutMs) {
 }
 EarnWaitSeen(name,area,timeoutMs) {
     global closeCase, promptReads, aborted, seatedWaits
-    if (timeoutMs != 8000)
+    if (timeoutMs != (name = "mct_sit" && promptReads >= 1 ? 2000 : 8000))
         throw Error("Recovery must wait for the seated-entry prompt")
     if (name = "mct_seated") {
         seatedWaits++
@@ -2015,7 +2024,15 @@ EarnWaitSeen(name,area,timeoutMs) {
     promptReads++
     if (closeCase.Get("abortAt","") = "prompt")
         aborted := true
-    return !aborted && (promptReads = 1 ? closeCase.Get("prompt",true) : closeCase.Get("afterTurn",true))
+    return !aborted && (promptReads = 1 ? closeCase.Get("prompt",true)
+        : promptReads = closeCase.Get("foundAt",2))
+}
+EarnWalk(path) {
+    global steps, aborted
+    if (aborted)
+        return false
+    steps.Push(path)
+    return true
 }
 EarnTurn(units) {
     global closeCase, aborted, turns, turnUnits
@@ -2029,7 +2046,7 @@ EarnFail(*) => false
     # Keep the production polling loop; replace only its clock and input-free dependencies.
     $closeWaitBody = (Get-EarnFunctionBody $sourceText 'EarnWaitSeen').Replace('EarnWaitSeen(', 'FixtureWaitSeen(').Replace('A_TickCount', 'CloseClock()')
     $mctCloseDriver += "`n" + $closeWaitBody + "`n" + (Get-EarnFunctionBody $sourceText 'EarnSleep').Replace('A_TickCount', 'CloseClock()')
-    Invoke-EarnOfflineCheck 'MCTClose' 'EarnMCTClose' $mctCloseDriver 19
+    Invoke-EarnOfflineCheck 'MCTClose' 'EarnMCTClose' $mctCloseDriver 20
     $turnGuardDriver = @'
 global turnCase := [], moves := 0, movedX := 0, movedY := 0
 ; Relative mouse calls are intercepted. Run the actual turn loop and input guards.
