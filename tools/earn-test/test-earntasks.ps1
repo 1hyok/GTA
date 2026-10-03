@@ -1925,7 +1925,8 @@ cases := [
     ["CEO-message",Map("scene","mct_need_ceo"),true,1,2,0,1],
     ["seated",Map(),true,0,2,0,1],
     ["unknown",Map("scene","unknown"),false,0,0,0,0],
-    ["close-timeout",Map("scene","mct_title","seatedAfter",9000),false,1,0,0,0],
+    ["close-timeout",Map("scene","mct_title","seatedAfter",21000),false,1,0,0,0],
+    ["seated-after-notification",Map("scene","mct_title","seatedAfter",11000),true,1,2,0,1],
     ["press-failed",Map("scene","mct_title","press",false),false,0,0,0,0],
     ["abort-before-click",Map("abortAt","start"),false,0,0,0,0],
     ["still-seated",Map("gone",false),false,0,2,0,0],
@@ -1964,8 +1965,8 @@ for scenario in cases {
         throw Error("A known seated state needs no close key; a transition must never resend it")
     if (scenario[1] = "delayed-seated" && (seatedWaits != 1 || seatedReads < 7 || seatedAt != 1200))
         throw Error("A prompt absent at 900ms must be allowed to arrive later without resending Backspace")
-    if (scenario[1] = "close-timeout" && (seatedWaits != 1 || closeClockMs != 8000))
-        throw Error("Close transition must stop at its single 8-second deadline")
+    if (scenario[1] = "close-timeout" && (seatedWaits != 1 || closeClockMs != 20000))
+        throw Error("Close transition must stop at its single 20-second deadline")
     if (scenario[1] = "abort-transition" && (seatedWaits != 1 || closeClockMs != 400))
         throw Error("User input during the transition must stop before any stand/camera input")
     if (result && !FixtureCEOEntryReady())
@@ -1976,7 +1977,7 @@ for scenario in cases {
         || abortInputs != backspaces + clicks.Length + turns))
         throw Error("Stand wait did not stop promptly without further input")
 }
-FileAppend("PASS MCTClose cases=20`n", "*")
+FileAppend("PASS MCTClose cases=21`n", "*")
 ExitApp(0)
 EarnSeen(name,*) {
     global scene, closeCase, seatedReads, seatedAt
@@ -2034,7 +2035,7 @@ EarnWaitGone(name,area,timeoutMs) {
 }
 EarnWaitSeen(name,area,timeoutMs) {
     global closeCase, promptReads, aborted, seatedWaits
-    if (timeoutMs != (name = "mct_sit" ? (promptReads >= 1 ? 2000 : 3000) : 8000))
+    if (timeoutMs != (name = "mct_sit" ? (promptReads >= 1 ? 2000 : 3000) : 20000))
         throw Error("Recovery must wait for the seated-entry prompt")
     if (name = "mct_seated") {
         seatedWaits++
@@ -2069,7 +2070,7 @@ EarnFail(*) => false
     # Keep the production polling loop; replace only its clock and input-free dependencies.
     $closeWaitBody = (Get-EarnFunctionBody $sourceText 'EarnWaitSeen').Replace('EarnWaitSeen(', 'FixtureWaitSeen(').Replace('A_TickCount', 'CloseClock()')
     $mctCloseDriver += "`n" + $closeWaitBody + "`n" + (Get-EarnFunctionBody $sourceText 'EarnSleep').Replace('A_TickCount', 'CloseClock()')
-    Invoke-EarnOfflineCheck 'MCTClose' 'EarnMCTClose' $mctCloseDriver 20
+    Invoke-EarnOfflineCheck 'MCTClose' 'EarnMCTClose' $mctCloseDriver 21
     $turnGuardDriver = @'
 global turnCase := [], moves := 0, movedX := 0, movedY := 0
 ; Relative mouse calls are intercepted. Run the actual turn loop and input guards.

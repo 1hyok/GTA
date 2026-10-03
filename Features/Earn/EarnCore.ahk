@@ -853,7 +853,8 @@ EarnMCTClose() {
             return EarnFail("MCT: 닫기 전 터미널 화면을 확인하지 못함")
         if (!EarnPress("Backspace"))
             return false
-        if (!EarnWaitSeen("mct_seated", EARN_PROMPT_AREA, 8000)) {
+        ; 게임 알림이 안내 칸을 가리면 늦게 보인다(1004 04:59 실측: Record A Studios 알림 11초). 여는 쪽과 같이 20초 기다린다.
+        if (!EarnWaitSeen("mct_seated", EARN_PROMPT_AREA, 20000)) {
             ; 테러바이트는 닫으면 바로 선 채 접속 안내로 돌아온다. 일어설 필요가 없다.
             if (EarnSeen("mct_terrorbyte"))
                 return true
