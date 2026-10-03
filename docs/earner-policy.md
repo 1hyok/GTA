@@ -51,11 +51,11 @@ CEO 메뉴를 닫은 뒤 MCT 접근 안내가 돌아오는 데 최대 8초를 �
 
 ## Vinewood 금고
 
-GTA+의 Vinewood Club 앱은 사업장 금고 수익을 원격 회수하는 기능을 제공한다. 현재 정책은 앱에 표시된 Nightclub 금고가 상한 $250,000일 때만 회수한다. [Rockstar의 앱 기능 안내](https://support.rockstargames.com/articles/eUgRHVRSN2V9gimBT32YX/gtav-title-update-1-69-notes-ps5-ps4-xbox-series-x-s-xbox-one-pc)
+GTA+의 Vinewood Club 앱은 사업장 금고 수익을 원격 회수하는 기능을 제공한다. 현재 정책은 목록의 모든 금고를 읽고, 다음 입금(게임 하루 48분마다의 최대 입금)이 그 금고 한도를 넘길 수 있는 금고만 회수한다. 한도와 하루 입금은 `EarnSafeLimits()` 표가 정본이다(1004 공략 조사, 불확실한 값은 일찍 회수하는 쪽). [Rockstar의 앱 기능 안내](https://support.rockstargames.com/articles/eUgRHVRSN2V9gimBT32YX/gtav-title-update-1-69-notes-ps5-ps4-xbox-series-x-s-xbox-one-pc)
 
-앱 메인에서 `Claim Business Earnings`를 열면 사업장 목록이 나온다. 메인과 목록은 모두 `THE VINEWOOD CLUB APP` 제목을 쓰며 Nightclub 행 자체에는 금액이 없다. Nightclub을 선택하고 하단 `Claim $250000 from your Nightclub safe.` 문장만 금액 근거로 사용한다. 다른 사업장 이름, 여러 금액, 손상된 숫자는 수거 근거가 될 수 없다.
+앱 메인에서 `Claim Business Earnings`를 열면 사업장 목록이 나온다(1004 실측: Nightclub, Arcade, Agency, Salvage Yard, Bail Office, Garment Factory, Hands On Car Wash). 메인과 목록은 모두 `THE VINEWOOD CLUB APP` 제목을 쓰며 행 자체에는 금액이 없다. Down 으로 한 줄씩 내려가며 선택한 행과 같은 사업장의 하단 `Claim $X from your <사업장> safe.` 문장만 금액 근거로 사용하고, 처음 본 행이 다시 선택되면(목록이 맨 위로 돈다) 멈춘다. 긴 이름은 문장이 두 줄로 넘어간다. 다른 사업장 이름, 여러 금액, 손상된 숫자는 수거 근거가 될 수 없다. 표에 없는 사업장은 금액만 남기고 회수하지 않는다.
 
-메인의 `No earnings to claim.`이나 Nightclub의 `Your Nightclub safe is empty.`는 수거 없이 종료한다. $250,000보다 적을 때도 다음 관측까지 기다린다. 만재일 때는 선택과 금액을 다시 읽고 한 번만 수거를 요청한다. 성공 확인은 Nightclub의 빈 금고 문구와 앱 종료 뒤 MCT 접근 안내다. 결과가 불명확해도 수거 Enter를 다시 보내지 않는다.
+메인의 `No earnings to claim.`이나 `Your <사업장> safe is empty.`는 수거 없이 넘어간다. 회수할 때는 선택과 금액을 다시 읽고 한 번만 수거를 요청한다. 성공 확인은 그 사업장의 빈 금고 문구이고, 목록을 다 돈 뒤 앱 종료와 MCT 접근 안내를 확인한다. 다음 확인은 금고마다 회수 시점까지 남은 입금 횟수로 구해 가장 이른 것으로 정하고, 판독 못 한 금고가 있으면 40분 안에 다시 본다. 결과가 불명확해도 수거 Enter를 다시 보내지 않는다.
 
 ## 나이트클럽 창고 직원
 

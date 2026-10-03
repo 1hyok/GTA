@@ -270,3 +270,31 @@ Census(place, n, dir) {
     }
     return "done"
 }
+
+; 바인우드 앱 Claim Business Earnings 목록을 Down 으로 한 줄씩 내려가며 선택 행과 하단 문구만 기록한다. 수거 Enter 는 보내지 않는다.
+VinewoodEarningsSurvey(rows := 10) {
+    if (!EarnVinewoodOpen())
+        return false
+    lines := EarnReadScreen([25,15,450,850])
+    if (EarnFindText(lines, "i)^No earnings to claim\.?$")) {
+        EarnLog("조사: 수거할 수익 없음")
+        return EarnVinewoodClose()
+    }
+    if (!EarnFindText(lines, "i)^[^A-Za-z0-9$]*Nightclub$")) {
+        if (!EarnSelectText("i)^Claim Business Earnings$", "i)^THE VINEWOOD CLUB APP$", 6) || !EarnPress("Enter") || !EarnSleep(800))
+            return EarnFail("조사: 수익 목록 진입 실패")
+    }
+    Loop Integer(rows) {
+        for white in [false, true] {
+            lines := EarnReadScreen([25,15,450,850], white)
+            out := ""
+            if (IsObject(lines))
+                for line in lines
+                    out .= (out = "" ? "" : " | ") line.text (EarnMenuRowSelected(line) ? "[선택]" : "")
+            EarnLog("조사 " A_Index (white ? " 흰글자" : "") ": " out)
+        }
+        if (!EarnPress("Down") || !EarnSleep(700))
+            return false
+    }
+    return EarnVinewoodClose()
+}
