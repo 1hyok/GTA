@@ -17,10 +17,14 @@ EarnWarehouseManage() {
         return EarnFail("창고: 나이트클럽 진입 실패")
     ; 한 번에 직원 하나를 옮기고, 다음 계획은 바뀐 전체 화면에서 새로 만든다.
     Loop 6 {
-        goods := EarnWarehouseObserve()
+        goods := EarnWarehouseObserve(&stockOnly)
         if (!goods)
             return false
         EarnWarehouseSellNotice(goods)
+        if (stockOnly) {
+            EarnLog("창고: 판매 탭 재고상 옮길 일 없음(만재 품목과 빈자리 품목이 함께 있지 않음), 직원 관리 화면 생략")
+            return EarnWarehouseReturn()
+        }
         try moves := EarnWarehousePlan(goods)
         catch as e
             return EarnFail("창고: " e.Message)
@@ -38,12 +42,26 @@ EarnWarehouseManage() {
     return false
 }
 
-EarnWarehouseObserve() {
+; 직원을 옮기려면 만재 품목(옮길 직원)과 빈자리 품목(옮겨 갈 곳)이 함께 있어야 한다.
+; 판매 탭 재고만으로 그렇지 않다고 나오면 직원 관리 화면에 들어가지 않고 stockOnly 로 알린다.
+EarnWarehouseObserve(&stockOnly := false) {
+    stockOnly := false
     if (!EarnUIClick("nc_dj_menu", 500, 920) || !EarnSleep(400))
         return false
     goods := EarnWarehouseReadStock(EarnReadScreen([728,130,880,420]))
     if (!goods)
         return EarnFail("창고: 7품목 현재/최대 재고 판독 실패")
+    full := 0, open := 0
+    for row in goods {
+        if (row.count >= row.capacity)
+            full += 1
+        else
+            open += 1
+    }
+    if (!full || !open) {
+        stockOnly := true
+        return goods
+    }
     if (!EarnUIClick("nc_dj_menu", 500, 840)
         || !EarnWaitSeen("warehouse_title", [0.37,0.13,0.58,0.19], 3000))
         return EarnFail("창고: 직원 관리 화면 미확인")
