@@ -2,20 +2,28 @@
 ; 디코 오버레이(DiscordChatHUD)가 채팅 아래에 판매 대기자를 위에서부터 띄운다(1003 실측: "NKGANCHUP / Dancing_Rock_ / Cosongi" 와 오른쪽 "대기 2명").
 ; HUD 는 남의 프로그램이라 알림을 넣을 수 없어, 그 자리를 주기적으로 읽어 맨 위 이름이 SaleAlertName 이 되는 순간 한 번 알린다.
 ; 이름이 한글일 수 있어 한국어 OCR 을 쓴다(영어 OCR 은 "대기 2명" 을 못 읽었다). 밑줄은 "Dancing-Rock—" 처럼 깨지므로 글자·숫자만 비교한다.
+; 쓸 일이 드물어 늘 감지하지 않는다. 단축키(SaleAlert)로 켜고, 내 차례를 한 번 알리면 스스로 끈다.
 global gSaleTop := false
+global gSaleOn := false
 
-SetSaleQueueAlert() {
-    global config
+ToggleSaleAlert() {
+    global config, gSaleOn, gSaleTop
     s := config["Settings"]
-    if (Trim(s["SaleAlertName"]) = "")
+    if (!gSaleOn && Trim(s["SaleAlertName"]) = "") {
+        ShowTooltip("판매 차례 알림: Config.ini SaleAlertName 이 비어 있음", 2500)
         return
-    SetTimer(SaleQueueTick, Max(5, s["SaleAlertIntervalSec"]) * 1000)
+    }
+    gSaleOn := !gSaleOn
+    gSaleTop := false
+    SetTimer(SaleQueueTick, gSaleOn ? Max(5, s["SaleAlertIntervalSec"]) * 1000 : 0)
+    ShowTooltip(gSaleOn ? "🔔 판매 차례 알림 켜짐 (" s["SaleAlertName"] " 이 대기열 맨 위에 오면 알림)" : "판매 차례 알림 꺼짐", 2500)
+    MacroLog("sale", gSaleOn ? "켜짐" : "꺼짐")
 }
 
 SaleQueueTick() {
-    global config, gSaleTop, GTA_WIN
+    global config, gSaleTop, gSaleOn, GTA_WIN
     static busy := false
-    if (busy || !WinActive(GTA_WIN) || !ProcessExist("DiscordChatHUD.exe"))
+    if (!gSaleOn || busy || !WinActive(GTA_WIN) || !ProcessExist("DiscordChatHUD.exe"))
         return
     if (IsSet(gEarnBusy) && gEarnBusy)
         return
@@ -33,6 +41,9 @@ SaleQueueTick() {
                 SoundBeep(1200, 180)
                 Sleep(120)
             }
+            ; 알렸으면 할 일은 끝났다. 다시 기다릴 때 단축키로 켠다.
+            ToggleSaleAlert()
+            return
         }
         gSaleTop := mine
     } finally {

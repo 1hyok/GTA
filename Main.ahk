@@ -91,8 +91,6 @@ if (config["Settings"]["OverlayEnabled"])
     SetOverlay(true)
 ; 디코 오버레이(DiscordChatHUD)를 같이 띄운다. 경로는 Config [Settings] DiscordHUDPath, 비우면 끈다.
 StartDiscordHUD()
-; 디코 오버레이의 판매 대기열 맨 위에 내 이름이 오면 알린다. Config [Settings] SaleAlertName 이 비면 끈다.
-SetSaleQueueAlert()
 
 ; === 시작 메시지 ===
 ShowTooltip("✅ GTA 매크로 시작됨 (게임 창에서만 동작)`n" KeyLabelFor("Help") ": 단축키 보기 (두 번: 설정 창) | " KeyLabelFor("StopAll") ": 전체 멈춤 | " KeyLabelFor("Exit") ": 종료", 3000)
