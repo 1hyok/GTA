@@ -13,7 +13,13 @@ InstallMouseHook()
 #Include %A_ScriptDir%\..\..\Features\SessionSwitch.ahk
 #Include %A_ScriptDir%\SessionGuard.ahk
 #Include %A_ScriptDir%\..\..\Features\Earn\EarnCore.ahk
+#Include %A_ScriptDir%\..\..\Features\Earn\EarnScreen.ahk
+#Include %A_ScriptDir%\..\..\Features\Earn\EarnPolicy.ahk
 #Include %A_ScriptDir%\..\..\Features\Earn\EarnTasks.ahk
+#Include %A_ScriptDir%\..\..\Features\Earn\EarnVinewood.ahk
+#Include %A_ScriptDir%\..\..\Features\Earn\EarnStaff.ahk
+#Include %A_ScriptDir%\..\..\Features\Earn\EarnWarehouseRead.ahk
+#Include %A_ScriptDir%\..\..\Features\Earn\EarnWarehouse.ahk
 StopAll(*) {
     global gAbort, gTestArmed
     gAbort := true
@@ -34,6 +40,10 @@ Hotkey("~End", StopAll)
 ; Earner.ahk 는 포함하지 않는다(핫키·타이머). 그 파일의 전역만 여기서 선언한다
 global gImageRoot := A_ScriptDir "\..\..\Images"
 global config := Map("Settings", Map("KeyHoldTime", 100, "EarnKeyDelay", 350, "SessionMenuDelay", 600, "EarnLoadMinSec", 8, "EarnLoadTimeoutSec", 240, "EarnTurnUnitsPerDeg", 29, "EarnRerollMax", 12, "EarnReachPx", 14, "EarnWalkRetry", 3, "EarnSafeRetryMin", 15, "EarnSoftFailMax", 12))
+config["Settings"]["EarnDJPopularityPct"] := 95
+config["Settings"]["EarnBunkerIntervalSec"] := 8400
+config["Settings"]["EarnBailAgents"] := 1
+config["Settings"]["EarnCargoStaff"] := 1
 if (!A_Args.Length) {
     FileAppend("함수 이름이 필요합니다. 읽기 전용 상태: Status`n", "*", "UTF-8")
     ExitApp(2)
@@ -116,7 +126,7 @@ MCTTasksSmoke() {
         return false
     config["Settings"]["EarnMCTOnly"] := 1
     config["Settings"]["EarnDJPopularityPct"] := 95
-    config["Settings"]["EarnBunkerIntervalSec"] := 1645
+    config["Settings"]["EarnBunkerIntervalSec"] := 8400
     if (EarnSeen("nc_home")) {
         EarnLog("DJ 복귀: Tale Resident=" EarnSeen("dj_resident_right", [0.61,0.50,0.835,0.58]))
         if (!EarnUIClick("nc_home", 495, 596) || !EarnUIBackToMCT("nc_dj_menu", 1))

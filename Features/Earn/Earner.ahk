@@ -1,9 +1,9 @@
-; === 수익 자동화 스케줄러 (벙커 보급 · DJ 교체 · 나이트클럽 금고 · 현장 파견) ===
+; === 수익 자동화 스케줄러 (Vinewood 금고·직원 파견 · 벙커 보급 · DJ 교체 · 창고 직원) ===
 ; 단축키(기본 F9) 두 번으로 켜고 끈다. End(전체 멈춤)도 끈다. 켜 두면 5초마다 할 일을 보고, 때가 된 것 하나를 끝까지 한 뒤 다음으로 넘어간다.
-; 한 번에 하나만 한다: 금고 가느라 부동산을 떠나 있는 동안 벙커 보급은 멈췄다가, 돌아와 터미널이 열리는 것을 확인한 뒤 이어서 한다.
+; 금고 → 벙커 → DJ → 창고 재배정 → 앱 파견 순서로 한 작업씩 한다. 작업마다 현재 화면을 읽는다.
 ; 사용자 물리 입력이 EarnUserIdleSec 동안 없고 GTA가 앞일 때만 시작한다. 진행 중 사용자 입력·포커스 이탈 시 중단한다.
 ; 어느 단계든 화면 확인이 안 되면 자동화 전체를 끄고(멈춤 까닭은 %TEMP%\gta-earn.log·오버레이·설정 창) AFK 방지는 켜 둔다.
-; EarnMCTOnly=1이면 현재 열린 MCT 목록에서 벙커·DJ만 처리한다. 이동 모드의 거점은 아케이드 MCT 앞이다.
+; 게임 종료·재시작 시 끄고, 사용자가 다시 켜야 새 게임 상태에서 예약을 시작한다.
 global gEarnOn := false
 global gEarnDue := Map()        ; 작업 id → 다음 실행 시각(A_TickCount)
 global gEarnDone := Map()       ; 작업 id → 켠 뒤 성공 횟수
@@ -13,14 +13,17 @@ global gEarnNextDue := Map()   ; 작업이 스스로 정한 다음 실행 시각
 global gEarnSoftFails := Map()   ; 작업별 연속 "다시 하기" 횟수. EarnSoftFailMax 를 넘으면 그때 끈다
 global gEarnGuardArmed := false
 global gEarnInputGuard := EarnInputAllowed
+global gEarnGamePID := 0
 
 EarnTaskList() {
     global config
     s := config["Settings"]
     return [
+        {id: "safe", label: "나이트클럽 금고", on: s["EarnSafe"], every: s["EarnSafeIntervalMin"] * 60000, fn: EarnVinewoodSafeTask},
         {id: "bunker", label: "벙커 보급", on: s["EarnBunker"], every: s["EarnBunkerIntervalSec"] * 1000, fn: EarnBunkerTask},
         {id: "dj", label: "DJ 교체", on: s["EarnDJ"], every: s["EarnDJIntervalMin"] * 60000, fn: EarnDJTask},
-        {id: "safe", label: "나이트클럽 금고", on: s["EarnSafe"] && !s.Get("EarnMCTOnly", 0), every: s["EarnSafeIntervalMin"] * 60000, fn: EarnSafeTask},
+        {id: "warehouse", label: "창고 직원", on: s.Get("EarnWarehouse", 1), every: s.Get("EarnWarehouseIntervalMin", 10) * 60000, fn: EarnWarehouseTask},
+        {id: "staff", label: "앱 직원 파견", on: s.Get("EarnBailAgents", 1) || s.Get("EarnCargoStaff", 1), every: s.Get("EarnStaffIntervalMin", 5) * 60000, fn: EarnVinewoodStaffTask},
         {id: "dispatch", label: "현장 파견", on: s["EarnDispatch"] && !s.Get("EarnMCTOnly", 0), every: s["EarnDispatchIntervalMin"] * 60000, fn: EarnDispatchTask}
     ]
 }
@@ -31,7 +34,12 @@ ToggleEarner(*) {
 }
 
 SetEarner(on, reason := "") {
-    global gEarnOn, gEarnDue, gEarnDone, gEarnFail, gEarnTasks, gEarnNextDue, gEarnSoftFails, gEarnRetryIn, gEarnBusy, gAbort, gBunkerFullSince, config, afkOn
+    global gEarnOn, gEarnDue, gEarnDone, gEarnFail, gEarnTasks, gEarnNextDue, gEarnSoftFails, gEarnRetryIn, gEarnBusy, gAbort, gEarnGamePID, config, afkOn
+    if (on) {
+        gEarnGamePID := EarnGamePID()
+        if (!gEarnGamePID)
+            on := false, reason := "GTA 게임 창 없음. 게임에 들어간 뒤 다시 켜기"
+    }
     gEarnOn := on
     if (on) {
         InstallKeybdHook()
@@ -40,12 +48,11 @@ SetEarner(on, reason := "") {
         gEarnTasks := EarnTaskList()
         gEarnDue := Map(), gEarnDone := Map(), gEarnNextDue := Map(), gEarnSoftFails := Map()
         gEarnRetryIn := 0
-        gBunkerFullSince := 0
         now := A_TickCount
         s := config["Settings"]
         for t in gEarnTasks {
             gEarnDone[t.id] := 0
-            ; 켜자마자 할 일: 벙커 보급·DJ 교체. 금고·파견은 설정한 첫 대기 뒤 (방금 비웠을 수 있으므로)
+            ; 창고·벙커·DJ는 즉시 확인. 금고와 파견은 설정한 첫 대기를 따른다.
             first := t.id = "safe" ? s["EarnSafeFirstMin"] * 60000 : t.id = "dispatch" ? s["EarnDispatchFirstMin"] * 60000 : 0
             gEarnDue[t.id] := now + first
         }
@@ -56,6 +63,8 @@ SetEarner(on, reason := "") {
         EarnLog("켜짐: " EarnEnabledText())
     } else {
         SetTimer(EarnTick, 0)
+        if (reason != "")
+            gEarnFail := reason
         ; 작업이 도는 중이면 그 자리에서 멈추게 한다 (End 와 같게). 안 그러면 F9 로 꺼도 하던 작업이 끝까지 키를 보낸다
         if (gEarnBusy)
             gAbort := true
@@ -74,11 +83,13 @@ EarnEnabledText() {
 }
 
 EarnTick() {
-    global gEarnOn, gEarnBusy, gEarnDue, gEarnDone, gEarnTasks, gEarnCurrent, gEarnFail, gEarnNextDue, gEarnSoftFails, gEarnRetryIn, gAbort, config, GTA_WIN, afkOn
+    global gEarnOn, gEarnBusy, gEarnDue, gEarnDone, gEarnTasks, gEarnCurrent, gEarnFail, gEarnNextDue, gEarnSoftFails, gEarnRetryIn, gAbort, gEarnGamePID, config, afkOn
     if (!gEarnOn || gEarnBusy)
         return
-    if (!WinExist(GTA_WIN))
+    if (!gEarnGamePID || EarnGamePID() != gEarnGamePID) {
+        SetEarner(false, "GTA 종료 또는 재시작 감지. 현재 화면을 확인하고 다시 켜기")
         return
+    }
     ; 실제 사용자 입력을 기다린다. 자동 입력은 물리 유휴 시간을 초기화하지 않는다.
     if (A_TimeIdlePhysical < config["Settings"]["EarnUserIdleSec"] * 1000)
         return
@@ -100,13 +111,20 @@ EarnTick() {
         gEarnDue[task.id] := now + 30000
         return
     }
+    try inputLock := EarnInputLockAcquire()
+    catch as e {
+        SetEarner(false, "입력 잠금 오류: " e.Message)
+        return
+    }
+    if (!IsObject(inputLock))
+        return
     gEarnBusy := true
     gAbort := false
     gEarnCurrent := task.label
     startTick := A_TickCount
     ok := false
-    EarnLog("시작: " task.label)
     try {
+        EarnLog("시작: " task.label)
         EarnInputGuardStart()
         if (EarnInputAllowed())
             ok := task.fn.Call()
@@ -118,15 +136,19 @@ EarnTick() {
     } catch as e {
         ok := EarnFail(task.label " 오류: " e.Message " (" e.File ":" e.Line ")")
     } finally {
-        EarnInputGuardStop()
-        ReleaseHeldKeys()
-        gEarnBusy := false
-        gEarnCurrent := ""
+        try {
+            EarnInputGuardStop()
+            ReleaseHeldKeys()
+        } finally {
+            gEarnBusy := false
+            gEarnCurrent := ""
+            EarnInputLockRelease(inputLock)
+        }
     }
     if (ok) {
         gEarnSoftFails[task.id] := 0
         gEarnRetryIn := 0
-        ; 주기는 작업을 시작한 때부터 잰다(작업에 든 시간은 주기에서 빠진다). 작업이 다음 시각을 따로 정했으면(벙커: 구매한 순간부터 28분) 그 값을 쓴다
+        ; 주기는 확인을 시작한 때부터 잰다. 작업이 현재 화면에서 정한 다음 확인 시각이 있으면 그 값을 쓴다.
         gEarnDue[task.id] := gEarnNextDue.Has(task.id) ? gEarnNextDue.Delete(task.id) : startTick + task.every
         gEarnDone[task.id] += 1
         EarnLog("끝: " task.label " (" gEarnDone[task.id] "회째, 다음 " FormatTime(DateAdd(A_Now, Max(0, gEarnDue[task.id] - A_TickCount) // 1000, "Seconds"), "HH:mm:ss") ")")
@@ -172,16 +194,72 @@ EarnInputWatch() {
 }
 
 EarnInputAllowed() {
-    global gEarnGuardArmed, gAbort, gEarnRetryIn, config
+    global gEarnGuardArmed, gAbort, gEarnRetryIn, gEarnGamePID, config
     if (!gEarnGuardArmed)
         return !gAbort
-    if (!gAbort && (A_TimeIdlePhysical < Max(1, config["Settings"]["EarnUserIdleSec"]) * 1000 || !IsGTAActive())) {
+    if (!gAbort && (!gEarnGamePID || EarnGamePID() != gEarnGamePID)) {
+        gAbort := true
+        gEarnRetryIn := 0
+        EarnFail("GTA 종료 또는 재시작으로 중단. 현재 화면을 확인하고 다시 켜기")
+        ReleaseHeldKeys()
+    } else if (!gAbort && (A_TimeIdlePhysical < Max(1, config["Settings"]["EarnUserIdleSec"]) * 1000 || !IsGTAActive())) {
         gAbort := true
         gEarnRetryIn := 0
         EarnFail("사용자 입력 또는 GTA 포커스 이탈로 중단")
         ReleaseHeldKeys()
     }
     return !gAbort
+}
+
+EarnGamePID() {
+    global GTA_WIN
+    hwnd := WinExist(GTA_WIN)
+    if (!hwnd)
+        return 0
+    try return WinGetPID("ahk_id " hwnd)
+    catch
+        return 0
+}
+
+; GUI 수신기는 이름의 존재로 배타화한다. 이 이름을 작업 동안 예약해 새 수신기 시작과의 경합도 막는다.
+; 실제 검사는 별도 이름을 넘겨 현재 게임 입력 잠금에 닿지 않는다.
+EarnInputLockAcquire(macroName := "Local\GtaMacroInput", guiName := "Local\GtaGuiInput") {
+    guiHandle := DllCall("CreateMutexW", "ptr", 0, "int", 0, "str", guiName, "ptr")
+    existed := A_LastError = 183
+    if (!guiHandle)
+        throw Error("GUI 입력 잠금을 만들지 못함")
+    if (existed) {
+        DllCall("CloseHandle", "ptr", guiHandle)
+        return 0
+    }
+    macroHandle := 0
+    try {
+        macroHandle := DllCall("CreateMutexW", "ptr", 0, "int", 0, "str", macroName, "ptr")
+        if (!macroHandle)
+            throw Error("매크로 입력 잠금을 만들지 못함")
+        acquired := DllCall("WaitForSingleObject", "ptr", macroHandle, "uint", 0, "uint")
+        if (acquired = 0 || acquired = 0x80)
+            return {macro: macroHandle, gui: guiHandle}
+        if (acquired != 0x102)
+            throw Error("매크로 입력 잠금 상태를 확인하지 못함")
+    } catch as e {
+        if (macroHandle)
+            DllCall("CloseHandle", "ptr", macroHandle)
+        DllCall("CloseHandle", "ptr", guiHandle)
+        throw e
+    }
+    DllCall("CloseHandle", "ptr", macroHandle)
+    DllCall("CloseHandle", "ptr", guiHandle)
+    return 0
+}
+
+EarnInputLockRelease(inputLock) {
+    try {
+        DllCall("ReleaseMutex", "ptr", inputLock.macro)
+    } finally {
+        DllCall("CloseHandle", "ptr", inputLock.macro)
+        DllCall("CloseHandle", "ptr", inputLock.gui)
+    }
 }
 
 ; 다른 매크로가 게임에 키를 보내는 중이면 true. 작텔(Alt+F4·MC·스팀 봇)은 IsTeleportRunning 이 묶어서 본다

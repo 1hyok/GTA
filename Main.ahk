@@ -30,7 +30,13 @@ A_MenuMaskKey := "vkE8"
 #Include Features\RegisterCEO.ahk
 #Include Features\RegisterMC.ahk
 #Include Features\Earn\EarnCore.ahk
+#Include Features\Earn\EarnScreen.ahk
+#Include Features\Earn\EarnPolicy.ahk
 #Include Features\Earn\EarnTasks.ahk
+#Include Features\Earn\EarnVinewood.ahk
+#Include Features\Earn\EarnStaff.ahk
+#Include Features\Earn\EarnWarehouseRead.ahk
+#Include Features\Earn\EarnWarehouse.ahk
 #Include Features\Earn\Earner.ahk
 #Include Features\StopAll.ahk
 #Include Features\Help.ahk

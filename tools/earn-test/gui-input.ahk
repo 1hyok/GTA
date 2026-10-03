@@ -129,7 +129,7 @@ GuiInputParse(raw, token, previous, now) {
         throw Error("command expired or timestamp is in the future")
     op := fields[4], a := fields[5], b := fields[6]
     if (op = "tap") {
-        if (!RegExMatch(a, "^(P|M|E|Enter|Backspace|Up|Down|Left|Right|PgDn|PgUp|Caps|Space)$") || b != "0")
+        if (!RegExMatch(a, "^(P|M|E|Enter|Backspace|Up|Down|Left|Right|PgDn|PgUp|Caps|Space|LCtrl|RButton)$") || b != "0")
             throw Error("tap key is not allowed")
     } else if (op = "hold") {
         if (!RegExMatch(a, "^[WASD]$") || !RegExMatch(b, "^[1-9][0-9]{0,4}$") || Integer(b) > 15000)
@@ -356,7 +356,10 @@ GuiInputError(err, mode) {
 GuiInputSelfTest() {
     token := "parser-test", now := "20260927120010", prefix := token "|1|20260927120010|"
     good := ["tap|Enter|0", "tap|Caps|0", "tap|PgDn|0", "tap|PgUp|0", "hold|W|15000", "hold|D|1", "look|-10000|0", "look|3|-4", "click|960|540", "click|-2560|0", "click|65535|-65535", "wheel|-5|0", "wheel|5|0", "wheel|-1|0", "wheel|1|0", "stop|0|0"]
+    good.Push("tap|LCtrl|0", "tap|RButton|0")
     bad := ["tap|Esc|0", "tap|F9|0", "tap|W|0", "tap|Enter|1", "hold|E|100", "hold|W|15001", "hold|A|0", "hold|S|-1", "hold|D|1.5", "look|0|0", "look|10000|1", "look|1e3|0", "click|1.5|0", "click|0|1e3", "click|65536|0", "click|0|-65536", "wheel|0|0", "wheel|6|0", "wheel|-6|0", "wheel|1.5|0", "wheel|1|1", "stop|1|0", "run|0|0", "tap|Enter|0|extra", "tap|Enter|0`n"]
+    bad.Push("tap|LCtrl|1", "tap|RButton|100", "tap|lctrl|0", "tap|rbutton|0",
+        "tap|Ctrl|0", "tap|RCtrl|0", "hold|LCtrl|100", "hold|RButton|100")
     cases := 0
     for command in good {
         GuiInputParse(prefix command, token, 0, now)
@@ -377,7 +380,7 @@ GuiInputSelfTest() {
         GuiInputExpectReject(prefix command, token, 0, now)
         cases++
     }
-    for forbidden in ["Enter", "Space", "Backspace", "Esc", "E", "P", "M", "Caps", "W", "F4", "LButton"] {
+    for forbidden in ["Enter", "Space", "Backspace", "Esc", "E", "P", "M", "Caps", "W", "F4", "LButton", "LCtrl", "RButton"] {
         GuiInputExpectReject(prefix "navigate|Up_" forbidden "_Down|200", token, 0, now)
         cases++
     }

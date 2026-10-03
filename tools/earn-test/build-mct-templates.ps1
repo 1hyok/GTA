@@ -1,7 +1,13 @@
-param([string]$CaptureDir = (Join-Path $PSScriptRoot '..\..\docs\evidence\2026-09-27-mct'))
+param(
+ [string]$CaptureDir = (Join-Path $PSScriptRoot '..\..\docs\evidence\2026-09-27-mct'),
+ [string]$OutputDir = (Join-Path $PSScriptRoot '..\..\Images\Earn\1920x1080'),
+ [string[]]$Name = @()
+)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
-$target = Join-Path $PSScriptRoot '..\..\Images\Earn\1920x1080'
+$target = [IO.Path]::GetFullPath($OutputDir)
+if (-not [IO.Directory]::Exists($target)) { throw 'OutputDir must already exist.' }
+$fixtures = Join-Path $PSScriptRoot 'mct-template-fixtures'
 # Rectangles refer to the observed 1920x1080 screenshots, never inferred UI.
 $items = @(
  @('mansion-mct-return2','mct_bunker_card',830,228,260,26),
@@ -20,26 +26,48 @@ $items = @(
  @('mansion-dj-confirm-tale','dj_confirm_tale',595,505,730,56),
  @('mansion-dj-after','dj_resident',886,572,114,28),
  @('mansion-dj-right-after','dj_resident_right',1330,572,116,28),
- @('mansion-dj-after','nc_home',328,582,80,31)
+ @('mansion-dj-after','nc_home',328,582,80,31),
+ @('mct-seated-current','mct_seated_mansion',0,0,240,24)
 )
+foreach ($requested in $Name) {
+ if (-not @($items | Where-Object { $_[1] -eq $requested }).Count) { throw "Unknown template: $requested" }
+}
+$saved = 0
 foreach ($item in $items) {
- $source = [Drawing.Bitmap]::FromFile((Join-Path $CaptureDir ($item[0]+'.png')))
+ if ($Name.Count -and $Name -notcontains $item[1]) { continue }
+ $sourceDirectory = if ($item[1] -eq 'mct_seated_mansion') { $fixtures } else { $CaptureDir }
+ $source = [Drawing.Bitmap]::FromFile((Join-Path $sourceDirectory ($item[0]+'.png')))
+ $comparison = $null
  try {
+  if ($item[1] -in @('nc_dj_menu','nc_home')) {
+   $comparison = [Drawing.Bitmap]::FromFile((Join-Path $fixtures ($item[1]+'-current.png')))
+  }
   $rect = New-Object Drawing.Rectangle ([int]$item[2]),([int]$item[3]),([int]$item[4]),([int]$item[5])
   $crop = $source.Clone($rect, $source.PixelFormat)
   try {
+   $threshold = if ($item[1] -eq 'mct_seated_mansion') { 200 } else { 170 }
    if ($item[1] -ne 'bunker_page') {
     for ($y=0; $y -lt $crop.Height; $y++) {
      for ($x=0; $x -lt $crop.Width; $x++) {
       $c = $crop.GetPixel($x,$y)
-      if ([Math]::Min($c.R,[Math]::Min($c.G,$c.B)) -lt 170 -or ([Math]::Max($c.R,[Math]::Max($c.G,$c.B))-[Math]::Min($c.R,[Math]::Min($c.G,$c.B))) -gt 35) {
+      if ($null -ne $comparison) {
+       # Stable glyph interiors across the old DJ page and current Home page.
+       # Antialias fringes need variation 58-66; keep both samples within 30.
+       $other = $comparison.GetPixel($x,$y)
+       $bright = $c.R -ge 200 -and $c.G -ge 200 -and $c.B -ge 200 -and $other.R -ge 200 -and $other.G -ge 200 -and $other.B -ge 200
+       $stable = [Math]::Abs([int]$c.R-$other.R) -le 60 -and [Math]::Abs([int]$c.G-$other.G) -le 60 -and [Math]::Abs([int]$c.B-$other.B) -le 60
+       if ($bright -and $stable) {
+        $crop.SetPixel($x,$y,[Drawing.Color]::FromArgb([int](($c.R+$other.R)/2),[int](($c.G+$other.G)/2),[int](($c.B+$other.B)/2)))
+       } else { $crop.SetPixel($x,$y,[Drawing.Color]::Magenta) }
+      } elseif ([Math]::Min($c.R,[Math]::Min($c.G,$c.B)) -lt $threshold -or ([Math]::Max($c.R,[Math]::Max($c.G,$c.B))-[Math]::Min($c.R,[Math]::Min($c.G,$c.B))) -gt 35) {
        $crop.SetPixel($x,$y,[Drawing.Color]::Magenta)
       }
      }
     }
    }
    $crop.Save((Join-Path $target ($item[1]+'.png')), [Drawing.Imaging.ImageFormat]::Png)
+   $saved++
   } finally { $crop.Dispose() }
- } finally { $source.Dispose() }
+ } finally { if ($null -ne $comparison) { $comparison.Dispose() }; $source.Dispose() }
 }
-Write-Output "Saved $($items.Count) observed MCT templates"
+Write-Output "Saved $saved observed MCT templates"

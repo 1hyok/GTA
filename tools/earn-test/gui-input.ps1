@@ -37,7 +37,7 @@ try {
     $sequence = [int]$state[3] + 1
     switch ($Action) {
         'tap' {
-            if ($Key -cnotmatch '^(P|M|E|Enter|Backspace|Up|Down|Left|Right|PgDn|PgUp|Caps|Space)$') { throw 'Tap key is not allowed.' }
+            if ($Key -cnotmatch '^(P|M|E|Enter|Backspace|Up|Down|Left|Right|PgDn|PgUp|Caps|Space|LCtrl|RButton)$') { throw 'Tap key is not allowed.' }
             $argOne = $Key; $argTwo = '0'
         }
         'hold' {

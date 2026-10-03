@@ -44,8 +44,17 @@ EarnAborted() {
 
 ; name 템플릿(Images\Earn\<해상도>\<name>.png)이 area(클라이언트 비율 [x1, y1, x2, y2]) 안에 보이면 true. 찾은 자리(화면 좌표)는 &fx, &fy.
 EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
+    ; 저택 MCT는 'Press ... to access' 대신 메뉴형 안내를 표시한다.
+    if (name = "mct_seated" && TemplateSeen("Earn", "mct_seated_mansion", area, &fx, &fy, variation))
+        return true
+    ; 보스 메뉴는 작텔과 같은 검증된 템플릿을 공유한다.
+    static bossNames := Map("m_boss",1,"m_boss_sel",1,"m_ceo_sel",1,"m_start_org_sel",1,
+        "m_securo",1,"m_securo_sel",1,"m_retire_sel",1,"m_sub_boss",1,"m_sub_securo",1)
+    if (bossNames.Has(name))
+        return TemplateSeen("JobWarp", name, area, &fx, &fy, name = "m_boss" ? 70 : variation)
     ; MCT 웹 화면의 고정 위치만 검색한다. 투명 글자 템플릿의 전체 화면 검색은 매우 느리다.
     static mctAreas := Map(
+        "mct_need_ceo", [0,0,0.3,0.1],
         "mct_bunker_card", [0.42,0.20,0.58,0.25],
         "mct_nightclub_card", [0.23,0.20,0.32,0.25],
         "bunker_page", [0.15,0.01,0.35,0.12],
@@ -133,6 +142,7 @@ EarnSelectRow(name, area, key, maxPress) {
 EarnMenuIsOpen() {
     global EARN_MENU_AREA
     return EarnSeen("m_title", EARN_MENU_AREA) || EarnSeen("m_pref_title", EARN_MENU_AREA)
+        || EarnSeen("m_sub_boss", EARN_MENU_AREA) || EarnSeen("m_sub_securo", EARN_MENU_AREA)
 }
 
 EarnMenuOpen() {
@@ -755,17 +765,16 @@ EarnMCTOpen() {
     return true
 }
 
-; MCT 화면에서 빠져나와 일어선다. 화면 안 어디에 있든 Backspace 를 눌러 앉은 상태 안내가 보일 때까지(최대 5번), 그다음 마우스 오른쪽.
+; 확인된 MCT 첫 화면에서 한 번 나간 뒤 앉은 상태 안내가 뜰 때까지 기다린다.
 EarnMCTClose() {
-    global EARN_PROMPT_AREA
-    Loop 5 {
-        if (EarnSeen("mct_seated", EARN_PROMPT_AREA))
-            break
+    global EARN_PROMPT_AREA, config
+    if (!EarnSeen("mct_seated", EARN_PROMPT_AREA)) {
         if (!EarnSeen("mct_title", [0.3, 0, 0.7, 0.1]) && !EarnSeen("mct_need_ceo"))
             return EarnFail("MCT: 닫기 전 터미널 화면을 확인하지 못함")
         if (!EarnPress("Backspace"))
             return false
-        EarnSleep(900)
+        if (!EarnWaitSeen("mct_seated", EARN_PROMPT_AREA, 8000))
+            return EarnFail("MCT: 닫은 뒤 앉은 상태 안내 대기 시간 초과")
     }
     if (!EarnSeen("mct_seated", EARN_PROMPT_AREA))
         return EarnFail("MCT: 화면이 닫히지 않음")
@@ -774,8 +783,17 @@ EarnMCTClose() {
     Click("Right Down")
     Sleep(120)
     Click("Right Up")
-    if (!EarnWaitSeen("mct_sit", EARN_PROMPT_AREA, 8000))
+    if (!EarnWaitGone("mct_seated", EARN_PROMPT_AREA, 8000))
         return EarnFail("MCT: 일어서지 못함")
+    ; 일어서는 중 잠깐 뜨는 접근 안내로 완료를 판정하면 M 입력이 애니메이션에 씹힌다.
+    if (!EarnSleep(3500))
+        return false
+    if (!EarnWaitSeen("mct_sit", EARN_PROMPT_AREA, 8000)) {
+        ; 저택 MCT는 일어서면 반대 벽을 본다(2026-10-03 실측). 제자리에서 화면만 되돌린다.
+        if (!EarnTurn(Round(180 * config["Settings"]["EarnTurnUnitsPerDeg"]))
+            || !EarnWaitSeen("mct_sit", EARN_PROMPT_AREA, 8000))
+            return EarnFail("MCT: 일어선 뒤 접근 안내 미확인")
+    }
     return true
 }
 
