@@ -53,6 +53,13 @@ EarnStaffRoot() {
 EarnStaffBailAgents() {
     if (!EarnStaffSelectEnter("i)^Bail Office$", 3))
         return EarnFail("직원: 보석 사무소 목록 진입 실패")
+    ; 두 요원이 모두 작업 중이면 Bail Office 줄이 회색이고 Enter 가 무시된다(1003 17:39 실측).
+    ; 그대로 Agent 1 을 찾으면 Down 이 다른 줄로 넘어가므로, 목록이 그대로면 건너뛴다.
+    if (!EarnStaffMenuTarget("i)^Agent 1$") && EarnStaffMenuTarget("i)^Warehouse$")
+        && EarnStaffMenuTarget("i)^Bail Office$")) {
+        EarnLog("직원: 보석 사무소 비활성(요원 모두 작업 중), 건너뜀")
+        return true
+    }
     Loop 2 {
         agent := A_Index
         if (!EarnStaffSelectText("i)^Agent " agent "$", 2))

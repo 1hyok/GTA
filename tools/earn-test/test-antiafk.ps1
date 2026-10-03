@@ -2,7 +2,7 @@
 param([string]$AhkPath = "$env:LOCALAPPDATA\Programs\AutoHotkey\v2\AutoHotkey64.exe")
 $ErrorActionPreference = 'Stop'
 $source = Get-Content (Join-Path $PSScriptRoot '..\..\Features\AntiAFK.ahk') -Raw -Encoding UTF8
-$functions = @('AntiAFKTick', 'AFKInputAllowed', 'AFKMCTPulse', 'AFKMenuSeen', 'AFKMenuTap', 'AFKWaitMenu', 'AFKMCTBlocked', 'AFKFreeHud', 'AFKHudVisible',
+$functions = @('AntiAFKTick', 'AFKInputAllowed', 'AFKMCTPulse', 'AFKMenuSeen', 'AFKMenuTap', 'AFKWaitMenu', 'AFKMCTBlocked', 'AFKFreeHud', 'AFKPhoneOrAppOpen', 'AFKHudVisible',
     'AFKRefocusGTA', 'AFKRefocusFailed', 'AFKForegroundLabel', 'AFKPhysicalIdleMs', 'AFKOthersIdleMs', 'AFKSelfInput',
     'AFKRefocusAllowed', 'AFKRefocusCanceled') | ForEach-Object {
     $body = [regex]::Match($source, ('(?ms)^' + $_ + '\([^)\r\n]*\) \{.*?^\}')).Value
@@ -258,12 +258,24 @@ Reset()
 menuState := "ground"
 AntiAFKTick()
 Check(events.Length = 0, "unknown screen without health HUD receives no input")
-for overlay in ["afk_phone_frame", "afk_vinewood_title", "ph_joblist_sel", "ph_vinewood_sel", "m_pref_title", "m_sub_boss", "m_sub_securo"] {
+for overlay in ["m_pref_title", "m_sub_boss", "m_sub_securo"] {
     Reset()
     menuState := "ground", hudVisible := true, visibleOverlay := overlay
     AntiAFKTick()
     Check(events.Length = 0 && releases = 1, "HUD with " overlay " is blocked")
 }
+; 수익 작업이 남긴 전화·앱은 Backspace 로 닫는다. 그 입력이 무입력 방지다.
+for overlay in ["afk_phone_frame", "afk_vinewood_title", "ph_joblist_sel", "ph_vinewood_sel"] {
+    Reset()
+    menuState := "ground", hudVisible := true, visibleOverlay := overlay
+    AntiAFKTick()
+    Check(events.Length = 4 && events[1] = "{Backspace down}" && events[3] = "{Backspace down}" && visibleOverlay = ""
+        && releases = 1 && LogHas("Backspace 로 닫음"), "leftover " overlay " is closed with Backspace only")
+}
+Reset()
+menuState := "ground", hudVisible := true, visibleOverlay := "afk_vinewood_title", phoneCloseAfter := 99
+AntiAFKTick()
+Check(events.Length = 12 && releases = 1 && LogHas("6번에도"), "phone that never closes stops after six Backspaces")
 Reset()
 menuState := "m_title", hudVisible := true
 AntiAFKTick()
@@ -322,7 +334,8 @@ Reset() {
     lockAvailable := true, lockError := false, releases := 0
     menuState := "mct_title", menuReads := 0, hideBeforeMenuKey := false, menuOpenWorks := true, menuCloseWorks := true, menuChanges := 0, failMenuWaitAt := 0
     hudVisible := false, hudReads := 0, hideHudAfter := 0, hideHudOnClose := false, hudOriginX := 0, hudOriginY := 0,
-        hudWidth := 1920, hudHeight := 1080, hudWindowError := false, visibleOverlay := "", guardAssetMissing := false, menuReturnState := "", gImageRoot := "fake"
+        hudWidth := 1920, hudHeight := 1080, hudWindowError := false, visibleOverlay := "", guardAssetMissing := false, menuReturnState := "", gImageRoot := "fake",
+        phonePresses := 0, phoneCloseAfter := 2
     logs := [], waits := [], warnings := []
     config := Map("Settings", Map("AFKUserIdleSec",45,"AFKJitterSec",0,"AFKIntervalSec",200,"AFKTapMs",100,"AFKGapMs",100,"EarnMCTOnly",1,
         "AFKRefocusIdleSec",300,"AFKRefocusSettleMs",800))
@@ -353,13 +366,21 @@ IsTeleportRunning() => teleportBusy
 AnyInputToggleOn() => false
 GetKeyState(*) => false
 Send(value) {
-    global events, anyInjectedAt, altSent, menuState, menuChanges, menuReturnState, hudVisible
+    global events, anyInjectedAt, altSent, menuState, menuChanges, menuReturnState, hudVisible, visibleOverlay, phonePresses, phoneCloseAfter
     if (!gAFKBusy)
         throw Error("input without ownership")
     events.Push(value)
     anyInjectedAt := A_TickCount
     if InStr(value, "Alt")
         altSent := true
+    ; 남은 전화·앱은 Backspace 로 한 단계씩 닫힌다.
+    if (value = "{Backspace down}" && visibleOverlay != ""
+        && InStr(" afk_phone_frame afk_vinewood_title ph_joblist_sel ph_vinewood_sel ", " " visibleOverlay " ")) {
+        phonePresses++
+        if (phonePresses >= phoneCloseAfter)
+            visibleOverlay := ""
+        return
+    }
     if (value = "{Backspace down}" || value = "{Enter down}" || value = "{m down}") {
         menuChanges++
         if ((menuChanges = 1 && !menuOpenWorks) || (menuChanges > 1 && !menuCloseWorks))
