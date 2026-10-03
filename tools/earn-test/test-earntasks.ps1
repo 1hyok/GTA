@@ -793,10 +793,10 @@ for c in [[Map("alreadyBoss",true),true,1,0,1,0],
     [Map("registerAfter",1200,"abortAt",400),false,1,1,0,0],
     [Map("registerAfter",1200,"focusLostAt",400),false,1,1,0,0],
     [Map("businessAfter",9000),false,2,1,0,0],
-    [Map("noResponse",true),false,1,0,0,0],
+    [Map("noResponse",true),false,2,0,0,0],
     [Map("rejectClick",1),false,1,0,0,0],
     [Map("rejectBack",true),false,2,1,1,1],
-    [Map("promptAfter",7000,"registerAfter",1000,"businessAfter",7900),true,2,1,1,1],
+    [Map("promptAfter",7000,"registerAfter",1000,"businessAfter",7900),true,3,1,1,1],
     [Map("alreadyBoss",true,"businessAfter",1200),true,1,0,1,0],
     [Map("alreadyBoss",true,"rejectCursorClear",true),false,1,0,0,0],
     [Map("alreadyBoss",true,"abortCursorClear",true),false,1,0,0,0],
@@ -807,8 +807,8 @@ for c in [[Map("alreadyBoss",true),true,1,0,1,0],
     result := EarnMCTRefresh()
     if (result != c[2] || refreshClicks != c[3] || refreshCtrl != c[4] || refreshBacks != c[5] || refreshLogs != c[6])
         throw Error("MCT register case " A_Index " result=" result " clicks=" refreshClicks " ctrl=" refreshCtrl " backs=" refreshBacks " logs=" refreshLogs)
-    if (refreshCtrl > 1 || refreshClicks > 2)
-        throw Error("MCT registration must never retry LCtrl or click the card more than twice")
+    if (refreshCtrl > 1 || refreshClicks > 3)
+        throw Error("MCT registration must never retry LCtrl or click the card more than three times")
     if (result && (refreshHover || !refreshCursorClears))
         throw Error("Business screen must be read only after its cursor obstruction is cleared")
     if (refreshOptions.Get("registerAfter",0) = 9000 && refreshClockMs != 8000)
@@ -826,7 +826,7 @@ EarnSeen(name,*) {
     if (name = "mct_need_ceo") {
         if (alreadyBoss || !refreshClicks || refreshOptions.Get("noResponse",false))
             return false
-        if (refreshClicks = 2)
+        if (refreshCtrlAt >= 0 && refreshClicks >= 2)
             return refreshOptions.Get("repeatedPrompt",false)
         return refreshHover && refreshClockMs >= refreshOptions.Get("promptAfter",0)
             && (refreshCtrlAt < 0 || refreshClockMs < registeredAt)
@@ -843,7 +843,7 @@ EarnSeen(name,*) {
 }
 EarnUIReady(name,*) => !EarnAborted() && EarnSeen(name)
 RefreshBusinessFrame() {
-    ready := (refreshOptions.Get("alreadyBoss",false) && refreshClicks = 1) || (refreshCtrlAt >= 0 && refreshClicks = 2)
+    ready := (refreshOptions.Get("alreadyBoss",false) && refreshClicks >= 1) || (refreshCtrlAt >= 0 && refreshClicks >= 2 && refreshLastClickAt >= refreshCtrlAt)
     return ready && !refreshOptions.Get("repeatedPrompt",false) && !refreshOptions.Get("noResponse",false)
         && refreshClockMs >= refreshLastClickAt + refreshOptions.Get("businessAfter",0)
 }
@@ -851,7 +851,9 @@ EarnUIClick(name,x,y,area := "",clearCursor := true) {
     global refreshClicks, refreshLastClickAt, refreshHover, refreshCursorClears
     if (EarnAborted() || name != "mct_bunker_card" || x != 960 || y != 525 || !EarnSeen("mct_title"))
         throw Error("MCT card click without its confirmed list")
-    if (refreshClicks && (refreshCtrl != 1 || EarnSeen("mct_need_ceo")))
+    ; 첫 클릭이 씹혀 아무 변화가 없을 때의 한 번 재클릭은 허용한다.
+    unanswered := refreshClicks = 1 && refreshCtrl = 0 && !EarnSeen("mct_need_ceo")
+    if (refreshClicks && !unanswered && (refreshCtrl != 1 || EarnSeen("mct_need_ceo")))
         throw Error("MCT card re-click before registration prompt disappeared")
     refreshClicks++, refreshLastClickAt := refreshClockMs
     if (refreshOptions.Get("rejectClick",0) = refreshClicks)
