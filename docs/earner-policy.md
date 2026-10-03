@@ -16,6 +16,8 @@
 
 사용자 물리 입력 후 2초가 지났고 GTA가 앞일 때만 작업을 시작한다. 진행 중 사용자 입력·포커스 이탈·End를 감지하면 중단한다. MCT 작업은 필요한 동안만 CEO를 등록하고 작업 후 해제한다. CEO 관리 하위 메뉴에서도 제목과 `Retire` 문맥을 확인하며 종료 화면까지 확인한다. 이 조건은 각 입력의 허용 조건이며 장시간 AFK 접속 유지 성공을 보장하는 검증은 아니다.
 
+CEO 메뉴를 닫은 뒤 MCT 접근 안내가 돌아오는 데 최대 8초를 허용한다. 벙커 확인창을 닫은 뒤에는 배경 화면 복구를 최대 3초 기다린다. Backspace 복귀도 현재 사업장 화면과 목적지 MCT를 함께 확인한다. 화면이 준비되면 즉시 진행하고 기한 초과·사용자 중단·포커스 이탈 시 추가 입력을 멈춘다.
+
 ## 벙커 보급
 
 직원·장비 업그레이드, 제조 전용, 기본 생산 속도에서 보급 전체는 140분에 소모된다. 한 칸 20%는 28분이며 기본 구매 가격은 한 칸당 $15,000이다. 따라서 설정은 1680초의 정수배 1~5만 허용한다. 연구 전용·제조/연구 겸임·업그레이드 차이·생산 가속이 적용되면 이 시간 전제가 맞지 않으므로 실제 화면의 소모량과 가격 확인이 필요하다. [GTA Wiki 생산 수치](https://gta.fandom.com/wiki/Disruption_Logistics), [GTPlanet의 직접 운영 계산](https://www.gtplanet.net/forum/threads/the-comprehensive-guide-to-gta-online.376233/)
@@ -103,6 +105,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/earn-test/test-earnocr
 
 저택 MCT에서 일어난 뒤 반대 벽을 보던 화면을 제자리 180도 카메라 회전으로 되돌려 `Press E to sit down.` 안내를 확인했다. MCT 종료 안내 대기를 보완한 뒤 실제 벙커 작업은 재고 36%·보급 22%에서 구매 없이 다음 경계를 기다리고 CEO 해제까지 성공했다. DJ 작업은 Home 100%에서 무구매로, 나이트클럽 창고 작업은 이동 대상 없이 배정을 유지하고 각각 CEO 해제까지 마쳤다. 금고 작업은 Nightclub $150,000을 확인해 수거 없이 앱을 닫고 복귀했다.
 
-새 직원 모듈의 실제 전체 실행은 요원 1 파견, 요원 2 작업 중 건너뛰기, Discount Retail Unit·Railyard Warehouse·Darnell Bros Warehouse·West Vinewood Backlot의 각 $7,500 조달과 작업 중 확인, Foreclosed Garage 만재 건너뛰기, 앱 종료와 MCT 앞 복귀까지 성공했다. 결과는 `EarnVinewoodStaffTask() = 1`, 153,922ms, 종료 코드 0이다. 남은 실전 검증은 새 벙커 결제 분기, 실제 $250,000 금고 수거, 나이트클럽 직원 재배정과 장시간 스케줄러 운용이다. 증거 경로와 중간 실패 기록은 [인계 기록](earner-handoff.md#현재-정책과-검증-범위-2026-10-03)에 있다.
+09:50 실제 빈 보급에서 $75,000 구매와 배송 중 안내를 확인했다. 확인창 이후 화면 복구 대기를 보완한 뒤 09:55 재실행은 배송 중 중복 결제 없이 MCT 종료와 CEO 해제까지 성공했다. 결과는 `EarnBunkerTask() = 1`, 90,594ms다. 주문 확인과 배송 완료는 구분한다.
+
+새 직원 모듈의 실제 전체 실행은 요원 1 파견, 요원 2 작업 중 건너뛰기, Discount Retail Unit·Railyard Warehouse·Darnell Bros Warehouse·West Vinewood Backlot의 각 $7,500 조달과 작업 중 확인, Foreclosed Garage 만재 건너뛰기, 앱 종료와 MCT 앞 복귀까지 성공했다. 결과는 `EarnVinewoodStaffTask() = 1`, 153,922ms, 종료 코드 0이다. 남은 실전 검증은 실제 $250,000 금고 수거, 나이트클럽 직원 재배정과 장시간 스케줄러 운용이다. 증거 경로와 중간 실패 기록은 [인계 기록](earner-handoff.md#현재-정책과-검증-범위-2026-10-03)에 있다.
 
 기존 DJ·벙커 수익 정책에는 실제 ChatGPT Pro 5/5 검토 응답을 반영했다. 추가 직원 파견 범위의 외부 검토는 브라우저 연결 실패로 전송하지 못했으므로 미완료다. 9월의 현장 금고 수거와 이동 시도는 앱 경로 성공 근거로 사용하지 않는다.

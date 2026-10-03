@@ -83,6 +83,8 @@ Probe() {
 
 MCTStatus() {
     return "mct=" EarnSeen("mct_title", [0.3,0,0.7,0.1])
+        . " bunkerPage=" EarnSeen("bunker_page") " bunkerPageExplicit=" EarnSeen("bunker_page", [0.15,0,0.35,0.12])
+        . " bunkerBuy=" EarnSeen("bunker_buy") " bunkerConfirm=" EarnSeen("bunker_confirm") " bunkerPending=" EarnSeen("bunker_pending")
         . " bunkerCard=" EarnSeen("mct_bunker_card") " nightclubCard=" EarnSeen("mct_nightclub_card")
         . " popularity=" EarnPopularityMCTPct()
         . " stock=" EarnBarFill(766,1154,555,"green") " supply=" EarnBarFill(766,1154,577,"blue")

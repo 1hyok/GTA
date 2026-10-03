@@ -748,7 +748,8 @@ EarnMCTOpen() {
     if (EarnSeen("mct_title", [0.3, 0, 0.7, 0.1]))
         return true
     if (!EarnSeen("mct_seated", EARN_PROMPT_AREA)) {
-        if (!EarnSeen("mct_sit", EARN_PROMPT_AREA))
+        ; CEO 메뉴가 닫힌 직후 접근 안내가 늦게 돌아올 수 있다.
+        if (!EarnWaitSeen("mct_sit", EARN_PROMPT_AREA, 8000))
             return EarnFail("MCT: 앞에 서 있지 않음 (Press E to sit down 안내 없음)")
         if (!EarnPress("e"))
             return false

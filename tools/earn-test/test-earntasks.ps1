@@ -453,6 +453,15 @@ EarnFail(*) => false
     Invoke-EarnOfflineCheck 'MCTBegin' 'EarnTaskMCTBegin' $mctDriver 8
     $mctCleanupSupport = @'
 EarnAborted() => endAbort
+EarnWaitSeen(name,area,timeoutMs) {
+    expectedArea := name = "mct_sit" ? [0,0,0.3,0.1] : name = "bunker_page" ? [0.15,0,0.35,0.12] : []
+    if (timeoutMs != 3000 || expectedArea.Length != 4 || !(area is Array) || area.Length != 4)
+        throw Error("Cleanup wait must use a known prompt/page and three-second deadline")
+    for index,value in expectedArea
+        if (area[index] != value)
+            throw Error("Cleanup wait must stay in its bounded prompt/page region")
+    return EarnUIReady(name)
+}
 EarnUIReady(name,*) {
     global endScene
     if (name = endScene)
@@ -486,7 +495,7 @@ EarnUIClick(name,x,y,*) {
     }
     if (endFailure = "click")
         return EarnFail("cleanup click rejected")
-    endScene := endFailure = "unknown_after_click" ? "unknown" : nextScene
+    endScene := endFailure = "unknown_after_click" ? "unknown" : endFailure = "modal_fade" ? "fading_page" : nextScene
     return true
 }
 EarnWaitGone(*) => endFailure != "gone"
@@ -598,6 +607,58 @@ ExitApp(0)
 '@
     $mctEndDriver += "`n" + $mctCleanupSupport
     Invoke-EarnOfflineCheck 'MCTEnd' 'EarnTaskMCTEnd' $mctEndDriver 32
+    $mctEndPromptDriver = @'
+global endScene := "", endFailure := "", endOrder := "", endAbort := false, endBoss := true, gEarnFail := "", endLogs := []
+global cleanupClockMs := 0, cleanupPromptAt := -1, cleanupAbortAt := -1, cleanupWaits := 0, cleanupPromptName := "mct_sit"
+; Initial scene, prompt arrival, interruption, result, inputs, elapsed, wait calls.
+for c in [["transition",1200,-1,true,"-",1200,1],
+    ["transition",4000,-1,false,"",3000,1],
+    ["transition",1200,400,false,"",400,1],
+    ["mct_title",1200,-1,true,"C-",0,0],
+    ["mct_sit",1200,-1,true,"-",0,0],
+    ["bunker_pending",1200,-1,true,"pB2C-",1200,1,"bunker_page"],
+    ["bunker_confirm",1200,-1,true,"xB2C-",1200,1,"bunker_page"],
+    ["bunker_pending",4000,-1,false,"p",3000,1,"bunker_page"],
+    ["bunker_pending",1200,400,false,"p",400,1,"bunker_page"]] {
+    endScene := c[1], cleanupPromptAt := c[2], cleanupAbortAt := c[3],
+        endOrder := "", endAbort := false, endBoss := true, gEarnFail := "original", endLogs := [],
+        cleanupClockMs := 0, cleanupWaits := 0
+    cleanupPromptName := c.Length = 8 ? c[8] : "mct_sit", endFailure := c.Length = 8 ? "modal_fade" : ""
+    result := EarnTaskMCTEnd()
+    if (result != c[4] || endOrder != c[5] || cleanupClockMs != c[6] || cleanupWaits != c[7])
+        throw Error("Cleanup prompt wait " c[1] " result=" result " input=" endOrder " elapsed=" cleanupClockMs " waits=" cleanupWaits)
+    if (gEarnFail != "original" || (result && endBoss))
+        throw Error("Delayed cleanup must retain the original failure and confirm retirement")
+}
+FileAppend("PASS MCTEndPrompt cases=9`n", "*")
+ExitApp(0)
+EarnSeen(name,*) => EarnUIReady(name)
+EarnWaitSeen(name,area,timeoutMs) {
+    global cleanupWaits
+    expectedArea := name = "mct_sit" ? [0,0,0.3,0.1] : name = "bunker_page" ? [0.15,0,0.35,0.12] : []
+    if (timeoutMs != 3000 || expectedArea.Length != 4 || !(area is Array) || area.Length != 4)
+        throw Error("Cleanup wait must use a known prompt/page and three-second deadline")
+    for index,value in expectedArea
+        if (area[index] != value)
+            throw Error("Cleanup wait must stay in its bounded prompt/page region")
+    cleanupWaits++
+    return FixtureCleanupWaitSeen(name,area,timeoutMs)
+}
+CleanupClock() => cleanupClockMs
+Sleep(ms) {
+    global cleanupClockMs, endAbort, endScene
+    cleanupClockMs += ms
+    if (cleanupAbortAt >= 0 && cleanupClockMs >= cleanupAbortAt)
+        endAbort := true
+    if (!endAbort && cleanupPromptAt >= 0 && cleanupClockMs >= cleanupPromptAt)
+        endScene := cleanupPromptName
+}
+'@
+    $promptCoreText = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnCore.ahk') -Raw -Encoding UTF8
+    $cleanupPollingBody = (Get-EarnFunctionBody $promptCoreText 'EarnWaitSeen').Replace('EarnWaitSeen(', 'FixtureCleanupWaitSeen(').Replace('A_TickCount', 'CleanupClock()')
+    $cleanupPromptSupport = $mctCleanupSupport.Replace((Get-EarnFunctionBody $mctCleanupSupport 'EarnWaitSeen'), '')
+    $mctEndPromptDriver += "`n" + $cleanupPromptSupport + "`n" + $cleanupPollingBody
+    Invoke-EarnOfflineCheck 'MCTEndPrompt' 'EarnTaskMCTEnd' $mctEndPromptDriver 9
     $mctBeginCleanupDriver = @'
 global config := Map(), endScene := "mct_sit", endFailure := "", endOrder := "", endAbort := false, endBoss := false, gEarnFail := "", endLogs := []
 global beginFailure := "", beginFailedScene := ""
@@ -1211,6 +1272,78 @@ EarnSleep(ms) {
 EarnFail(*) => false
 '@
     Invoke-EarnOfflineCheck 'UIClickBoundary' 'EarnUIClick' $uiClickDriver 7
+    $uiBackDriver = @'
+global backOptions := Map(), backClockMs := 0, backAborted := false, backspaces := 0,
+    backPageReadyAt := 0, backMCTAt := -1, backFocused := true
+; Options, result, Backspace count, elapsed time.
+for c in [[Map("alreadyMCT",true),true,0,0],
+    [Map("mctAfterFirst",1200,"secondPageAfter",9000),true,1,1250],
+    [Map("mctAfterFirst",4000,"secondPageAfter",9000),false,1,3650],
+    [Map("mctAfterFirst",1200,"secondPageAfter",9000,"abortAt",900),false,1,1010],
+    [Map("mctAfterFirst",1200,"secondPageAfter",9000,"focusLostAt",900),false,1,1010],
+    [Map("pageAt",1200),true,2,2500],
+    [Map("pageAt",4000),false,0,3000],
+    [Map("pageAt",1200,"abortAt",400),false,0,480],
+    [Map("secondPageAfter",1200),true,2,1900],
+    [Map("secondPageAfter",9000),false,1,3650],
+    [Map("mctAfterLast",1200),true,2,1900],
+    [Map("alreadyMCT",true,"aborted",true),false,0,0]] {
+    backOptions := c[1], backClockMs := 0, backAborted := backOptions.Get("aborted",false), backspaces := 0,
+        backPageReadyAt := backOptions.Get("pageAt",0), backMCTAt := -1, backFocused := true
+    result := EarnUIBackToMCT("bunker_page",2)
+    if (result != c[2] || backspaces != c[3] || backClockMs != c[4])
+        throw Error("Return wait result=" result " inputs=" backspaces " elapsed=" backClockMs)
+}
+FileAppend("PASS UIBackToMCT cases=12`n", "*")
+ExitApp(0)
+EarnSeen(name,*) {
+    if (name = "mct_title")
+        return backOptions.Get("alreadyMCT",false) || (backMCTAt >= 0 && backClockMs >= backMCTAt)
+    return name = "bunker_page" && backspaces < 2 && backClockMs >= backPageReadyAt
+}
+EarnUIReady(name,*) => !EarnAborted() && EarnSeen(name)
+EarnWaitSeen(name,area,timeoutMs) {
+    if (timeoutMs != 3000)
+        throw Error("Each back transition has a single three-second deadline")
+    if (name != "mct_title" && name != "bunker_page")
+        throw Error("Unexpected return wait target: " name)
+    return FixtureBackWaitSeen(name,area,timeoutMs)
+}
+EarnPress(key) {
+    global backspaces, backPageReadyAt, backMCTAt
+    if (EarnAborted() || key != "Backspace" || !EarnSeen("bunker_page") || EarnSeen("mct_title"))
+        throw Error("Return input before the page recovered or after interruption")
+    backspaces++
+    if (backspaces = 1)
+        backPageReadyAt := backClockMs + backOptions.Get("secondPageAfter",0)
+    if (backspaces = 1 && backOptions.Has("mctAfterFirst"))
+        backMCTAt := backClockMs + backOptions["mctAfterFirst"]
+    if (backspaces = 2)
+        backMCTAt := backClockMs + backOptions.Get("mctAfterLast",0)
+    return true
+}
+EarnSleep(ms) {
+    Sleep(ms)
+    return !EarnAborted()
+}
+Sleep(ms) {
+    global backClockMs, backAborted, backFocused
+    backClockMs += ms
+    if (backOptions.Has("abortAt") && backClockMs >= backOptions["abortAt"])
+        backAborted := true
+    if (backOptions.Has("focusLostAt") && backClockMs >= backOptions["focusLostAt"])
+        backFocused := false
+}
+EarnAborted() => backAborted || !backFocused
+BackClock() => backClockMs
+'@
+    $backWaitBody = (Get-EarnFunctionBody $promptCoreText 'EarnWaitSeen').Replace('EarnWaitSeen(', 'FixtureBackWaitSeen(').Replace('A_TickCount', 'BackClock()')
+    $uiBackDriver += "`n" + $backWaitBody
+    $savedBackSource = $sourceText
+    try {
+        $sourceText = $sourceText.Replace('A_TickCount', 'BackClock()')
+        Invoke-EarnOfflineCheck 'UIBackToMCT' 'EarnUIBackToMCT' $uiBackDriver 12
+    } finally { $sourceText = $savedBackSource }
     $sourceText = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\Earner.ahk') -Raw -Encoding UTF8
     $listDriver = @'
 global config := Map("Settings", Map("EarnMCTOnly",1,"EarnBunker",1,"EarnBunkerIntervalSec",300,"EarnDJ",1,"EarnDJIntervalMin",5,"EarnSafe",1,"EarnSafeIntervalMin",210,"EarnDispatch",1,"EarnDispatchIntervalMin",48))
@@ -1344,6 +1477,76 @@ EarnFail(reason) {
         $ceoMenuDriver += "`n" + (Get-EarnFunctionBody $sourceText $fn)
     }
     Invoke-EarnOfflineCheck 'CEOSubmenu' 'EarnCEO' $ceoMenuDriver 18
+    $mctOpenDriver = @'
+global EARN_PROMPT_AREA := [0,0,0.3,0.1], openOptions := Map(), openScene := "", openOrder := "",
+    openClockMs := 0, openAborted := false, promptWaits := 0, seatedAfterAt := -1, titleAfterAt := -1
+; Initial scene/options, result, input order, elapsed time, standing-prompt waits.
+cases := [["already-open",Map("scene","mct_title"),true,"",0,0],
+    ["already-seated",Map("scene","mct_seated"),true,"Enter;",800,0],
+    ["standing",Map("scene","mct_sit"),true,"e;Enter;",800,1],
+    ["CEO-prompt-delay",Map("promptAt",1200,"seatedAfter",600,"titleAfter",400),true,"e;Enter;",3000,1],
+    ["prompt-timeout",Map("promptAt",9000),false,"",8000,1],
+    ["abort-prompt",Map("promptAt",1200,"abortAt",400),false,"",400,1],
+    ["seated-timeout",Map("scene","mct_sit","seatedAfter",9000),false,"e;",8000,1],
+    ["title-timeout",Map("scene","mct_seated","titleAfter",9000),false,"Enter;",8000,0],
+    ["abort-seating",Map("scene","mct_sit","seatedAfter",1200,"abortAt",400),false,"e;",400,1],
+    ["sit-key-rejected",Map("scene","mct_sit","rejectKey","e"),false,"",0,1]]
+for c in cases {
+    openOptions := c[2], openScene := openOptions.Get("scene","transition"), openOrder := "",
+        openClockMs := 0, openAborted := false, promptWaits := 0, seatedAfterAt := -1, titleAfterAt := -1
+    result := EarnMCTOpen()
+    if (result != c[3] || openOrder != c[4] || openClockMs != c[5] || promptWaits != c[6])
+        throw Error("MCT open " c[1] " result=" result " input=" openOrder " elapsed=" openClockMs " waits=" promptWaits)
+}
+FileAppend("PASS MCTOpen cases=10`n", "*")
+ExitApp(0)
+EarnSeen(name,area := "") {
+    global openScene
+    if (openScene = "transition" && openClockMs >= openOptions.Get("promptAt",0))
+        openScene := "mct_sit"
+    if (openScene = "seating" && openClockMs >= seatedAfterAt)
+        openScene := "mct_seated"
+    if (openScene = "opening" && openClockMs >= titleAfterAt)
+        openScene := "mct_title"
+    return name = openScene
+}
+EarnWaitSeen(name,area,timeoutMs) {
+    global promptWaits
+    if (timeoutMs != 8000)
+        throw Error("MCT transitions require one bounded eight-second wait")
+    if (name = "mct_sit") {
+        if (!(area is Array) || area.Length != 4 || area[1] != 0 || area[2] != 0 || area[3] != 0.3 || area[4] != 0.1)
+            throw Error("Standing prompt wait must use the prompt region")
+        promptWaits++
+    }
+    return FixtureOpenWaitSeen(name,area,timeoutMs)
+}
+EarnPress(key) {
+    global openOrder, openScene, seatedAfterAt, titleAfterAt
+    if (openAborted || key = openOptions.Get("rejectKey",""))
+        return false
+    if (key = "e" && openScene = "mct_sit")
+        openScene := "seating", seatedAfterAt := openClockMs + openOptions.Get("seatedAfter",0)
+    else if (key = "Enter" && openScene = "mct_seated")
+        openScene := "opening", titleAfterAt := openClockMs + openOptions.Get("titleAfter",0)
+    else
+        throw Error("MCT input before matching prompt: " key " at " openScene)
+    openOrder .= key ";"
+    return true
+}
+EarnAborted() => openAborted
+OpenClock() => openClockMs
+Sleep(ms) {
+    global openClockMs, openAborted
+    openClockMs += ms
+    if (openOptions.Has("abortAt") && openClockMs >= openOptions["abortAt"])
+        openAborted := true
+}
+EarnFail(*) => false
+'@
+    $openWaitBody = (Get-EarnFunctionBody $sourceText 'EarnWaitSeen').Replace('EarnWaitSeen(', 'FixtureOpenWaitSeen(').Replace('A_TickCount', 'OpenClock()')
+    $mctOpenDriver += "`n" + $openWaitBody
+    Invoke-EarnOfflineCheck 'MCTOpen' 'EarnMCTOpen' $mctOpenDriver 10
     $mctCloseDriver = @'
 global EARN_PROMPT_AREA := [], config := Map("Settings",Map("EarnTurnUnitsPerDeg",29))
 global closeCase := Map(), scene := "", aborted := false, backspaces := 0, clicks := [], promptReads := 0, turns := 0, turnUnits := 0,

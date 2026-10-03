@@ -298,11 +298,14 @@ EarnBunkerBuy() {
         if (!EarnSleep(100) || A_TickCount >= deadline)
             return EarnFail("벙커: 시작 화면 미확인")
     }
-    if (!EarnWaitSeen("bunker_page", [0.15,0,0.35,0.12], 5000)
-        || !EarnUIClick("bunker_resupply", 460, 490)
-        || !EarnWaitSeen("bunker_buy", "", 3000)
-        || !EarnUIClick("bunker_buy", 1150, 795))
-        return EarnFail("벙커: 구매 화면 이동 실패")
+    if (!EarnWaitSeen("bunker_page", [0.15,0,0.35,0.12], 5000))
+        return EarnFail("벙커: 사업장 페이지 미확인")
+    if (!EarnUIClick("bunker_resupply", 460, 490))
+        return EarnFail("벙커: 보급 메뉴 선택 실패")
+    if (!EarnWaitSeen("bunker_buy", "", 3000))
+        return EarnFail("벙커: 보급 구매 버튼 미확인")
+    if (!EarnUIClick("bunker_buy", 1150, 795))
+        return EarnFail("벙커: 구매 버튼 클릭 전 화면 변경")
     ; 이미 배송 중이면 결제하지 않는다. 확인창 불명확시 재시도하지 않는다.
     deadline := A_TickCount + 5000
     while (!EarnSeen("bunker_pending") && !EarnSeen("bunker_confirm")) {
@@ -396,11 +399,13 @@ EarnTaskMCTEnd() {
             return false
         if (EarnUIReady("bunker_confirm")) {
             if (!EarnUIClick("bunker_confirm", 850, 619)
-                || !EarnWaitGone("bunker_confirm", "", 3000))
+                || !EarnWaitGone("bunker_confirm", "", 3000)
+                || !EarnWaitSeen("bunker_page", [0.15,0,0.35,0.12], 3000))
                 return EarnFail("MCT 정리: 벙커 구매 취소 미확인")
         } else if (EarnUIReady("bunker_pending")) {
             if (!EarnUIClick("bunker_pending", 960, 619)
-                || !EarnWaitGone("bunker_pending", "", 3000))
+                || !EarnWaitGone("bunker_pending", "", 3000)
+                || !EarnWaitSeen("bunker_page", [0.15,0,0.35,0.12], 3000))
                 return EarnFail("MCT 정리: 벙커 배송 알림 닫기 미확인")
         } else {
             for confirmation in ["dj_confirm_solomun", "dj_confirm_tale"] {
@@ -427,8 +432,12 @@ EarnTaskMCTEnd() {
         if (EarnUIReady("mct_sit", [0,0,0.3,0.1]))
             return EarnCEO(false)
         if (!EarnUIReady("mct_title", [0.3,0,0.7,0.1])
-            && !EarnUIReady("mct_seated", [0,0,0.3,0.1]) && !EarnUIReady("mct_need_ceo"))
+            && !EarnUIReady("mct_seated", [0,0,0.3,0.1]) && !EarnUIReady("mct_need_ceo")) {
+            ; 등록 메뉴가 닫히는 동안 숨었던 접근 안내만 기다린다. 미확인 화면에는 입력하지 않는다.
+            if (EarnWaitSeen("mct_sit", [0,0,0.3,0.1], 3000))
+                return EarnCEO(false)
             return EarnFail("MCT 정리: 확인된 복귀 경로 없음. 화면 확인 후 보스 해제 필요")
+        }
         return EarnMCTClose() && EarnCEO(false)
     } catch as e {
         return EarnFail("MCT 정리 오류: " e.Message)
@@ -589,9 +598,20 @@ EarnUIClearCursor() {
 
 EarnUIBackToMCT(guard, maxPress) {
     Loop maxPress {
-        if (EarnSeen("mct_title", [0.3, 0, 0.7, 0.1]))
-            return true
-        if (!EarnUIReady(guard) || !EarnPress("Backspace") || !EarnSleep(650))
+        deadline := A_TickCount + 3000
+        Loop {
+            if (EarnAborted())
+                return false
+            if (EarnSeen("mct_title", [0.3, 0, 0.7, 0.1]))
+                return true
+            ; 배경 복구와 MCT 전환을 함께 확인하고, 확인된 사업장 화면에서만 뒤로 간다.
+            if (EarnUIReady(guard))
+                break
+            remaining := deadline - A_TickCount
+            if (remaining <= 0 || !EarnSleep(Min(120, remaining)))
+                return false
+        }
+        if (!EarnPress("Backspace") || !EarnSleep(650))
             return false
     }
     return EarnWaitSeen("mct_title", [0.3, 0, 0.7, 0.1], 3000)
