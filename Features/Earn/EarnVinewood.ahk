@@ -18,21 +18,21 @@ EarnVinewoodSafeTask() {
     if (!EarnSelectText("i)^Nightclub$", "i)^THE VINEWOOD CLUB APP$", 7))
         return EarnFail("금고: 수익 목록에서 나이트클럽 선택 미확인")
     ; 행에는 금액이 없다. 선택한 행과 하단의 나이트클럽 전용 설명을 같은 화면에서 읽는다.
-    lines := EarnReadScreen([25,15,450,850])
+    lines := EarnVinewoodAmountLines()
     amount := EarnVinewoodNightclubAmount(lines)
     if (amount < 0 || amount > 250000)
         return EarnFail("금고: 나이트클럽 금액 판독 실패")
     EarnLog("금고: 나이트클럽 $" amount)
     if (amount < 250000)
         return EarnVinewoodClose()
-    if (EarnVinewoodNightclubAmount(EarnReadScreen([25,15,450,850])) != 250000)
+    if (EarnVinewoodNightclubAmount(EarnVinewoodAmountLines()) != 250000)
         return EarnFail("금고: 수거 직전 나이트클럽 $250,000 선택 미확인")
     ; 다른 사업장의 수익이나 Claim All은 선택하지 않는다.
     if (!EarnPress("Enter") || !EarnSleep(1000))
         return false
     deadline := A_TickCount + 15000
     Loop {
-        lines := EarnReadScreen([25,15,450,850])
+        lines := EarnVinewoodAmountLines()
         if (!IsObject(lines))
             return false
         if (EarnVinewoodNightclubAmount(lines) = 0
@@ -44,6 +44,17 @@ EarnVinewoodSafeTask() {
         if (A_TickCount >= deadline || !EarnSleep(300))
             return EarnFail("금고: 수거 후 $0 미확인. 자동 재수거 중단")
     }
+}
+
+
+; 테러바이트처럼 밝은 배경 위의 반투명 설명은 일반 OCR 이 깨뜨린다(1003 17:28 실측: "yOürNightclub").
+; 일반 판독으로 금액이 안 나올 때만 흰 글자 전처리로 다시 읽는다.
+EarnVinewoodAmountLines() {
+    lines := EarnReadScreen([25,15,450,850])
+    if (EarnVinewoodNightclubAmount(lines) >= 0)
+        return lines
+    white := EarnReadScreen([25,15,450,850], true)
+    return IsObject(white) ? white : lines
 }
 
 ; 금액을 다른 사업장의 설명이나 Nightclub 이름 옆의 임의 숫자에서 추측하지 않는다.
@@ -76,7 +87,7 @@ EarnVinewoodOpen() {
         && !EarnSeen("ph_vinewood_sel", [0.83,0.66,0.98,0.73])) {
         if (EarnAtMCT() && !EarnMCTClose())
             return false
-        if (!EarnSeen("mct_sit", [0,0,0.3,0.1]))
+        if (!EarnSeen("mct_sit", [0,0,0.3,0.1]) && !EarnSeen("mct_terrorbyte"))
             return EarnFail("금고: MCT 앞 대기 위치를 확인하지 못함")
         if (!EarnCEO(false) || !EarnPress("Up") || !EarnSleep(700))
             return false
@@ -107,7 +118,7 @@ EarnVinewoodClose() {
             backCount += 1
             continue
         }
-        if (EarnSeen("mct_sit", [0,0,0.3,0.1]))
+        if (EarnSeen("mct_sit", [0,0,0.3,0.1]) || EarnSeen("mct_terrorbyte"))
             return true
         ; 앱이 닫혀도 MCT 접근 안내가 약 1초 뒤 나타날 수 있다. 미확인 화면에는 입력하지 않는다.
         if (!EarnSleep(300))

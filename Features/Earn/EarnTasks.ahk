@@ -448,7 +448,7 @@ EarnDJTask(manageSession := true) {
 
 EarnTaskMCTBegin() {
     ; 이 자동화는 사용자가 둔 MCT 앞에서만 동작한다. 부동산 재접속·임의 길찾기는 하지 않는다.
-    if (!EarnAtMCT() && !EarnSeen("mct_sit", [0,0,0.3,0.1]))
+    if (!EarnAtMCT() && !EarnSeen("mct_sit", [0,0,0.3,0.1]) && !EarnSeen("mct_terrorbyte"))
         return EarnFail("MCT 앞에 서 있거나 사업장 목록을 연 상태에서 시작해야 함")
     opened := false
     try {
@@ -507,6 +507,18 @@ EarnTaskMCTEnd() {
     try {
         if (EarnAborted())
             return false
+        ; 확인창·알림이 사라지는 전환 중에는 어떤 화면도 잡히지 않는다(1003 17:17 실측: 배송 중 알림을 닫은 직후
+        ; 정리가 '복귀 경로 없음'으로 멈췄고, 몇 초 뒤 같은 정리는 성공했다). 아는 화면이 보일 때까지 최대 5초 기다린다.
+        Loop 25 {
+            known := EarnUIReady("mct_sit", [0,0,0.3,0.1])
+            for name in ["bunker_confirm", "bunker_pending", "dj_confirm_solomun", "dj_confirm_tale", "bunker_page",
+                "bunker_entry", "nc_dj_menu", "mct_title", "mct_seated", "mct_need_ceo", "mct_terrorbyte"]
+                known := known || EarnUIReady(name)
+            if (known)
+                break
+            if (!EarnSleep(200))
+                return false
+        }
         if (EarnUIReady("bunker_confirm")) {
             if (!EarnUIClick("bunker_confirm", 850, 619)
                 || !EarnWaitGone("bunker_confirm", "", 3000)
@@ -539,7 +551,7 @@ EarnTaskMCTEnd() {
                 || !EarnUIBackToMCT("nc_dj_menu", 1))
                 return EarnFail("MCT 정리: 나이트클럽 Home 복귀 미확인")
         }
-        if (EarnUIReady("mct_sit", [0,0,0.3,0.1]))
+        if (EarnUIReady("mct_sit", [0,0,0.3,0.1]) || EarnUIReady("mct_terrorbyte"))
             return EarnCEO(false)
         if (!EarnUIReady("mct_title", [0.3,0,0.7,0.1])
             && !EarnUIReady("mct_seated", [0,0,0.3,0.1]) && !EarnUIReady("mct_need_ceo")) {
@@ -686,7 +698,7 @@ EarnUIClick(guard, x, y, area := "", clearCursor := true) {
         if (EarnAborted())
             return false
         if (clearCursor)
-            DllCall("SetCursorPos", "int", cx+40, "int", cy+130)
+            DllCall("SetCursorPos", "int", cx+1880, "int", cy+1040)
         return EarnSleep(450)
     } finally {
         DllCall("SetThreadDpiAwarenessContext", "ptr", previous, "ptr")
@@ -700,7 +712,7 @@ EarnUIClearCursor() {
     previous := DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
     try {
         WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
-        DllCall("SetCursorPos", "int", cx+40, "int", cy+130)
+        DllCall("SetCursorPos", "int", cx+1880, "int", cy+1040)
         return EarnSleep(100)
     } finally {
         DllCall("SetThreadDpiAwarenessContext", "ptr", previous, "ptr")
