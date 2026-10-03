@@ -199,6 +199,10 @@ RunMenuTests() {
         if (expected)
             Check(screenState = "staff" && downs = 0 && ups = 1, "six actual main menu rows: bottom row is one Up from the top")
     }
+    ; 작업 중 요원 행의 일반 판독이 깨져도("I Agent 2", 1004 02:01 실측) 흰 글자 판독으로 위치를 확인하고 돌아간다.
+    Reset("garbled_busy_root",["busy","busy"])
+    screenState := "bail", selected := "Agent 2"
+    Check(EarnStaffRoot() && screenState = "staff" && keys.Length = 1 && keys[1] = "Backspace", "garbled busy agent row returns by white-text OCR")
     ; 끝이 보이는 3줄 목록은 짧은 쪽으로 돌고, 아래가 잘린 6줄 메인 목록은 바로 위 줄일 때만 Up 을 쓴다.
     for c in [["staff","Warehouse","Hangar","Up"],["staff","Hangar","Bail Office","Up"],["staff","Bail Office","Hangar","Down"],
         ["staff","Hangar","Warehouse","Down"],["main","Manage Staff Members","Claim Business Earnings","Down"],
@@ -436,6 +440,8 @@ MockReadScreen(area, whiteText) {
         lines.RemoveAt(selected = "Agent 1" ? 3 : 2)
     if (mode = "missing_selected_agent")
         lines.RemoveAt(selected = "Agent 1" ? 2 : 3)
+    if (mode = "garbled_busy_root" && !whiteText)
+        lines[selected = "Agent 1" ? 2 : 3].text := "I " selected
     if (requests[1]) {
         if (mode = "lost_bail_identity")
             lines[1].text := "UNKNOWN CONFIRMATION"
