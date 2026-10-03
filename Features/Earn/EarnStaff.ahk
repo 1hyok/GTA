@@ -278,7 +278,7 @@ EarnStaffCargoDetail(lines, heading) {
 
 EarnStaffReadBail(agent, &identityValid := false, deadline := 0) {
     identityValid := false
-    lines := EarnReadScreen([25,125,450,115], false, deadline)
+    lines := EarnStaffBailRows(agent, deadline)
     if (!EarnStaffBailIdentity(lines, agent))
         return "invalid"
     identityValid := true
@@ -294,6 +294,16 @@ EarnStaffReadBail(agent, &identityValid := false, deadline := 0) {
     for row in detail
         lines.Push(row)
     return EarnStaffBailState(lines, agent)
+}
+
+; 작업 중으로 바뀐 선택 행은 밝은 막대 위 회색 글자라 일반 판독이 앞에 글자를 붙인다(1004 02:01 "I Agent 2", 05:24 "j Agent 2").
+; 앱 제목은 읽혔는데 요원 행만 안 맞을 때 흰 글자 판독으로 한 번 더 본다.
+EarnStaffBailRows(agent, deadline := 0) {
+    lines := EarnReadScreen([25,125,450,115], false, deadline)
+    if (EarnStaffBailIdentity(lines, agent) || !EarnStaffUniqueRow(lines, "i)^THE VINEWOOD CLUB APP$"))
+        return lines
+    white := EarnReadScreen([25,125,450,115], true, deadline)
+    return EarnStaffBailIdentity(white, agent) ? white : lines
 }
 
 EarnStaffBailIdentity(lines, agent) {
