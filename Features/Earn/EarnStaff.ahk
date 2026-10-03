@@ -355,7 +355,8 @@ EarnStaffSelectEnter(pattern, maxPress) {
 EarnStaffMenuTarget(pattern, &validMenu := false, &menuLines := "", &menuHeading := "") {
     validMenu := false
     for whiteText in [false,true] {
-        lines := EarnReadScreen([25,125,450,263], whiteText)
+        ; 7번째 줄 자리(y=403)까지 읽어야 목록이 6줄에서 끝나는지 보이고, 위로 감아 도는 이동을 쓸 수 있다(1003 녹화: 맨 아래 Manage Staff Members 까지 Down 5번).
+        lines := EarnReadScreen([25,125,450,300], whiteText)
         heading := EarnStaffUniqueRow(lines, "i)^THE VINEWOOD CLUB APP$")
         if (!heading)
             return false
@@ -387,7 +388,10 @@ EarnStaffSelectText(pattern, maxPress) {
             return false
         if (row && EarnMenuRowSelected(row))
             return row
-        if (A_Index > maxPress || !EarnPress(EarnMenuStepKey(lines, heading, row, 388)) || !EarnSleep(200))
+        key := EarnMenuStepKey(lines, heading, row, 425, &why)
+        if (A_Index = 1 && A_Index <= maxPress)
+            EarnLog("앱 이동: " why)
+        if (A_Index > maxPress || !EarnPress(key) || !EarnSleep(200))
             return false
     }
     return false

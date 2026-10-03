@@ -184,17 +184,19 @@ RunMenuTests() {
         result := EarnStaffRoot()
         expected := nextMode = "truncated_menu_raw"
         Check(result = expected, nextMode " root result")
-        enters := 0, downs := 0
+        enters := 0, downs := 0, ups := 0
         for key in keys {
             if (key = "Enter")
                 enters += 1
             if (key = "Down")
                 downs += 1
+            if (key = "Up")
+                ups += 1
         }
         Check(enters = (expected ? 1 : 0), nextMode " exact selected verification before Enter")
         Check(downs <= 6, nextMode " bounded menu traversal")
         if (expected)
-            Check(screenState = "staff" && downs = 5, "six actual main menu rows")
+            Check(screenState = "staff" && downs = 0 && ups = 1, "six actual main menu rows: bottom row is one Up from the top")
     }
     ; 끝이 보이는 3줄 목록은 짧은 쪽으로 돌고, 아래가 잘린 6줄 메인 목록은 바로 위 줄일 때만 Up 을 쓴다.
     for c in [["staff","Warehouse","Hangar","Up"],["staff","Hangar","Bail Office","Up"],["staff","Bail Office","Hangar","Down"],
@@ -348,20 +350,21 @@ MockReadScreen(area, whiteText) {
     global cargoNames, cargoStatuses, cargoRequests, cargoReads, postReads
     global menuReads, mainNames
     if (screenState = "main") {
-        if (area[4] = 263)
+        if (area[4] = 263 || area[4] = 300)
             menuReads += 1
         rows := [TextLine("THE VINEWOOD CLUB APP",144)]
         for index, name in mainNames
             rows.Push(TextLine(name,144+37*index))
         if (mode = "truncated_menu_raw" && !whiteText || mode = "missing_menu_target")
             rows[7].text := "Manage Staff Mem"
-        if (mode = "wrong_menu_heading" || mode = "menu_changes_before_enter" && menuReads >= 8)
+        if (mode = "wrong_menu_heading" || mode = "menu_changes_before_enter" && menuReads >= 4)
             rows[1].text := "UNKNOWN MENU"
         if (mode = "duplicate_menu_target")
             rows.Push(TextLine("Manage Staff Members",329))
+        rows.Push(TextLine("Send your staff members out on jobs.",414))
         if (mode = "misplaced_menu_target")
             rows[7].y := 387
-        if (mode = "menu_selection_before_enter" && menuReads >= 8)
+        if (mode = "menu_selection_before_enter" && menuReads >= 4)
             selected := "Claim Business Earnings"
         return rows
     }
@@ -401,7 +404,7 @@ MockReadScreen(area, whiteText) {
                     return false
             }
         }
-        if (whiteText && area[4] != 229 && area[4] != 263)
+        if (whiteText && area[4] != 229 && area[4] != 263 && area[4] != 300)
             throw Error("Cargo footer must use white-text OCR with all possible footer positions")
         if (!whiteText && area[4] = 229)
             return false

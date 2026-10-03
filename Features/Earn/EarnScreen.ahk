@@ -142,7 +142,10 @@ EarnSelectText(pattern, heading, maxPress := 12) {
         row := EarnFindText(lines, pattern)
         if (row && EarnMenuRowSelected(row))
             return row
-        if (A_Index > maxPress || !EarnPress(EarnMenuStepKey(lines, top, row, 815)))
+        key := EarnMenuStepKey(lines, top, row, 815, &why)
+        if (A_Index = 1 && A_Index <= maxPress)
+            EarnLog("앱 이동: " why)
+        if (A_Index > maxPress || !EarnPress(key))
             return false
     }
     return false
@@ -152,7 +155,8 @@ EarnSelectText(pattern, heading, maxPress := 12) {
 ; 선택 줄에서 목표 줄까지 위·아래 중 덜 누르는 쪽을 고른다. 판단이 안 서면 원래대로 Down.
 ; areaBottom 은 판독 영역의 아래 끝이다. 마지막 줄 다음 자리가 영역 밖이면 목록이 잘렸을 수 있어
 ; 끝을 돌아가는 Up 은 쓰지 않는다(줄 수를 적게 세면 위아래를 오가며 헤맨다).
-EarnMenuStepKey(lines, heading, target, areaBottom) {
+EarnMenuStepKey(lines, heading, target, areaBottom, &why := "") {
+    why := "목표 줄이 화면에 없음 → Down"
     if (!IsObject(lines) || !IsObject(heading) || !IsObject(target))
         return "Down"
     rows := []
@@ -176,10 +180,15 @@ EarnMenuStepKey(lines, heading, target, areaBottom) {
         if (!cur && EarnMenuRowSelected(row))
             cur := i
     }
-    if (!cur || !goal)
-        return "Down"
     n := rows.Length
-    if (heading.y + 37 * (n + 1) + 5 > areaBottom)
-        return goal < cur && cur - goal < n - cur + goal ? "Up" : "Down"
-    return Mod(cur - goal + n, n) < Mod(goal - cur + n, n) ? "Up" : "Down"
+    if (!cur || !goal) {
+        why := target.text " 까지: 선택 줄을 못 찾음(" n "줄) → Down"
+        return "Down"
+    }
+    clipped := heading.y + 37 * (n + 1) + 5 > areaBottom
+    up := clipped ? (goal < cur ? cur - goal : 99) : Mod(cur - goal + n, n)
+    down := clipped && goal < cur ? n - cur + goal "+" : Mod(goal - cur + n, n)
+    key := clipped ? (goal < cur && cur - goal < n - cur + goal ? "Up" : "Down") : (up < down ? "Up" : "Down")
+    why := target.text " 까지 " key " (" cur "→" goal "번째 줄, " n "줄" (clipped ? " 이상" : "") ", 위 " (up = 99 ? "-" : up) "·아래 " down ")"
+    return key
 }
