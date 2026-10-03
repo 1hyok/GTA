@@ -1,5 +1,5 @@
 ; === 수익 자동화 스케줄러 (Vinewood 금고·직원 파견 · 벙커 보급 · DJ 교체 · 창고 직원) ===
-; 단축키(기본 F9) 두 번으로 켜고 끈다. End(전체 멈춤)도 끈다. 켜 두면 5초마다 할 일을 보고, 때가 된 것 하나를 끝까지 한 뒤 다음으로 넘어간다.
+; 단축키(기본 F9) 두 번으로 켜고 끈다. End(전체 멈춤)도 끈다. 켜 두면 1초마다 할 일을 보고, 때가 된 것 하나를 끝까지 한 뒤 다음으로 넘어간다.
 ; 금고 → 벙커 → DJ → 창고 재배정 → 앱 파견 순서로 한 작업씩 한다. 작업마다 현재 화면을 읽는다.
 ; 사용자 물리 입력이 EarnUserIdleSec 동안 없고 GTA가 앞일 때만 시작한다. 진행 중 사용자 입력·포커스 이탈 시 중단한다.
 ; 어느 단계든 화면 확인이 안 되면 자동화 전체를 끄고(멈춤 까닭은 %TEMP%\gta-earn.log·오버레이·설정 창) AFK 방지는 켜 둔다.
@@ -12,6 +12,7 @@ global gEarnTasks := []
 global gEarnNextDue := Map()   ; 작업이 스스로 정한 다음 실행 시각(A_TickCount). 없으면 시작 시각 + 간격
 global gEarnSoftFails := Map()   ; 작업별 연속 "다시 하기" 횟수. EarnSoftFailMax 를 넘으면 그때 끈다
 global gEarnGuardArmed := false
+global gEarnGuardStartedTick := 0
 global gEarnInputGuard := EarnInputAllowed
 global gEarnGamePID := 0
 
@@ -58,7 +59,7 @@ SetEarner(on, reason := "") {
         }
         if (config["Features"]["AntiAFK"] && !afkOn)
             SetAntiAFK(true)
-        SetTimer(EarnTick, 5000)
+        SetTimer(EarnTick, 1000)
         ShowTooltip("💰 수익 자동화 켜짐 (" KeyLabelFor("Earner") " 두 번: 끄기, End: 멈춤)", 2500)
         EarnLog("켜짐: " EarnEnabledText())
     } else {
@@ -178,7 +179,8 @@ EarnTick() {
 
 ; 물리 키보드/마우스 입력만 본다. 자동 클릭·카메라 입력은 유휴 시간을 초기화하지 않는다.
 EarnInputGuardStart() {
-    global gEarnGuardArmed
+    global gEarnGuardArmed, gEarnGuardStartedTick
+    gEarnGuardStartedTick := A_TickCount
     gEarnGuardArmed := true
     SetTimer(EarnInputWatch, 25)
 }
@@ -194,7 +196,7 @@ EarnInputWatch() {
 }
 
 EarnInputAllowed() {
-    global gEarnGuardArmed, gAbort, gEarnRetryIn, gEarnGamePID, config
+    global gEarnGuardArmed, gEarnGuardStartedTick, gAbort, gEarnRetryIn, gEarnGamePID
     if (!gEarnGuardArmed)
         return !gAbort
     if (!gAbort && (!gEarnGamePID || EarnGamePID() != gEarnGamePID)) {
@@ -202,7 +204,8 @@ EarnInputAllowed() {
         gEarnRetryIn := 0
         EarnFail("GTA 종료 또는 재시작으로 중단. 현재 화면을 확인하고 다시 켜기")
         ReleaseHeldKeys()
-    } else if (!gAbort && (A_TimeIdlePhysical < Max(1, config["Settings"]["EarnUserIdleSec"]) * 1000 || !IsGTAActive())) {
+    } else if (!gAbort && (A_TimeIdlePhysical < Max(1, A_TickCount - gEarnGuardStartedTick) || !IsGTAActive())) {
+        ; 긴 OCR 호출 중 발생한 입력도 시작 이후 경과 시간과 비교해 감지한다.
         gAbort := true
         gEarnRetryIn := 0
         EarnFail("사용자 입력 또는 GTA 포커스 이탈로 중단")
@@ -272,7 +275,7 @@ EarnOtherMacroBusy() {
 
 ; 오버레이·설정 창 한 줄 상태
 EarnStatusText() {
-    global gEarnOn, gEarnDue, gEarnTasks, gEarnCurrent, gEarnFail
+    global gEarnOn, gEarnDue, gEarnTasks, gEarnCurrent, gEarnFail, config
     if (!gEarnOn)
         return gEarnFail = "" ? "" : "수익 멈춤: " gEarnFail
     if (gEarnCurrent != "")
@@ -287,6 +290,16 @@ EarnStatusText() {
     }
     if (nextLabel = "")
         return "수익: 켜진 작업 없음"
+    if (nextIn <= 0) {
+        if (!IsGTAActive())
+            return "수익: GTA 포커스 대기"
+        idleLeft := config["Settings"]["EarnUserIdleSec"] * 1000 - A_TimeIdlePhysical
+        if (idleLeft > 0)
+            return "수익: 입력 안정 대기 " Ceil(idleLeft / 1000) "초"
+        if (EarnOtherMacroBusy())
+            return "수익: 다른 매크로 종료 대기"
+        return "수익: " nextLabel " 시작 대기"
+    }
     sec := Max(0, Ceil(nextIn / 1000))
     return "수익: 다음 " nextLabel " " Format("{:d}:{:02d}", sec // 60, Mod(sec, 60)) " 뒤"
 }
