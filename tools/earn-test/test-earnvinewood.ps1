@@ -30,6 +30,7 @@ RunTests() {
     cases := [
         ["full", "main", true, 1, "standing"],
         ["not_full", "main", true, 0, "standing"],
+        ["near_full", "main", true, 1, "standing"],
         ["empty", "main", true, 0, "standing"],
         ["no_earnings", "main", true, 0, "standing"],
         ["full", "earnings", true, 1, "standing"],
@@ -129,7 +130,7 @@ EarnReadScreen(*) {
         return Frame("Claim $25O000 from your Nightclub safe.")
     if (gMode = "empty" || (gClaims && gMode != "post_unconfirmed" && gMode != "post_claim_zero"))
         return Frame("Your Nightclub safe is empty.")
-    amount := gMode = "not_full" || (gMode = "recheck_amount" && gDetailReads >= 3) ? 249999 : gMode = "too_large" ? 250001 : gMode = "post_claim_zero" && gClaims ? 0 : 250000
+    amount := gMode = "not_full" ? 200000 : gMode = "near_full" ? 245000 : gMode = "recheck_amount" && gDetailReads >= 3 ? 249999 : gMode = "too_large" ? 250001 : gMode = "post_claim_zero" && gClaims ? 0 : 250000
     lines := Frame("Claim $" amount " from your Nightclub safe.")
     if (gMode = "duplicate_details")
         lines.Push(FakeLine("Your Nightclub safe is empty."))

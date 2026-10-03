@@ -23,10 +23,10 @@ EarnVinewoodSafeTask() {
     if (amount < 0 || amount > 250000)
         return EarnFail("금고: 나이트클럽 금액 판독 실패")
     EarnLog("금고: 나이트클럽 $" amount)
-    if (amount < 250000)
+    if (amount = 0 || !EarnVinewoodSafeClaimDue(amount))
         return EarnVinewoodClose()
-    if (EarnVinewoodNightclubAmount(EarnVinewoodAmountLines()) != 250000)
-        return EarnFail("금고: 수거 직전 나이트클럽 $250,000 선택 미확인")
+    if (EarnVinewoodNightclubAmount(EarnVinewoodAmountLines()) != amount)
+        return EarnFail("금고: 수거 직전 나이트클럽 $" amount " 선택 미확인")
     ; 다른 사업장의 수익이나 Claim All은 선택하지 않는다.
     if (!EarnPress("Enter") || !EarnSleep(1000))
         return false
@@ -46,6 +46,12 @@ EarnVinewoodSafeTask() {
     }
 }
 
+
+; 금고는 한도 $250,000 이고 입금은 게임 하루(48분)마다 한 번에 최대 $50,000 이다(1003 실측: 17:38 $195,000 → 18:12 $245,000).
+; 꽉 찰 때까지 기다리면 넘치는 입금이 버려지므로, 다음 입금이 넘칠 금액이면 지금 수거한다.
+EarnVinewoodSafeClaimDue(amount) {
+    return amount + 50000 > 250000
+}
 
 ; 테러바이트처럼 밝은 배경 위의 반투명 설명은 일반 OCR 이 깨뜨린다(1003 17:28 실측: "yOürNightclub").
 ; 일반 판독으로 금액이 안 나올 때만 흰 글자 전처리로 다시 읽는다.
