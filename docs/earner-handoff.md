@@ -205,7 +205,6 @@
 | `Core/Screen.ahk` | `TemplateSeen` |
 | `Config.ini` `[Settings]` `Earn*` | 설정과 설명 주석 |
 | `tools/earn-test/` | 시험 도구(아래 "시험 방법") |
-| `Features/RegisterCEO.ahk` | 기존 CEO 등록 메뉴 매크로(화면 확인 없이 정해진 횟수로 누름). `EarnCEO` 는 템플릿 확인 방식으로 따로 짰다 |
 
 ## 이전 이동 경로의 실측 사실 (2026-09-27, 1920x1080)
 
