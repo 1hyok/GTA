@@ -166,8 +166,10 @@ EarnTick() {
         EarnStopAfterFailure(why)
         return
     }
+    ; 재시도로 미룬 작업이 있어도 묶음의 나머지 결과를 마저 확정한다. 자동화가 꺼졌을 때만 멈춘다.
     for result in outcome.results {
-        if (!EarnFinishScheduledTask(result))
+        EarnFinishScheduledTask(result)
+        if (!gEarnOn)
             return
     }
 }
@@ -209,6 +211,7 @@ EarnRunMCTBatch(tasks) {
     currentTask := tasks[1]
     gEarnCurrent := "MCT 작업 묶음"
     gEarnFail := ""
+    gEarnRetryIn := 0
     try {
         ; Begin은 진입 실패·예외를 자체 정리한다. 성공한 세션만 여기서 닫는다.
         opened := EarnTaskMCTBegin()
@@ -221,7 +224,10 @@ EarnRunMCTBatch(tasks) {
                     break
             }
         } else {
-            outcome.results.Push({task: tasks[1], startTick: A_TickCount, ok: false, retryIn: 0, reason: gEarnFail})
+            ; 진입 전 위치 확인처럼 위험하지 않은 실패는 Begin 이 재시도 시간을 채워 둔다.
+            ; 묶음의 작업 모두에 같은 결과를 남겨야 남은 작업이 다음 틱에 바로 다시 시도되지 않는다.
+            for task in tasks
+                outcome.results.Push({task: task, startTick: A_TickCount, ok: false, retryIn: gEarnRetryIn, reason: gEarnFail})
         }
     } catch as e {
         EarnFail("MCT 작업 오류: " e.Message " (" e.File ":" e.Line ")")
