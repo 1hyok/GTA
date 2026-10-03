@@ -432,7 +432,7 @@ EarnBunkerBuy() {
         || !EarnWaitGone("bunker_pending", "", 3000))
         return false
     EarnLog("벙커: 보급 배송 중 확인")
-    return EarnUIBackToMCT("bunker_page", 2)
+    return EarnUIBackToMCT("bunker_page", 2) || EarnFail("벙커: 배송 확인 뒤 MCT 복귀 미확인")
 }
 
 ; --- 나이트클럽 DJ 교체 (규칙은 사용자 지시 0926) ---
@@ -734,9 +734,11 @@ EarnUIClearCursor() {
     }
 }
 
+; 사업장 화면의 왼쪽 위 안내(1004 01:17 실측: 배송 접수 뒤 "Supplies are en route..." 6초)가 페이지 표식을 가릴 수 있어
+; 확인된 화면을 8초까지 기다린다. 기다리는 동안 입력은 없다.
 EarnUIBackToMCT(guard, maxPress) {
     Loop maxPress {
-        deadline := A_TickCount + 3000
+        deadline := A_TickCount + 8000
         Loop {
             if (EarnAborted())
                 return false
