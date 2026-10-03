@@ -19,54 +19,60 @@ $driver = @'
 #SingleInstance Off
 #NoTrayIcon
 #Warn All, StdOut
-global gMode, gState, gSelected, gDetailReads, gClaims, gClaimAttempts, gKeys, gStandWaits, gMctCloses, gCEOCalls, gFailure, gTests := 0
+global gMode, gState, gSelected, gBiz, gIdx, gReads, gClaims, gClaimAttempts, gKeys, gStandWaits, gMctCloses, gCEOCalls, gFailure, gScheduled, gTests := 0
 RunTests()
 FileAppend("PASS EarnVinewood cases=" gTests Chr(10), "*", "UTF-8")
 ExitApp(0)
 
+; 기본 목록은 1004 00:24 실측 순서와 금액이다(Car Wash 는 빈 금고).
+DefaultBiz() => [["Nightclub",150000], ["Arcade",10000], ["Agency",80000], ["Salvage Yard",6300],
+    ["Bail Office",12800], ["Garment Factory",35720], ["Hands On Car Wash",0]]
+
 RunTests() {
-    global gSelected, gClaims, gClaimAttempts, gKeys, gState, gMctCloses, gCEOCalls, gFailure
-    ; mode, starting screen, success, successful nightclub claims, final screen.
+    global gClaims, gClaimAttempts, gKeys, gState, gMctCloses, gCEOCalls, gScheduled, gBiz, gIdx, gSelected
+    ; mode, starting screen, amounts to override, success, claimed names, final screen, scheduled minutes (0 = not checked)
     cases := [
-        ["full", "main", true, 1, "standing"],
-        ["not_full", "main", true, 0, "standing"],
-        ["near_full", "main", true, 1, "standing"],
-        ["empty", "main", true, 0, "standing"],
-        ["no_earnings", "main", true, 0, "standing"],
-        ["full", "earnings", true, 1, "standing"],
-        ["empty", "earnings", true, 0, "standing"],
-        ["wrong_business", "main", false, 0, "earnings"],
-        ["unreadable", "main", false, 0, "earnings"],
-        ["malformed_amount", "main", false, 0, "earnings"],
-        ["too_large", "main", false, 0, "earnings"],
-        ["duplicate_details", "main", false, 0, "earnings"],
-        ["recheck_amount", "main", false, 0, "earnings"],
-        ["recheck_selection", "main", false, 0, "earnings"],
-        ["cancel_claim", "main", false, 0, "earnings"],
-        ["post_unconfirmed", "main", false, 1, "earnings"],
-        ["post_no_earnings", "main", false, 1, "main"],
-        ["post_claim_zero", "main", false, 1, "earnings"],
-        ["prompt_delay", "main", true, 1, "standing"],
-        ["close_unknown", "main", false, 1, "unknown"],
-        ["close_cancel", "main", false, 1, "earnings"],
-        ["select_cancel", "main", false, 0, "earnings"],
-        ["full", "standing", true, 1, "standing"],
-        ["full", "mct", true, 1, "standing"],
-        ["full", "phone_job", true, 1, "standing"],
-        ["full", "phone_vinewood", true, 1, "standing"],
-        ["open_unreadable", "standing", false, 0, "standing"],
-        ["open_unreadable", "phone_job", false, 0, "phone_job"],
-        ["open_unreadable", "phone_vinewood", false, 0, "phone_vinewood"],
-        ["full", "unknown", false, 0, "unknown"],
-        ["wrong_phone", "standing", false, 0, "wrong_phone"]
+        ["normal", "main", Map(), true, "", "standing", 88],
+        ["normal", "main", Map("Nightclub",250000), true, "Nightclub", "standing", 136],
+        ["normal", "main", Map("Nightclub",205000,"Arcade",96000,"Agency",235000,"Garment Factory",99000), true,
+            "Nightclub,Arcade,Agency,Garment Factory", "standing", 136],
+        ["normal", "main", Map("Arcade",95000), true, "", "standing", 40],
+        ["normal", "main", Map("Arcade",95001), true, "Arcade", "standing", 88],
+        ["normal", "main", Map("Hands On Car Wash",70001), true, "Hands On Car Wash", "standing", 88],
+        ["normal", "main", Map("Salvage Yard",76001,"Bail Office",80001), true, "Salvage Yard,Bail Office", "standing", 88],
+        ["unknown_business", "main", Map(), true, "", "standing", 40],
+        ["unreadable_agency", "main", Map(), true, "", "standing", 40],
+        ["no_earnings", "main", Map(), true, "", "standing", 136],
+        ["normal", "earnings_mid", Map("Nightclub",250000), true, "Nightclub", "standing", 136],
+        ["recheck_amount", "main", Map("Nightclub",240000), false, "", "earnings", 0],
+        ["cancel_claim", "main", Map("Nightclub",240000), false, "", "earnings", 0],
+        ["post_unconfirmed", "main", Map("Nightclub",240000), false, "Nightclub", "earnings", 0],
+        ["select_cancel", "main", Map(), false, "", "earnings", 0],
+        ["no_selection", "main", Map(), false, "", "earnings", 0],
+        ["close_unknown", "main", Map(), false, "", "unknown", 0],
+        ["prompt_delay", "main", Map(), true, "", "standing", 0],
+        ["normal", "standing", Map("Nightclub",250000), true, "Nightclub", "standing", 0],
+        ["normal", "mct", Map("Nightclub",250000), true, "Nightclub", "standing", 0],
+        ["normal", "phone_job", Map("Nightclub",250000), true, "Nightclub", "standing", 0],
+        ["normal", "phone_vinewood", Map("Nightclub",250000), true, "Nightclub", "standing", 0],
+        ["open_unreadable", "standing", Map(), false, "", "standing", 0],
+        ["open_unreadable", "phone_job", Map(), false, "", "phone_job", 0],
+        ["normal", "unknown", Map(), false, "", "unknown", 0],
+        ["wrong_phone", "standing", Map(), false, "", "wrong_phone", 0]
     ]
     for c in cases {
-        Reset(c[1], c[2])
+        Reset(c[1], c[2], c[3])
         result := EarnVinewoodSafeTask()
-        Check(result = c[3] && gClaims = c[4] && gState = c[5], c[1] "/" c[2] " result=" result " claims=" gClaims " state=" gState)
-        Check(gClaimAttempts <= 1, c[1] " never replays collection")
+        claimed := ""
+        for name in gClaims
+            claimed .= (claimed = "" ? "" : ",") name
+        label := c[1] "/" c[2] "/" claimed
+        Check(result = c[4] && claimed = c[5] && gState = c[6], label " result=" result " claims=" claimed " state=" gState)
+        if (c[7])
+            Check(gScheduled = c[7] * 60000, label " scheduled " Round(gScheduled / 60000) " min, expected " c[7])
+        Check(gClaimAttempts <= gClaims.Length + 1, label " never replays collection")
         for key in gKeys
-            Check(key != "Esc", c[1] " never sends Esc")
+            Check(key != "Esc", label " never sends Esc")
         if (c[2] = "mct")
             Check(gMctCloses = 1 && gCEOCalls = 1, "MCT start closes terminal before phone")
         if (c[2] = "phone_job" || c[2] = "phone_vinewood") {
@@ -78,68 +84,91 @@ RunTests() {
             Check(gKeys.Length = 0, "unknown opening screen sends no keys")
         if (c[1] = "no_earnings")
             Check(gClaimAttempts = 0 && gKeys.Length = 1 && gKeys[1] = "Backspace", "global empty skips entering business list")
+        if (result && c[1] != "no_earnings") {
+            downs := 0
+            for key in gKeys
+                downs += key = "Down"
+            Check(downs = gBiz.Length, label " visits every row once and stops on wrap (downs=" downs ")")
+        }
     }
     Reset("close_stuck", "main")
     Check(!EarnVinewoodClose() && gKeys.Length = 4, "stuck app closing is bounded at four Backspaces")
-    Reset("full", "phone_vinewood")
+    Reset("normal", "phone_vinewood")
     Check(EarnVinewoodClose() && gState = "standing", "phone home is closed before reporting success")
-    Reset("full", "phone_job")
+    Reset("normal", "phone_job")
     Check(EarnVinewoodOpen() && gState = "main" && gKeys.Length = 2
         && gKeys[1] = "Right" && gKeys[2] = "Enter", "Job List home only moves right and opens the selected app")
-    Reset("full", "phone_vinewood")
+    Reset("normal", "phone_vinewood")
     Check(EarnVinewoodOpen() && gState = "main" && gKeys.Length = 1
         && gKeys[1] = "Enter", "selected Vinewood home opens directly without changing phone selection")
 
-    Reset("full", "earnings")
-    lines := Frame("Claim $250,000 from your Nightclub safe.")
-    Check(EarnVinewoodNightclubAmount(lines) = 250000, "comma-formatted detail amount")
+    Reset("normal", "earnings")
+    Check(EarnVinewoodNightclubAmount(Frame("Claim $250,000 from your Nightclub safe.")) = 250000, "comma-formatted detail amount")
     Check(EarnVinewoodNightclubAmount(Frame("Claim $250000 from your Nightclub safe.")) = 250000, "plain detail amount")
     Check(EarnVinewoodNightclubAmount(Frame("Claim $50000 from ydÜr Nightclub safe.")) = 50000, "garbled your still reads amount")
-    savedSelected := gSelected, gSelected := ": Nightclub"
+    Check(EarnVinewoodNightclubAmount(Frame("Claim $150000 fromyour Nightclub safe.")) = 150000, "your glued to from still reads amount")
+    gSelected := ": Nightclub"
     Check(EarnVinewoodNightclubAmount([FakeLine("THE VINEWOOD CLUB APP"), FakeLine(": Nightclub"), FakeLine("Claim $100000 from your Nightclub safe.")]) = 100000, "leading colon on selected Nightclub row")
-    gSelected := savedSelected
+    gSelected := "Garment Factory"
+    wrapped := [FakeLine("THE VINEWOOD CLUB APP"), FakeLine("Garment Factory"), FakeLine("Claim $35720 from your Garment Factory"), FakeLine("safe.")]
+    Check(EarnVinewoodSelectedSafe(wrapped) = "Garment Factory" && EarnVinewoodSafeAmountOf(wrapped, "Garment Factory") = 35720, "footer wrapped onto two lines")
+    Check(EarnVinewoodSafeAmountOf(wrapped, "Nightclub") = -1, "another business footer is not this safe's amount")
+    gSelected := "Nightclub"
     for item in [[0,232],[50000,184],[150000,88],[200000,40],[245000,40]]
-        Check(EarnVinewoodSafeNextMs(item[1]) = item[2]*60000, "safe next check after $" item[1])
+        Check(EarnVinewoodSafeNextMs(item[1]) = item[2]*60000, "nightclub next check after $" item[1])
+    for item in [[10000,100000,5000,856],[0,100000,30000,136],[35720,100000,2000,1528],[80000,250000,20000,376]]
+        Check(EarnVinewoodSafeNextMs(item[1], item[2], item[3]) = item[4]*60000, "next check $" item[1] " cap " item[2] " daily " item[3])
     Check(EarnVinewoodNightclubAmount(Frame("Your Nightclub safe is empty.")) = 0, "explicit nightclub empty detail")
     for text in ["Claim $250000 from your Arcade safe.", "Your Arcade safe is empty.", "Nightclub $250000", "Claim $25O000 from your Nightclub safe.", "Claim $250,00 from your Nightclub safe.", "Claim $250 000 from your Nightclub safe.", "Claim $250000 from your Nightclub safe. Confirm?", "Claim $250000 from Nightclub safe.", "Claim $250000 from your Arcade Nightclub safe"]
         Check(EarnVinewoodNightclubAmount(Frame(text)) = -1, "reject detail: " text)
     Check(EarnVinewoodNightclubAmount(false) = -1, "OCR failure is not an empty safe")
 }
 
-Reset(mode, state) {
-    global gMode, gState, gSelected, gDetailReads, gClaims, gClaimAttempts, gKeys, gStandWaits, gMctCloses, gCEOCalls, gFailure
-    gMode := mode, gState := state, gSelected := state = "earnings" ? "Nightclub" : "Claim Business Earnings"
-    gDetailReads := 0, gClaims := 0, gClaimAttempts := 0, gKeys := [], gStandWaits := 0, gMctCloses := 0, gCEOCalls := 0, gFailure := ""
+Reset(mode, state, amounts := "") {
+    global gMode, gState, gSelected, gBiz, gIdx, gReads, gClaims, gClaimAttempts, gKeys, gStandWaits, gMctCloses, gCEOCalls, gFailure, gScheduled
+    gMode := mode, gState := state = "earnings_mid" ? "earnings" : state, gBiz := DefaultBiz(), gIdx := state = "earnings_mid" ? 4 : 1
+    if (mode = "unknown_business")
+        gBiz.InsertAt(3, ["Weed Shop", 50000])
+    if (IsObject(amounts))
+        for name, amount in amounts
+            for biz in gBiz
+                if (biz[1] = name)
+                    biz[2] := amount
+    gSelected := gState = "earnings" ? gBiz[gIdx][1] : "Claim Business Earnings"
+    gReads := Map(), gClaims := [], gClaimAttempts := 0, gKeys := [], gStandWaits := 0, gMctCloses := 0, gCEOCalls := 0, gFailure := "", gScheduled := 0
 }
 
 EarnReadScreen(*) {
-    global gMode, gState, gSelected, gDetailReads, gClaims
+    global gMode, gState, gSelected, gBiz, gIdx, gReads
     if (gMode = "open_unreadable")
         return false
     if (gState = "main") {
         lines := [FakeLine("THE VINEWOOD CLUB APP"), FakeLine("Claim Business Earnings"), FakeLine("Purchase Ammo")]
-        if (gMode = "no_earnings" || (gMode = "post_no_earnings" && gClaims))
+        if (gMode = "no_earnings")
             lines.Push(FakeLine("No earnings to claim."))
         return lines
     }
     if (gState != "earnings")
         return []
-    if (gSelected = "Nightclub")
-        gDetailReads += 1
-    if (gMode = "recheck_selection" && gDetailReads >= 3)
-        gSelected := "Arcade"
-    if (gSelected = "Arcade" || gMode = "wrong_business")
-        return Frame("Claim $250000 from your Arcade safe.")
-    if (gMode = "unreadable")
-        return Frame("unread")
-    if (gMode = "malformed_amount")
-        return Frame("Claim $25O000 from your Nightclub safe.")
-    if (gMode = "empty" || (gClaims && gMode != "post_unconfirmed" && gMode != "post_claim_zero"))
-        return Frame("Your Nightclub safe is empty.")
-    amount := gMode = "not_full" ? 200000 : gMode = "near_full" ? 245000 : gMode = "recheck_amount" && gDetailReads >= 3 ? 249999 : gMode = "too_large" ? 250001 : gMode = "post_claim_zero" && gClaims ? 0 : 250000
-    lines := Frame("Claim $" amount " from your Nightclub safe.")
-    if (gMode = "duplicate_details")
-        lines.Push(FakeLine("Your Nightclub safe is empty."))
+    biz := gBiz[gIdx], name := biz[1], amount := biz[2]
+    gSelected := gMode = "no_selection" ? "" : name
+    gReads[name] := (gReads.Has(name) ? gReads[name] : 0) + 1
+    lines := [FakeLine("THE VINEWOOD CLUB APP")]
+    for row in gBiz
+        lines.Push(FakeLine(row[1]))
+    if (gMode = "unreadable_agency" && name = "Agency") {
+        lines.Push(FakeLine("Claim $8O000 from your Agency safe."))
+        return lines
+    }
+    if (gMode = "recheck_amount" && gReads[name] >= 2)
+        amount += 1000
+    if (amount = 0) {
+        lines.Push(FakeLine("Your " name " safe is empty."))
+    } else if (name = "Garment Factory") {
+        lines.Push(FakeLine("Claim $" amount " from your Garment Factory"), FakeLine("safe."))
+    } else {
+        lines.Push(FakeLine("Claim $" amount " from your " name " safe."))
+    }
     return lines
 }
 
@@ -151,15 +180,16 @@ FakeLine(text) {
 }
 EarnMenuRowSelected(row) {
     global gSelected
-    return row.text = gSelected
+    return gSelected != "" && row.text = gSelected
 }
 EarnPress(key) {
-    global gMode, gState, gSelected, gClaims, gClaimAttempts, gKeys
+    global gMode, gState, gSelected, gBiz, gIdx, gClaims, gClaimAttempts, gKeys
     gKeys.Push(key)
     if (key = "Down") {
         if (gMode = "select_cancel")
             return false
-        gSelected := gSelected = "Arcade" ? "Nightclub" : "Arcade"
+        if (gState = "earnings")
+            gIdx := Mod(gIdx, gBiz.Length) + 1, gSelected := gBiz[gIdx][1]
     } else if (key = "Up") {
         if (gState != "standing")
             throw Error("Phone-opening Up is invalid when the phone is already open: " gState)
@@ -170,22 +200,22 @@ EarnPress(key) {
         if (gState = "phone_vinewood") {
             gState := "main", gSelected := "Claim Business Earnings"
         } else if (gState = "main" && gSelected = "Claim Business Earnings") {
-            gState := "earnings", gSelected := "Arcade"
+            gState := "earnings", gIdx := 1, gSelected := gBiz[1][1]
         } else if (gState = "earnings") {
             gClaimAttempts += 1
             if (gMode = "cancel_claim")
                 return false
-            if (gSelected != "Nightclub")
-                throw Error("Attempted collection from wrong business")
-            gClaims += 1
-            if (gMode = "post_no_earnings")
-                gState := "main", gSelected := "Claim Business Earnings"
+            biz := gBiz[gIdx]
+            limits := EarnSafeLimits().Has(biz[1]) ? EarnSafeLimits()[biz[1]] : ""
+            if (!IsObject(limits) || biz[2] + limits[2] <= limits[1])
+                throw Error("Attempted collection from a safe that is not due: " biz[1] " $" biz[2])
+            gClaims.Push(biz[1])
+            if (gMode != "post_unconfirmed")
+                biz[2] := 0
         } else {
             throw Error("Unexpected Enter state: " gState)
         }
     } else if (key = "Backspace") {
-        if (gMode = "close_cancel")
-            return false
         if (gMode = "close_stuck")
             return true
         if (gState = "earnings")
@@ -197,7 +227,7 @@ EarnPress(key) {
 }
 EarnSleep(ms) {
     global gMode, gState, gClaims, gStandWaits
-    if (gClaims && ms = 300 && (gMode = "post_unconfirmed" || gMode = "post_no_earnings" || gMode = "post_claim_zero"))
+    if (gClaims.Length && ms = 300 && gMode = "post_unconfirmed")
         return false
     if (gState = "waiting_prompt" && ms = 300 && ++gStandWaits >= 2)
         gState := "standing"
@@ -227,7 +257,13 @@ EarnFail(message) {
     gFailure := message
     return false
 }
-EarnScheduleNext(*) => true
+EarnScheduleNext(id, ms) {
+    global gScheduled
+    if (id != "safe")
+        throw Error("Unexpected schedule id " id)
+    gScheduled := ms
+    return true
+}
 EarnLog(*) {
 }
 Check(ok, name) {
