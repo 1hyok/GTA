@@ -342,7 +342,9 @@ EarnBunkerObservePlan(requestedSeconds) {
         if (plan.reason = "invalid_read" || plan.reason = "invalid_interval")
             return EarnFail(plan.reason = "invalid_read" ? "벙커: 막대 범위 오류"
                 : "벙커 주기는 1680초의 1~5배(28~140분)여야 함")
-        if (plan.buy || plan.reason != "wait_boundary" || plan.waitMs > 180000)
+        ; 3분 예약 여유를 넘겨 4분 관측 기한까지 받는다. 3분 기준이면 3분을 조금 넘는 판독에서
+        ; 몇 초 뒤 재예약이 되어 MCT·CEO 를 수십 초마다 다시 열었다(1003 19:15~19:18 실측, 보급 22%).
+        if (plan.buy || plan.reason != "wait_boundary" || plan.waitMs > 240000)
             return plan
         if (!deadline) {
             deadline := A_TickCount + 240000
