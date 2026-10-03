@@ -352,13 +352,14 @@ EarnStaffSelectEnter(pattern, maxPress) {
 }
 
 ; 투명 배경의 흰 메뉴 글자만 보완한다. 선택 행의 검정 글자는 일반 판독을 먼저 쓴다.
-EarnStaffMenuTarget(pattern, &validMenu := false) {
+EarnStaffMenuTarget(pattern, &validMenu := false, &menuLines := "", &menuHeading := "") {
     validMenu := false
     for whiteText in [false,true] {
         lines := EarnReadScreen([25,125,450,263], whiteText)
         heading := EarnStaffUniqueRow(lines, "i)^THE VINEWOOD CLUB APP$")
         if (!heading)
             return false
+        menuLines := lines, menuHeading := heading
         found := false
         for row in lines {
             if (!RegExMatch(row.text, pattern))
@@ -381,12 +382,12 @@ EarnStaffMenuTarget(pattern, &validMenu := false) {
 
 EarnStaffSelectText(pattern, maxPress) {
     Loop maxPress+1 {
-        row := EarnStaffMenuTarget(pattern, &validMenu)
+        row := EarnStaffMenuTarget(pattern, &validMenu, &lines, &heading)
         if (!validMenu)
             return false
         if (row && EarnMenuRowSelected(row))
             return row
-        if (A_Index > maxPress || !EarnPress("Down") || !EarnSleep(200))
+        if (A_Index > maxPress || !EarnPress(EarnMenuStepKey(lines, heading, row, 388)) || !EarnSleep(200))
             return false
     }
     return false

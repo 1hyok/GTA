@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Stop'
 $sourceFile = Join-Path $PSScriptRoot '..\..\Features\Earn\EarnScreen.ahk'
 $source = Get-Content -LiteralPath $sourceFile -Raw -Encoding UTF8
 $definitions = ''
-foreach ($functionName in @('EarnReadDollars', 'EarnFindText', 'EarnScreenText', 'EarnSelectText')) {
+foreach ($functionName in @('EarnReadDollars', 'EarnFindText', 'EarnScreenText', 'EarnSelectText', 'EarnMenuStepKey')) {
     $pattern = '(?ms)^' + [regex]::Escape($functionName) + '\([^\r\n]*\) \{.*?^\}'
     $matches = [regex]::Matches($source, $pattern)
     if ($matches.Count -ne 1) { throw "Expected exactly one $functionName definition." }

@@ -11,7 +11,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $production = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnStaff.ahk') -Raw -Encoding UTF8
 $screen = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnScreen.ahk') -Raw -Encoding UTF8
-foreach ($functionName in @('EarnFindText', 'EarnReadDollars')) {
+foreach ($functionName in @('EarnFindText', 'EarnReadDollars', 'EarnMenuStepKey')) {
     $match = [regex]::Matches($screen, ('(?ms)^' + $functionName + '\([^\r\n]*\) \{.*?^\}'))
     if ($match.Count -ne 1) { throw "Expected exactly one screen helper: $functionName" }
     $production += "`n" + $match[0].Value
@@ -196,6 +196,15 @@ RunMenuTests() {
         if (expected)
             Check(screenState = "staff" && downs = 5, "six actual main menu rows")
     }
+    ; 끝이 보이는 3줄 목록은 짧은 쪽으로 돌고, 아래가 잘린 6줄 메인 목록은 바로 위 줄일 때만 Up 을 쓴다.
+    for c in [["staff","Warehouse","Hangar","Up"],["staff","Hangar","Bail Office","Up"],["staff","Bail Office","Hangar","Down"],
+        ["staff","Hangar","Warehouse","Down"],["main","Manage Staff Members","Claim Business Earnings","Down"],
+        ["main","Purchase Car Club Vehicles","Purchase Ammo","Up"]] {
+        Reset("normal",["busy","busy"])
+        screenState := c[1], selected := c[2]
+        Check(EarnStaffSelectText("i)^" c[3] "$", 6) && selected = c[3] && keys.Length >= 1 && keys[1] = c[4],
+            c[1] " " c[2] " -> " c[3] " first key " c[4])
+    }
 }
 
 RunCargoTests() {
@@ -357,7 +366,8 @@ MockReadScreen(area, whiteText) {
         return rows
     }
     if (screenState = "staff")
-        return [TextLine("THE VINEWOOD CLUB APP",144),TextLine("Hangar",181),TextLine("Warehouse",218),TextLine("Bail Office",255)]
+        return [TextLine("THE VINEWOOD CLUB APP",144),TextLine("Hangar",181),TextLine("Warehouse",218),TextLine("Bail Office",255),
+            TextLine("Manage your Warehouse staff.",300)]
     if (screenState = "cargo") {
         if (area[4] = 40)
             cargoReads += 1
@@ -493,6 +503,31 @@ EarnPress(key) {
     global cargoNames, cargoStatuses, cargoRequests, activeCount
     global mainNames
     keys.Push(key)
+    if (key = "Up") {
+        ; 목록은 위 끝에서 아래 끝으로 돈다. Down 의 역방향이다.
+        if (mode = "cancel_select")
+            return false
+        if (screenState = "main") {
+            for index, name in mainNames {
+                if (name = selected) {
+                    selected := mainNames[Mod(index-2+mainNames.Length,mainNames.Length)+1]
+                    break
+                }
+            }
+        } else if (screenState = "staff")
+            selected := selected = "Hangar" ? "Bail Office" : selected = "Bail Office" ? "Warehouse" : "Hangar"
+        else if (screenState = "cargo") {
+            Loop activeCount {
+                if (selected = cargoNames[A_Index]) {
+                    selected := cargoNames[Mod(A_Index-2+activeCount,activeCount)+1]
+                    break
+                }
+            }
+        }
+        else
+            selected := selected = "Agent 1" ? "Agent 2" : "Agent 1"
+        return true
+    }
     if (key = "Down") {
         if (mode = "cancel_select")
             return false

@@ -8,7 +8,7 @@ param([string]$AhkPath = "$env:LOCALAPPDATA\Programs\AutoHotkey\v2\AutoHotkey64.
 $ErrorActionPreference = 'Stop'
 $production = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnVinewood.ahk') -Raw -Encoding UTF8
 $screen = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnScreen.ahk') -Raw -Encoding UTF8
-foreach ($functionName in @('EarnFindText', 'EarnReadDollars', 'EarnSelectText')) {
+foreach ($functionName in @('EarnFindText', 'EarnReadDollars', 'EarnSelectText', 'EarnMenuStepKey')) {
     $match = [regex]::Matches($screen, ('(?ms)^' + $functionName + '\([^\r\n]*\) \{.*?^\}'))
     if ($match.Count -ne 1) { throw "Expected exactly one screen helper: $functionName" }
     $production += "`n" + $match[0].Value
