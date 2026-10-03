@@ -1,6 +1,6 @@
 ; === 수익 자동화 스케줄러 (Vinewood 금고·직원 파견 · 벙커 보급 · DJ 교체 · 창고 직원) ===
-; 단축키(기본 F9) 두 번으로 켜고 끈다. End(전체 멈춤)도 끈다. 켜 두면 1초마다 할 일을 보고, 때가 된 것 하나를 끝까지 한 뒤 다음으로 넘어간다.
-; 금고 → 벙커 → DJ → 창고 재배정 → 앱 파견 순서로 한 작업씩 한다. 작업마다 현재 화면을 읽는다.
+; 단축키(기본 F9) 두 번으로 켜고 끈다. End(전체 멈춤)도 끈다. 켜 두면 1초마다 할 일을 본다.
+; 때가 된 벙커·DJ·창고는 MCT를 한 번 열어 묶어 처리하고 한 번 닫는다. 금고·앱 파견은 그다음 별도로 한다.
 ; 사용자 물리 입력이 EarnUserIdleSec 동안 없고 GTA가 앞일 때만 시작한다. 진행 중 사용자 입력·포커스 이탈 시 중단한다.
 ; 어느 단계든 화면 확인이 안 되면 자동화 전체를 끄고(멈춤 까닭은 %TEMP%\gta-earn.log·오버레이·설정 창) AFK 방지는 켜 둔다.
 ; 게임 종료·재시작 시 끄고, 사용자가 다시 켜야 새 게임 상태에서 예약을 시작한다.
@@ -8,6 +8,7 @@ global gEarnOn := false
 global gEarnDue := Map()        ; 작업 id → 다음 실행 시각(A_TickCount)
 global gEarnDone := Map()       ; 작업 id → 켠 뒤 성공 횟수
 global gEarnCurrent := ""       ; 지금 하는 작업 이름
+global gEarnSellNotice := ""    ; 창고 만재 3개 이상일 때 판매 필요 알림(EarnWarehouseSellNotice)
 global gEarnTasks := []
 global gEarnNextDue := Map()   ; 작업이 스스로 정한 다음 실행 시각(A_TickCount). 없으면 시작 시각 + 간격
 global gEarnSoftFails := Map()   ; 작업별 연속 "다시 하기" 횟수. EarnSoftFailMax 를 넘으면 그때 끈다
@@ -20,10 +21,10 @@ EarnTaskList() {
     global config
     s := config["Settings"]
     return [
-        {id: "safe", label: "나이트클럽 금고", on: s["EarnSafe"], every: s["EarnSafeIntervalMin"] * 60000, fn: EarnVinewoodSafeTask},
         {id: "bunker", label: "벙커 보급", on: s["EarnBunker"], every: s["EarnBunkerIntervalSec"] * 1000, fn: EarnBunkerTask},
         {id: "dj", label: "DJ 교체", on: s["EarnDJ"], every: s["EarnDJIntervalMin"] * 60000, fn: EarnDJTask},
         {id: "warehouse", label: "창고 직원", on: s.Get("EarnWarehouse", 1), every: s.Get("EarnWarehouseIntervalMin", 10) * 60000, fn: EarnWarehouseTask},
+        {id: "safe", label: "나이트클럽 금고", on: s["EarnSafe"], every: s["EarnSafeIntervalMin"] * 60000, fn: EarnVinewoodSafeTask},
         {id: "staff", label: "앱 직원 파견", on: s.Get("EarnBailAgents", 1) || s.Get("EarnCargoStaff", 1), every: s.Get("EarnStaffIntervalMin", 5) * 60000, fn: EarnVinewoodStaffTask},
         {id: "dispatch", label: "현장 파견", on: s["EarnDispatch"] && !s.Get("EarnMCTOnly", 0), every: s["EarnDispatchIntervalMin"] * 60000, fn: EarnDispatchTask}
     ]
@@ -107,6 +108,16 @@ EarnTick() {
     }
     if (!IsObject(task))
         return
+    ; 시작 시점에 실행할 차례인 MCT 작업만 묶는다. 진행 중 새로 due가 된 작업은 다음 회차다.
+    mctSession := EarnIsMCTTask(task.id)
+    dueTasks := [task]
+    if (mctSession) {
+        dueTasks := []
+        for t in gEarnTasks {
+            if (t.on && EarnIsMCTTask(t.id) && gEarnDue[t.id] <= now)
+                dueTasks.Push(t)
+        }
+    }
     if (!IsGTAActive()) {
         EarnLog(task.label ": GTA 포커스가 돌아오면 다시 (30초 대기)")
         gEarnDue[task.id] := now + 30000
@@ -122,20 +133,24 @@ EarnTick() {
     gEarnBusy := true
     gAbort := false
     gEarnCurrent := task.label
-    startTick := A_TickCount
-    ok := false
+    outcome := {results: [], cleanupOK: true}
+    fatalReason := ""
     try {
-        EarnLog("시작: " task.label)
         EarnInputGuardStart()
-        if (EarnInputAllowed())
-            ok := task.fn.Call()
+        if (EarnInputAllowed()) {
+            if (mctSession)
+                outcome := EarnRunMCTBatch(dueTasks)
+            else
+                outcome.results.Push(EarnRunScheduledTask(task))
+        }
         ; 마지막 단계에서 사용자가 개입한 경우 성공/자동 재시도로 덮지 않는다.
         if (!EarnInputAllowed()) {
-            ok := false
+            fatalReason := gEarnFail = "" ? task.label " 중단" : gEarnFail
             gEarnRetryIn := 0
         }
     } catch as e {
-        ok := EarnFail(task.label " 오류: " e.Message " (" e.File ":" e.Line ")")
+        fatalReason := task.label " 오류: " e.Message " (" e.File ":" e.Line ")"
+        EarnFail(fatalReason)
     } finally {
         try {
             EarnInputGuardStop()
@@ -146,30 +161,115 @@ EarnTick() {
             EarnInputLockRelease(inputLock)
         }
     }
-    if (ok) {
-        gEarnSoftFails[task.id] := 0
-        gEarnRetryIn := 0
-        ; 주기는 확인을 시작한 때부터 잰다. 작업이 현재 화면에서 정한 다음 확인 시각이 있으면 그 값을 쓴다.
-        gEarnDue[task.id] := gEarnNextDue.Has(task.id) ? gEarnNextDue.Delete(task.id) : startTick + task.every
-        gEarnDone[task.id] += 1
-        EarnLog("끝: " task.label " (" gEarnDone[task.id] "회째, 다음 " FormatTime(DateAdd(A_Now, Max(0, gEarnDue[task.id] - A_TickCount) // 1000, "Seconds"), "HH:mm:ss") ")")
+    if (fatalReason != "" || !outcome.cleanupOK) {
+        why := fatalReason != "" ? fatalReason : "MCT 정리 실패: " (gEarnFail = "" ? "종료 또는 CEO 해제 미확인" : gEarnFail)
+        EarnStopAfterFailure(why)
         return
     }
-    ; 위험하지 않은 실패(길을 못 찾음·재접속 자리가 나쁨)는 작업이 gEarnRetryIn 을 채워 두었다 → 끄지 않고 그때 다시 한다. 연속 EarnSoftFailMax 번이면 그때 끈다
-    if (gEarnRetryIn) {
-        n := gEarnSoftFails.Get(task.id, 0) + 1
-        gEarnSoftFails[task.id] := n
-        if (n <= config["Settings"]["EarnSoftFailMax"]) {
-            gEarnDue[task.id] := A_TickCount + gEarnRetryIn
-            EarnLog(task.label ": 이번엔 못 함 (" gEarnFail ") → " Round(gEarnRetryIn / 60000) "분 뒤 다시 (" n "/" config["Settings"]["EarnSoftFailMax"] ")")
-            ShowTooltip("💰 " task.label ": " Round(gEarnRetryIn / 60000) "분 뒤 다시 (" n "/" config["Settings"]["EarnSoftFailMax"] ")", 4000)
-            gEarnRetryIn := 0
+    for result in outcome.results {
+        if (!EarnFinishScheduledTask(result))
             return
+    }
+}
+
+EarnIsMCTTask(id) {
+    return id = "bunker" || id = "dj" || id = "warehouse"
+}
+
+; 각 본문은 자기 예약을 유지한다. 완료 횟수·최종 로그는 공동 MCT 정리가 끝난 뒤 확정한다.
+EarnRunScheduledTask(task, mctSession := false) {
+    global gEarnCurrent, gEarnFail, gEarnRetryIn
+    result := {task: task, startTick: A_TickCount, ok: false, retryIn: 0, reason: ""}
+    gEarnCurrent := task.label
+    gEarnRetryIn := 0
+    gEarnFail := ""
+    try {
+        EarnLog("시작: " task.label)
+        if (EarnInputAllowed())
+            result.ok := mctSession ? task.fn.Call(false) : task.fn.Call()
+    } catch as e {
+        EarnFail(task.label " 오류: " e.Message " (" e.File ":" e.Line ")")
+    }
+    if (!EarnInputAllowed()) {
+        result.ok := false
+        gEarnRetryIn := 0
+    }
+    result.reason := gEarnFail
+    result.retryIn := result.ok ? 0 : gEarnRetryIn
+    gEarnRetryIn := 0
+    if (result.ok && mctSession)
+        EarnLog("본문 완료: " task.label " (MCT 정리 대기)")
+    return result
+}
+
+EarnRunMCTBatch(tasks) {
+    global gEarnCurrent, gEarnFail, gEarnRetryIn
+    outcome := {results: [], cleanupOK: true}
+    opened := false
+    currentTask := tasks[1]
+    gEarnCurrent := "MCT 작업 묶음"
+    gEarnFail := ""
+    try {
+        ; Begin은 진입 실패·예외를 자체 정리한다. 성공한 세션만 여기서 닫는다.
+        opened := EarnTaskMCTBegin()
+        if (opened) {
+            for task in tasks {
+                currentTask := task
+                result := EarnRunScheduledTask(task, true)
+                outcome.results.Push(result)
+                if (!result.ok)
+                    break
+            }
+        } else {
+            outcome.results.Push({task: tasks[1], startTick: A_TickCount, ok: false, retryIn: 0, reason: gEarnFail})
+        }
+    } catch as e {
+        EarnFail("MCT 작업 오류: " e.Message " (" e.File ":" e.Line ")")
+        outcome.results.Push({task: currentTask, startTick: A_TickCount, ok: false, retryIn: 0, reason: gEarnFail})
+    } finally {
+        if (opened) {
+            try outcome.cleanupOK := EarnTaskMCTEnd()
+            catch as e {
+                outcome.cleanupOK := false
+                EarnFail("MCT 정리 오류: " e.Message " (" e.File ":" e.Line ")")
+            }
         }
         gEarnRetryIn := 0
     }
+    return outcome
+}
+
+EarnFinishScheduledTask(result) {
+    global gEarnDue, gEarnDone, gEarnSoftFails, gEarnNextDue, config
+    task := result.task
+    if (result.ok) {
+        gEarnSoftFails[task.id] := 0
+        ; 주기는 확인을 시작한 때부터 잰다. 작업이 현재 화면에서 정한 다음 확인 시각이 있으면 그 값을 쓴다.
+        gEarnDue[task.id] := gEarnNextDue.Has(task.id) ? gEarnNextDue.Delete(task.id) : result.startTick + task.every
+        gEarnDone[task.id] += 1
+        EarnLog("끝: " task.label " (" gEarnDone[task.id] "회째, 다음 " FormatTime(DateAdd(A_Now, Max(0, gEarnDue[task.id] - A_TickCount) // 1000, "Seconds"), "HH:mm:ss") ")")
+        return true
+    }
+    ; 위험하지 않은 실패(길을 못 찾음·재접속 자리가 나쁨)는 작업이 gEarnRetryIn 을 채워 두었다 → 끄지 않고 그때 다시 한다. 연속 EarnSoftFailMax 번이면 그때 끈다
+    if (gEarnNextDue.Has(task.id))
+        gEarnNextDue.Delete(task.id)
+    if (result.retryIn) {
+        n := gEarnSoftFails.Get(task.id, 0) + 1
+        gEarnSoftFails[task.id] := n
+        if (n <= config["Settings"]["EarnSoftFailMax"]) {
+            gEarnDue[task.id] := A_TickCount + result.retryIn
+            EarnLog(task.label ": 이번엔 못 함 (" result.reason ") → " Round(result.retryIn / 60000) "분 뒤 다시 (" n "/" config["Settings"]["EarnSoftFailMax"] ")")
+            ShowTooltip("💰 " task.label ": " Round(result.retryIn / 60000) "분 뒤 다시 (" n "/" config["Settings"]["EarnSoftFailMax"] ")", 4000)
+            return false
+        }
+    }
+    EarnStopAfterFailure(result.reason = "" ? task.label " 확인 실패" : result.reason)
+    return false
+}
+
+EarnStopAfterFailure(why) {
+    global gEarnFail, config, afkOn
     ; 실패: 전부 끄고 AFK 방지는 켜 둔다
-    why := gEarnFail = "" ? task.label " 확인 실패" : gEarnFail
     SetEarner(false, why)
     gEarnFail := why
     if (config["Features"]["AntiAFK"] && !afkOn)

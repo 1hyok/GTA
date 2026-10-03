@@ -1,12 +1,12 @@
 ; 1920x1080 영어 나이트클럽 웹 UI. 판매 탭은 수량을 읽는 데만 쓴다.
 ; 재고는 OCR, 직원 연결은 선택된 품목의 사람 아이콘으로 각각 확인한다.
-EarnWarehouseTask() {
-    if (!EarnTaskMCTBegin())
+EarnWarehouseTask(manageSession := true) {
+    if (manageSession && !EarnTaskMCTBegin())
         return false
     try {
         ok := EarnWarehouseManage()
     } finally {
-        ended := EarnTaskMCTEnd()
+        ended := manageSession ? EarnTaskMCTEnd() : true
     }
     return ok && ended
 }
@@ -20,6 +20,7 @@ EarnWarehouseManage() {
         goods := EarnWarehouseObserve()
         if (!goods)
             return false
+        EarnWarehouseSellNotice(goods)
         try moves := EarnWarehousePlan(goods)
         catch as e
             return EarnFail("창고: " e.Message)
@@ -104,9 +105,11 @@ EarnWarehouseSelectedGood() {
     selected := ""
     for id, tile in EarnWarehouseTiles() {
         ; 사람 아이콘 하단은 체크/만재 느낌표의 원보다 아래에 있다.
+        ; 만재 품목의 선택된 사람은 회색이고 느낌표가 겹친다. 관측한 하단 모양을 별도로 확인한다.
         area := [(tile[1]+230)/1920,(tile[2]+43)/1080,
             (tile[1]+270)/1920,(tile[2]+70)/1080]
-        if (EarnSeen("warehouse_person_foot", area, , , 45)) {
+        if (EarnSeen("warehouse_person_foot", area, , , 45)
+            || EarnSeen("warehouse_person_full_foot", area, , , 45)) {
             if (selected != "")
                 return ""
             selected := id
@@ -183,14 +186,85 @@ EarnWarehouseMove(move, goods) {
     tile := EarnWarehouseTiles()[move.to]
     if (!EarnUIClick("warehouse_title", tile[1]+120, tile[2]+38, [0.37,0.13,0.58,0.19]))
         return false
-    ; 요청은 한 번만 보낸다. 알 수 없는 확인창이나 미확인 결과는 재클릭하지 않는다.
+    ; 품목을 누르면 'Assign Technician' 확인창이 뜬다(1003 실측: Pharmaceutical → "accrue Meth?").
+    ; 그 문구를 읽은 뒤에만 Confirm 을 한 번 누른다. 요청·확정은 다시 보내지 않는다.
+    if (!EarnWarehouseAssignDialog(3000))
+        return EarnFail("창고: 배정 확인창 미확인. 재배정 재전송 중단")
+    if (!EarnWarehouseDialogClick(1160, 612))
+        return false
     deadline := A_TickCount + 5000
     Loop {
         if (EarnWarehouseSelectedGood() = move.to)
             return true
-        if (A_TickCount >= deadline || !EarnSleep(200))
+        if (A_TickCount >= deadline || !EarnSleep(200)) {
+            ; 확인창이 남아 있으면 Cancel 로 닫아 AFK 방지가 읽을 수 있는 화면으로 돌린다.
+            if (EarnWarehouseAssignDialog(0))
+                EarnWarehouseDialogClick(756, 612)
             return EarnFail("창고: 새 담당 품목 미확인. 재배정 재전송 중단")
+        }
     }
+}
+
+; 확인창 영역 OCR 에 제목과 질문 문구가 함께 있어야 한다. waitMs=0 이면 한 번만 읽는다.
+EarnWarehouseAssignDialog(waitMs) {
+    deadline := A_TickCount + waitMs
+    Loop {
+        lines := EarnReadScreen([540,420,810,140])
+        text := ""
+        if (lines is Array)
+            for row in lines
+                text .= " " row.text
+        if (InStr(text, "Assign Technician") && InStr(text, "assign this technician")) {
+            EarnLog("창고: 배정 확인창 확인 (" Trim(text) ")")
+            return true
+        }
+        if (A_TickCount >= deadline || !EarnSleep(200))
+            return false
+    }
+}
+
+; 확인창에는 템플릿 대신 위 OCR 확인을 쓴다. 좌표는 1920x1080 클라이언트 기준.
+EarnWarehouseDialogClick(x, y) {
+    if (EarnAborted())
+        return false
+    hwnd := IsGTAActive()
+    if (!hwnd)
+        return EarnFail("창고: 확인창 클릭 전 GTA 포커스 없음")
+    previous := DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
+    try {
+        WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
+        if (cw != 1920 || ch != 1080)
+            return EarnFail("창고: 미지원 해상도")
+        DllCall("SetCursorPos", "int", cx+x, "int", cy+y)
+        if (!EarnSleep(80))
+            return false
+        SendEvent("{Blind}{LButton down}")
+        try Sleep(100)
+        finally SendEvent("{Blind}{LButton up}")
+        DllCall("SetCursorPos", "int", cx+40, "int", cy+130)
+        return EarnSleep(450)
+    } finally {
+        DllCall("SetThreadDpiAwarenessContext", "ptr", previous, "ptr")
+    }
+}
+
+; 만재 품목이 셋 이상이면 직원을 옮겨도 생산이 막히므로 판매가 필요하다고 알린다.
+; 만재 수가 바뀔 때만 로그·툴팁을 다시 띄우고, 오버레이에는 계속 표시한다.
+EarnWarehouseSellNotice(goods) {
+    global gEarnSellNotice
+    previous := IsSet(gEarnSellNotice) ? gEarnSellNotice : ""
+    full := ""
+    count := 0
+    for row in goods {
+        if (row.capacity && row.count >= row.capacity)
+            count += 1, full .= (full = "" ? "" : ", ") row.id
+    }
+    gEarnSellNotice := count >= 3 ? "나이트클럽 창고 만재 " count "개: 판매 필요" : ""
+    if (gEarnSellNotice != "" && gEarnSellNotice != previous) {
+        EarnLog("창고: " gEarnSellNotice " (" full ")")
+        ShowTooltip("💰 " gEarnSellNotice, 10000)
+    }
+    return count
 }
 
 EarnWarehouseReturn() {

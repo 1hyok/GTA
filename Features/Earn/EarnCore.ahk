@@ -300,8 +300,9 @@ EarnBlipFromPixels(name, buf, w, h, sx, sy, &ang, &dist) {
             continue
         Loop w {
             x := A_Index - 1
-            ; 플레이어 화살표(흰색)는 흰 아이콘을 찾을 때만 뺀다. $ 는 색이 달라 화살표 바로 옆(닿기 직전)에서도 잡혀야 한다(0927 실측)
-            if (x < margin || x >= w - margin || (name != "safe" && Abs(x - ax) <= 10 && Abs(y - ay) <= 10))
+            ; 가까운 MCT 화면도 화살표 옆에 놓인다. 위치 사각형으로 지우지 않고
+            ; 아래의 화면 밀도·받침대/터치패드 모양 검사로 화살표를 제외한다.
+            if (x < margin || x >= w - margin)
                 continue
             off := (y * w + x) * 4
             b := NumGet(buf, off, "uchar"), g := NumGet(buf, off + 1, "uchar"), r := NumGet(buf, off + 2, "uchar")
@@ -383,12 +384,20 @@ EarnComputerBlipKind(buf, w, h, left, right, bottom, sx, sy) {
     Loop 4 {
         row := A_Index + 1
         y := bottom + Round(row * sy)
-        darkCenter := true
-        for dx in [-2, -1, 0, 1, 2]
-            darkCenter := darkCenter && EarnBlipPixelLevel(buf, w, center + Round(dx * sx), y, false) < 70
-        sidesLight := EarnBlipPixelLevel(buf, w, center - Round(5 * sx), y, true) >= 100
-            && EarnBlipPixelLevel(buf, w, center + Round(5 * sx), y, true) >= 100
-        if (darkCenter && sidesLight)
+        ; 화면 중심은 반 픽셀에 놓일 수 있다. 목 가장자리의 안티앨리어싱 1px은 허용하되
+        ; 가운데 다섯 픽셀 중 네 개와 양쪽 밝은 빈틈을 함께 요구한다.
+        darkCenterPixels := 0, darkCenterTotal := 0
+        for dx in [-2, -1, 0, 1, 2] {
+            level := EarnBlipPixelLevel(buf, w, center + Round(dx * sx), y, false)
+            if (level < 70)
+                darkCenterPixels += 1, darkCenterTotal += level
+        }
+        ; 근접 화면의 반투명 지도에서는 양옆 틈이 54~94까지 어두워진다.
+        ; 고정 밝기 대신 검은 목보다 충분히 밝은지 확인한다. 노트북의 넓은 검은 몸체는 통과하지 않는다.
+        sideMinimum := Max(45, (darkCenterPixels ? darkCenterTotal / darkCenterPixels : 70) + 40)
+        sidesLight := EarnBlipPixelLevel(buf, w, center - Round(5 * sx), y, true) >= sideMinimum
+            && EarnBlipPixelLevel(buf, w, center + Round(5 * sx), y, true) >= sideMinimum
+        if (darkCenterPixels >= 4 && sidesLight)
             neck += 1
         if (row <= 4 && EarnBlipPixelLevel(buf, w, center - Round(5 * sx), y, false) < 70
             && EarnBlipPixelLevel(buf, w, center + Round(5 * sx), y, false) < 70)
@@ -430,17 +439,17 @@ ATan2Deg(x, y) {
 ; 천천히 돌린다: 60단위/10ms(≈200도/초) 이상으로 돌리면 게임이 미니맵을 축소해 아이콘이 가장자리에 붙어 몇 초 동안 위치를 못 읽는다.
 ; 20단위/15ms(≈46도/초)에서는 그대로다(0927 실측: 20u/15ms 정상, 40u/12ms·60u/10ms 축소). 90도에 약 2초 걸린다
 ; 돌리는 동안에도 전체 멈춤·포커스를 본다. GTA 가 뒤로 가면 상대 이동이 바탕화면 커서를 날린다
-EarnTurn(units) {
+EarnTurn(units, pitchUnits := 0) {
     if (EarnAborted())
         return false
-    n := Max(1, Round(Abs(units) / 20))
-    step := Round(units / n)
+    n := Max(1, Round(Max(Abs(units), Abs(pitchUnits)) / 20))
+    step := Round(units / n), pitchStep := Round(pitchUnits / n)
     Loop n {
         if (EarnAborted())
             return false
         if (!EarnHudVisible())
             return EarnFail("카메라: 게임 HUD를 확인하지 못함")
-        DllCall("mouse_event", "uint", 1, "int", step, "int", 0, "uint", 0, "uptr", 0)
+        DllCall("mouse_event", "uint", 1, "int", step, "int", pitchStep, "uint", 0, "uptr", 0)
         Sleep(15)
     }
     return true
@@ -454,12 +463,24 @@ EarnFace(name, target := 0, tol := 5, maxIter := 8) {
     Loop maxIter {
         if (EarnAborted())
             return false
-        if (!EarnBlip(name, &a, &d))
+        seen := false
+        Loop 6 {
+            if (EarnAborted())
+                return false
+            if (seen := EarnBlip(name, &a, &d))
+                break
+            Sleep(200)
+        }
+        if (!seen) {
+            EarnLog("방향 정렬: " name " 블립 재판독 실패")
             return false
+        }
         if (previousUnits) {
             turned := Mod(previousAngle - a + 540, 360) - 180
-            if (Abs(turned) >= 2 && turned * previousUnits > 0)
+            if (Abs(turned) >= 2 && turned * previousUnits > 0) {
                 k := Min(60, Max(8, Abs(previousUnits / turned)))
+                config["Settings"]["EarnTurnUnitsPerDeg"] := k
+            }
         }
         err := a - target
         if (err > 180)
@@ -476,6 +497,7 @@ EarnFace(name, target := 0, tol := 5, maxIter := 8) {
         if (!EarnSleep(1300))
             return false
     }
+    EarnLog("방향 정렬: " name " 반복 한도, 현재 " Round(a) "도 목표 " Round(target) "도")
     return false
 }
 
@@ -688,6 +710,7 @@ EarnNavTo(name, prompt := "", stopPx := 12, maxSteps := 40) {
     global EARN_PROMPT_AREA, config
     k := config["Settings"]["EarnTurnUnitsPerDeg"]
     last := 9999, lastBlipDistance := 9999, flat := 0, dodges := 0
+    bestMCTDistance := 9999, stalledMCTSteps := 0
     Loop maxSteps {
         if (EarnAborted())
             return EarnFail("길찾기: 멈춤·포커스 이탈")
@@ -712,12 +735,20 @@ EarnNavTo(name, prompt := "", stopPx := 12, maxSteps := 40) {
         lastBlipDistance := bd
         if (prompt = "" && bd <= stopPx)
             return true
+        ; MCT 단상 앞 난간은 미니맵 바닥으로 보일 수 있다. 작은 거리 출렁임을
+        ; 진척으로 세어 임의 옆걸음을 반복하지 않고, 네 걸음 정체하면 멈춘다.
+        if (name = "mct" && bd < 999) {
+            if (bd <= bestMCTDistance - 3)
+                bestMCTDistance := bd, stalledMCTSteps := 0
+            else if (++stalledMCTSteps >= 4)
+                return EarnFail("길찾기: MCT 접근이 네 걸음 동안 진전 없음 (" Round(bd) "px)")
+        }
         EarnLog("길찾기 " name ": 걸음 " A_Index " 방향 " Round(ta) "도 " Round(sp) "px, 블립까지 " Round(bd) "px (길 끝 " Round(gp) "px)")
         ; 가장자리에 붙은 블립(거리 999)은 실제 거리를 모르니 길 끝까지 남은 거리(gp)로 진척을 잰다
         prog := bd >= 999 ? gp : bd
         flat := prog > last - 1.5 ? flat + 1 : 0
         last := prog
-        if (flat >= 3) {
+        if (flat >= 3 && name != "mct") {
             if (dodges >= 3)
                 return EarnFail("길찾기: " name " 쪽으로 더 못 감 (블립까지 " Round(bd) "px)")
             dodges += 1, flat := 0

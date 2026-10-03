@@ -92,23 +92,74 @@ EarnGoHome() {
 ; 지금 자리에서 MCT 앞까지. MCT 블립이 보이면 바로, 아니면 노트북까지 간 뒤 MCT.
 EarnWalkToMCT() {
     ; 차고 스폰은 정면 계단을 먼저 오른다. 다른 층의 블립 방향으로 꺾지 않는다.
-    if (EarnSeen("arcade_basement_spawn", [0.48,0.45,0.64,0.68]))
+    if (EarnArcadeBasementReady())
         return EarnArcadeBasementToMCT()
+    if (EarnBlip("mct", &a, &d))
+        return EarnNavTo("mct", "mct_sit") && EarnConfirmMCTSeat()
+    ; 재접속 때 카메라 방향은 유지될 수 있다. 같은 차고 자리라도 벽을 보면 출발 표식이 없다.
+    ; 걷지 않고 노트북 기준 방향을 맞춘 뒤 실제 계단 출발 화면을 확인한다.
+    if (EarnAlignArcadeBasement())
+        return EarnArcadeBasementToMCT()
+    if (EarnAborted())
+        return false
     if (EarnBlip("mct", &a, &d))
         return EarnNavTo("mct", "mct_sit") && EarnConfirmMCTSeat()
     if (!EarnBlip("laptop", &a, &d))
         return EarnFail("아케이드: 지하 출발 화면과 MCT·노트북 블립을 확인하지 못함")
     EarnLog("MCT 블립이 안 보여 기획실 노트북(" Round(a) "도 " Round(d) "px)까지 먼저 감")
-    if (!EarnNavTo("laptop", "", 18))
+    if (!EarnNavTo("laptop", "", 30))
         return false
     if (!EarnBlip("mct", &a, &d))
         return EarnFail("노트북 옆까지 갔는데 MCT 블립이 안 보임")
     return EarnNavTo("mct", "mct_sit") && EarnConfirmMCTSeat()
 }
 
+EarnAlignArcadeBasement() {
+    global config
+    Loop 4 {
+        if (EarnAborted())
+            return false
+        if (EarnArcadeBasementReady())
+            return true
+        if (EarnBlip("mct", &angle, &distance))
+            return false
+        if (EarnBlip("laptop", &angle, &distance) && distance >= 70 && distance <= 120) {
+            if (!EarnFace("laptop", 51.5, 2))
+                return false
+            if (EarnArcadeBasementReady()) {
+                EarnLog("아케이드 지하: 카메라 정렬 후 계단 출발 화면 확인")
+                return true
+            }
+            return EarnArcadeLandingView()
+        }
+        if (!EarnTurn(Round(45 * config["Settings"]["EarnTurnUnitsPerDeg"])) || !EarnSleep(1300))
+            return false
+    }
+    return EarnArcadeBasementReady()
+}
+
+; 수평 방향과 노트북 거리까지 맞았는데 시선 높이만 다를 때, 조명 표식이 보이는 높이를 찾는다.
+EarnArcadeLandingView() {
+    if (!EarnTurn(0, -6000))
+        return false
+    for units in [1740,290,290,290] {
+        if (!EarnTurn(0, units) || !EarnSleep(300))
+            return false
+        if (EarnArcadeBasementReady())
+            return true
+    }
+    return false
+}
+
+EarnArcadeBasementReady() {
+    return EarnBlip("laptop", &angle, &distance) && Abs(angle-51.5) <= 4
+        && distance >= 78 && distance <= 110
+        && EarnSeen("arcade_basement_spawn", [0.48,0.40,0.64,0.70])
+}
+
 ; 아케이드 차고의 고정 스폰에서 정면 계단으로 간다. 시작 화면이 같은 경우에만 실행한다.
 EarnArcadeBasementToMCT() {
-    if (!EarnSeen("arcade_basement_spawn", [0.48,0.45,0.64,0.68]))
+    if (!EarnArcadeBasementReady())
         return EarnFail("아케이드: 지하 고정 스폰 화면이 아님")
     EarnLog("아케이드 지하: 정면 계단까지 직진")
     if (!EarnWalk("w:6500") || !EarnSleep(1300))
@@ -116,7 +167,7 @@ EarnArcadeBasementToMCT() {
     if (!EarnBlip("mct", &angle, &distance) || distance >= 999
         || !EarnNavPlan("mct", &turn, &step, &goal) || goal > 14)
         return EarnFail("아케이드: 계단을 오른 뒤 MCT 층의 경로를 확인하지 못함")
-    EarnLog("아케이드 지하: 계단 통과, MCT까지 " Round(distance) "px")
+    EarnLog("아케이드 지하: 정면 구간 완료, MCT 접근 시작 (" Round(distance) "px)")
     return EarnNavTo("mct", "mct_sit") && EarnConfirmMCTSeat()
 }
 
@@ -145,6 +196,9 @@ EarnSafeTask() {
     ; 방금(한 시간 안에) 비었음을 확인했는데 복귀만 못 한 경우: 복귀부터
     if (gSafeCollectedTick && A_TickCount - gSafeCollectedTick < 3600000)
         return EarnGoHome() ? true : EarnSoftFail(gEarnFail, s["EarnSafeRetryMin"])
+    ; 앞선 금고 왕복은 MCT 의자에서 끝난다. 다음 방문 전에 터미널을 닫고 일어난다.
+    if (EarnAtMCT() && !EarnMCTClose())
+        return false
     if (!EarnInPlace("Nightclub") && !EarnReloadInto("Nightclub", "Left"))
         return EarnSoftFail(gEarnFail, s["EarnSafeRetryMin"])
     Loop s["EarnRerollMax"] {
@@ -240,25 +294,21 @@ EarnSafeCollect() {
 ; 주문 시각을 배송 완료 시각으로 사용하지 않는다. 매번 갱신한 막대와 실제 가격으로 판단한다.
 global gEarnBunkerOrdered := false
 
-EarnBunkerTask() {
+EarnBunkerTask(manageSession := true) {
     global config, gEarnNextDue, gEarnBunkerOrdered
     s := config["Settings"]
-    if (!EarnTaskMCTBegin())
+    if (manageSession && !EarnTaskMCTBegin())
         return false
     try {
-        stock := EarnBarFill(766, 1154, 555, "green")
-        supply := EarnBarFill(766, 1154, 577, "blue")
-        EarnLog(Format("벙커: 재고 {:.0f}% 보급 {:.0f}%", stock * 100, supply * 100))
-        if (stock < 0 || supply < 0)
-            return EarnFail("벙커: 막대를 읽지 못함")
-        plan := EarnBunkerOrderPlan(supply, stock, s["EarnBunkerIntervalSec"])
-        if (plan.reason = "invalid_read" || plan.reason = "invalid_interval")
-            return EarnFail(plan.reason = "invalid_read" ? "벙커: 막대 범위 오류"
-                : "벙커 주기는 1680초의 1~5배(28~140분)여야 함")
+        plan := EarnBunkerObservePlan(s["EarnBunkerIntervalSec"])
+        if (!IsObject(plan))
+            return false
         if (!plan.buy) {
             EarnLog("벙커: " plan.reason " → 다음 " plan.bars "칸 소모 경계에서 재확인")
-            ; 생산 가속·정지·배송 도착을 벽시계로 추정하지 않고 최대 5분 후 새로 읽는다.
-            gEarnNextDue["bunker"] := A_TickCount + Max(5000, Min(300000, plan.waitMs))
+            ; 84초 생산 틱·막대 판독·MCT 진입 지연을 위해 경계보다 3분 먼저 준비한다.
+            ; waitMs는 구매 시각이 아니다. 재진입 뒤 반드시 새 보급량과 가격을 읽는다.
+            nextWait := plan.reason = "wait_boundary" ? plan.waitMs - 180000 : plan.waitMs
+            gEarnNextDue["bunker"] := A_TickCount + Max(5000, Min(300000, nextWait))
             ok := true
         } else {
             gEarnBunkerOrdered := false
@@ -267,9 +317,47 @@ EarnBunkerTask() {
             gEarnNextDue["bunker"] := A_TickCount + 600000
         }
     } finally {
-        ended := EarnTaskMCTEnd()
+        ended := manageSession ? EarnTaskMCTEnd() : true
     }
     return ok && ended
+}
+
+; 경계 근처는 MCT를 닫지 않고 짧게 새로 읽는다. 결제와 배송 대기는 소비처가 처리한다.
+EarnBunkerObservePlan(requestedSeconds) {
+    deadline := 0
+    Loop {
+        if (EarnAborted())
+            return false
+        ; 진행 중인 화면 갱신이 늦어져도 관측 기한 뒤 결과로 구매하지 않는다.
+        if (deadline && A_TickCount >= deadline) {
+            EarnLog("벙커: 경계 근접 관측 4분 종료, 다음 관측에서 새로 확인")
+            return plan
+        }
+        stock := EarnBarFill(766, 1154, 555, "green")
+        supply := EarnBarFill(766, 1154, 577, "blue")
+        if (deadline && A_TickCount >= deadline)
+            continue
+        EarnLog(Format("벙커: 재고 {:.0f}% 보급 {:.0f}%", stock * 100, supply * 100))
+        plan := EarnBunkerOrderPlan(supply, stock, requestedSeconds)
+        if (plan.reason = "invalid_read" || plan.reason = "invalid_interval")
+            return EarnFail(plan.reason = "invalid_read" ? "벙커: 막대 범위 오류"
+                : "벙커 주기는 1680초의 1~5배(28~140분)여야 함")
+        if (plan.buy || plan.reason != "wait_boundary" || plan.waitMs > 180000)
+            return plan
+        if (!deadline) {
+            deadline := A_TickCount + 240000
+            EarnLog("벙커: 소모 경계 근접, MCT에서 최대 4분 재관측")
+        }
+        remaining := deadline - A_TickCount
+        if (remaining <= 0)
+            continue
+        if (!EarnSleep(Min(10000, remaining)))
+            return false
+        if (A_TickCount >= deadline)
+            continue
+        if (!EarnMCTRefresh())
+            return false
+    }
 }
 
 ; MCT에서 시작해 MCT로 복귀한다. 0927 저택 MCT 화면 기준.
@@ -347,27 +435,24 @@ EarnBunkerBuy() {
 ; --- 나이트클럽 DJ 교체 (규칙은 사용자 지시 0926) ---
 ; 수입 최고 구간(95% 이상)을 목표로 기존 DJ를 $10,000에 교체(+10%p).
 ; 교체마다 화면을 다시 열어 인기도 갱신을 제한 시간 동안 확인한다. 갱신이 없으면 추가 결제 없이 멈추며 신규 DJ($100,000)는 고르지 않는다.
-EarnDJTask() {
-    if (!EarnTaskMCTBegin())
+EarnDJTask(manageSession := true) {
+    if (manageSession && !EarnTaskMCTBegin())
         return false
     try {
         ok := EarnDJSwapLoop()
     } finally {
-        ended := EarnTaskMCTEnd()
+        ended := manageSession ? EarnTaskMCTEnd() : true
     }
     return ok && ended
 }
 
 EarnTaskMCTBegin() {
-    global config
-    if (EarnAtMCT() && !EarnMCTClose())
-        return false
     ; 이 자동화는 사용자가 둔 MCT 앞에서만 동작한다. 부동산 재접속·임의 길찾기는 하지 않는다.
-    if (!EarnSeen("mct_sit", [0,0,0.3,0.1]))
+    if (!EarnAtMCT() && !EarnSeen("mct_sit", [0,0,0.3,0.1]))
         return EarnFail("MCT 앞에 서 있거나 사업장 목록을 연 상태에서 시작해야 함")
     opened := false
     try {
-        opened := EarnCEO(true) && EarnMCTOpen() && EarnMCTRefresh()
+        opened := EarnMCTOpen() && EarnMCTRefresh()
         return opened
     } finally {
         ; 등록 또는 화면 판독 예외에도 확인된 화면에서만 닫고 CEO를 해제한다.
@@ -378,14 +463,39 @@ EarnTaskMCTBegin() {
 
 ; MCT 막대는 화면에 재진입해 갱신한다. 사업장 진입 화면에서는 결제 없이 뒤로 돌아온다.
 EarnMCTRefresh() {
-    if (!EarnUIClick("mct_bunker_card", 960, 525))
+    ; 등록 안내는 커서를 사업장 버튼에서 치우면 사라진다.
+    if (!EarnUIClick("mct_bunker_card", 960, 525, "", false))
         return false
+    registered := false
     deadline := A_TickCount + 8000
     Loop {
-        if (EarnSeen("bunker_entry", [0.34,0.54,0.64,0.64]))
+        if (EarnAborted())
+            return false
+        if (!EarnSeen("mct_title", [0.3,0,0.7,0.1]) && !EarnUIClearCursor())
+            return false
+        if (EarnSeen("bunker_entry", [0.34,0.54,0.64,0.64])) {
+            if (registered)
+                EarnLog("MCT: 화면 안내로 CEO 등록 확인")
             return EarnUIBackToMCT("bunker_entry", 1)
-        if (EarnSeen("bunker_page", [0.15,0,0.35,0.12]))
+        }
+        if (EarnSeen("bunker_page", [0.15,0,0.35,0.12])) {
+            if (registered)
+                EarnLog("MCT: 화면 안내로 CEO 등록 확인")
             return EarnUIBackToMCT("bunker_page", 2)
+        }
+        if (EarnSeen("mct_need_ceo")) {
+            if (registered)
+                return EarnFail("MCT: 등록 후에도 보스 등록 안내가 남아 있음")
+            ; 사업장 선택 시 뜨는 'Press L Ctrl to register as a CEO' 안내에서만 등록한다.
+            if (!EarnUIReady("mct_title", [0.3,0,0.7,0.1]) || !EarnUIReady("mct_need_ceo")
+                || !EarnPress("LCtrl") || !EarnWaitGone("mct_need_ceo", "", 8000)
+                || !EarnWaitSeen("mct_title", [0.3,0,0.7,0.1], 3000))
+                return EarnFail("MCT: 화면 안내를 통한 CEO 등록 미확인")
+            registered := true
+            if (!EarnUIClick("mct_bunker_card", 960, 525))
+                return false
+            deadline := A_TickCount + 8000
+        }
         if (!EarnSleep(100) || A_TickCount >= deadline)
             return EarnFail("MCT: 상태 갱신 화면 미확인")
     }
@@ -553,7 +663,7 @@ EarnDJNeedsRebook(pop, target := 95) {
 }
 
 ; 현재 확인된 웹 화면에서만 클릭. 해상도가 달라지면 템플릿 확인에서 중단.
-EarnUIClick(guard, x, y, area := "") {
+EarnUIClick(guard, x, y, area := "", clearCursor := true) {
     if (!EarnUIReady(guard, area))
         return EarnFail("MCT 클릭 전 확인 실패: " guard)
     hwnd := IsGTAActive()
@@ -575,7 +685,8 @@ EarnUIClick(guard, x, y, area := "") {
         }
         if (EarnAborted())
             return false
-        DllCall("SetCursorPos", "int", cx+40, "int", cy+130)
+        if (clearCursor)
+            DllCall("SetCursorPos", "int", cx+40, "int", cy+130)
         return EarnSleep(450)
     } finally {
         DllCall("SetThreadDpiAwarenessContext", "ptr", previous, "ptr")

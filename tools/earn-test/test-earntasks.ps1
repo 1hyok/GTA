@@ -259,6 +259,7 @@ EarnWaitGone(*) {
 
 $safeDriver = @'
 global config := Map("Settings", Map("EarnSafeRetryMin", 15, "EarnRerollMax", 12)), gEarnFail := "", gSafeCollectedTick := 0, homeOk := true, homeCalls := 0, softCalls := 0, inCalls := 0
+global seated := false, closeOk := true, closeCalls := 0
 for c in [[true, false], [false, false], [true, true]] {
     homeOk := c[1], gSafeCollectedTick := c[2] ? A_TickCount : 0, homeCalls := 0, softCalls := 0, inCalls := 0
     result := EarnSafeTask()
@@ -267,8 +268,19 @@ for c in [[true, false], [false, false], [true, true]] {
         ExitApp(1)
     }
 }
-FileAppend("PASS SafeTask cases=3" Chr(10), "*", "UTF-8")
+for allowed in [true,false] {
+    seated := true, closeOk := allowed, closeCalls := 0, gSafeCollectedTick := 0, inCalls := 0
+    if (EarnSafeTask() != allowed || closeCalls != 1 || inCalls != (allowed ? 1 : 0))
+        throw Error("Safe visit must leave the MCT chair before opening interaction menus")
+}
+FileAppend("PASS SafeTask cases=5" Chr(10), "*", "UTF-8")
 ExitApp(0)
+EarnAtMCT() => seated
+EarnMCTClose() {
+    global closeCalls
+    closeCalls++
+    return closeOk
+}
 EarnGoHome() {
     global homeOk, homeCalls
     homeCalls += 1
@@ -303,7 +315,7 @@ try {
     Invoke-EarnOfflineCheck 'SafeCollect' 'EarnSafeCollect' $collectDriver 5
     Invoke-EarnOfflineCheck 'InPlace' 'EarnInPlace' $placeDriver 4
     Invoke-EarnOfflineCheck 'GoHome' 'EarnGoHome' $homeDriver 8
-    Invoke-EarnOfflineCheck 'SafeTask' 'EarnSafeTask' $safeDriver 3
+    Invoke-EarnOfflineCheck 'SafeTask' 'EarnSafeTask' $safeDriver 5
     $atMCTDriver = @'
 global EARN_PROMPT_AREA := [], visible := ""
 for c in [["mct_sit",false],["arcade_laptop_seated",false],["mct_seated",true],["mct_title",true]] {
@@ -350,10 +362,10 @@ for c in [["spawn",false,"S"],["walk",false,"SW"],["sleep",false,"SWL"],
 }
 FileAppend("PASS BasementRoute cases=10`n", "*")
 ExitApp(0)
-EarnSeen(name,*) {
+EarnArcadeBasementReady() {
     global order
     order .= "S"
-    return name = "arcade_basement_spawn" && mode != "spawn"
+    return mode != "spawn"
 }
 EarnWalk(path) {
     global order
@@ -391,6 +403,24 @@ EarnFail(*) => false
 EarnLog(*) => true
 '@
     Invoke-EarnOfflineCheck 'BasementRoute' 'EarnArcadeBasementToMCT' $basementDriver 10
+    $basementReadyDriver = @'
+global blip := true, measuredAngle := 51.5, measuredDistance := 93, scene := true
+for c in [[true,51.5,93,true,true],[false,51.5,93,true,false],
+    [true,100,93,true,false],[true,51.5,20,true,false],[true,51.5,999,true,false],
+    [true,51.5,93,false,false],[true,55,110,true,true]] {
+    blip := c[1], measuredAngle := c[2], measuredDistance := c[3], scene := c[4]
+    if (EarnArcadeBasementReady() != c[5])
+        throw Error("Basement starting position must match direction, distance and scene")
+}
+FileAppend("PASS BasementReady cases=7`n", "*")
+ExitApp(0)
+EarnBlip(name,&a,&d) {
+    a := measuredAngle, d := measuredDistance
+    return name = "laptop" && blip
+}
+EarnSeen(name,*) => name = "arcade_basement_spawn" && scene
+'@
+    Invoke-EarnOfflineCheck 'BasementReady' 'EarnArcadeBasementReady' $basementReadyDriver 7
     $djDriver = @'
 cases := [[-1,95,false],[0,95,true],[80,95,true],[86,95,true],[90,95,true],[90.1,95,true],[94,95,true],[95,95,false],[100,95,false],[80,80,false]]
 for c in cases {
@@ -403,32 +433,24 @@ ExitApp(0)
     Invoke-EarnOfflineCheck 'DJRebook' 'EarnDJNeedsRebook' $djDriver 10
     $mctDriver = @'
 global config := Map("Settings", Map("EarnMCTOnly",1)), scene := "", failAt := "", order := ""
-for c in [["list","",true,"C+OR"],["stand","",true,"+OR"],["chair","",true,"C+OR"],
-    ["away","",false,""],["chair","C",false,"C"],["stand","+",false,"+E"],
-    ["stand","O",false,"+OE"],["stand","R",false,"+ORE"]] {
+for c in [["list","",true,"OR"],["stand","",true,"OR"],["chair","",true,"OR"],
+    ["need-ceo","",true,"OR"],["away","",false,""],["list","O",false,"OE"],
+    ["stand","O",false,"OE"],["stand","R",false,"ORE"]] {
     scene := c[1], failAt := c[2], order := ""
     if (EarnTaskMCTBegin() != c[3] || order != c[4])
         throw Error("MCT begin guard: " c[1] "/" c[2] " order=" order)
 }
 FileAppend("PASS MCTBegin cases=8`n", "*")
 ExitApp(0)
-EarnUIReady(name,*) => name = "mct_title" && scene = "list"
-EarnAtMCT() => scene = "list" || scene = "chair"
-EarnSeen(name,*) => name = "mct_sit" && scene = "stand"
+EarnUIReady(name,*) => EarnSeen(name)
+EarnAtMCT() => scene = "list" || scene = "chair" || scene = "need-ceo"
+EarnSeen(name,*) => name = "mct_sit" && scene = "stand" || name = "mct_title" && scene = "list"
+    || name = "mct_seated" && scene = "chair" || name = "mct_need_ceo" && scene = "need-ceo"
 EarnMCTClose() {
-    global scene, order, failAt
-    order .= "C"
-    if (failAt = "C")
-        return false
-    scene := "stand"
-    return true
+    throw Error("MCT entry must preserve an existing terminal or seated state")
 }
 EarnCEO(on) {
-    global order, failAt
-    if (!on)
-        throw Error("Unexpected CEO cleanup")
-    order .= "+"
-    return failAt != "+"
+    throw Error("MCT entry must not use the interaction menu to register")
 }
 EarnMCTOpen() {
     global order, failAt
@@ -663,18 +685,18 @@ Sleep(ms) {
 global config := Map(), endScene := "mct_sit", endFailure := "", endOrder := "", endAbort := false, endBoss := false, gEarnFail := "", endLogs := []
 global beginFailure := "", beginFailedScene := ""
 cases := [
- ["open","mct_sit",false,"+O-",false],
- ["open","mct_seated",false,"+OC-",false],
- ["open","unknown",false,"+O",true],
- ["refresh","bunker_entry",false,"+ORE1C-",false],
- ["refresh","bunker_page",false,"+ORB2C-",false],
- ["refresh","bunker_confirm",false,"+ORxB2C-",false],
- ["refresh","unknown",false,"+OR",true],
- ["register","mct_sit",false,"+-",false],
- ["","mct_title",true,"+OR",true]
+ ["open","mct_sit",false,"O-",false],
+ ["open","mct_seated",false,"OC-",false],
+ ["open","unknown",false,"O",false],
+ ["refresh","bunker_entry",false,"ORE1C-",false],
+ ["refresh","bunker_page",false,"ORB2C-",false],
+ ["refresh","bunker_confirm",false,"ORxB2C-",false],
+ ["refresh","unknown",false,"OR",true],
+ ["register","mct_need_ceo",false,"ORC-",false],
+ ["","mct_title",true,"OR",true]
 ]
 for c in cases {
-    beginFailure := c[1], beginFailedScene := c[2], endScene := "mct_sit", endFailure := c[1] = "register" ? "register" : "",
+    beginFailure := c[1], beginFailedScene := c[2], endScene := "mct_sit", endFailure := "",
         endOrder := "", endBoss := false, gEarnFail := "", endLogs := []
     result := EarnTaskMCTBegin()
     if (result != c[3] || endOrder != c[4] || endBoss != c[5])
@@ -684,11 +706,11 @@ for c in cases {
 }
 ; A successful registration can be followed by a native screen-reading error.
 ; Cleanup errors are caught by the real End function and must not replace it.
-for c in [["open_error","mct_seated","",false,"+OC-",false,"opening exception"],
-    ["refresh_error","bunker_page","",false,"+ORB2C-",false,"refresh exception"],
-    ["register_error","mct_sit","register_error",false,"+-",false,"registration exception"],
-    ["open_error","mct_seated","close_error",false,"+OC",true,"opening exception"],
-    ["refresh_error","bunker_page","",true,"+OR",true,"refresh exception"]] {
+for c in [["open_error","mct_seated","",false,"OC-",false,"opening exception"],
+    ["refresh_error","bunker_page","",false,"ORB2C-",false,"refresh exception"],
+    ["register_error","mct_need_ceo","",false,"ORC-",false,"registration exception"],
+    ["open_error","mct_seated","close_error",false,"OC",false,"opening exception"],
+    ["refresh_error","bunker_page","",true,"OR",true,"refresh exception"]] {
     beginFailure := c[1], beginFailedScene := c[2], endFailure := c[3], endAbort := c[4],
         endScene := "mct_sit", endOrder := "", endBoss := false, gEarnFail := "", endLogs := []
     caught := ""
@@ -715,8 +737,17 @@ EarnMCTOpen() {
     return true
 }
 EarnMCTRefresh() {
-    global endScene, endOrder, beginFailure, beginFailedScene
+    global endScene, endOrder, beginFailure, beginFailedScene, endBoss
     endOrder .= "R"
+    if (beginFailure = "register") {
+        endScene := beginFailedScene
+        return EarnFail("registration failed")
+    }
+    endBoss := true
+    if (beginFailure = "register_error") {
+        endScene := beginFailedScene
+        throw Error("registration exception")
+    }
     if (beginFailure = "refresh" || beginFailure = "refresh_error") {
         endScene := beginFailedScene
         if (beginFailure = "refresh_error")
@@ -728,6 +759,162 @@ EarnMCTRefresh() {
 '@
     $mctBeginCleanupDriver += "`n" + $mctCleanupSupport + "`n" + (Get-EarnFunctionBody $sourceText 'EarnTaskMCTEnd')
     Invoke-EarnOfflineCheck 'MCTBeginCleanup' 'EarnTaskMCTBegin' $mctBeginCleanupDriver 14
+    $mctRefreshDriver = @'
+global refreshOptions := Map(), refreshClockMs := 0, refreshAborted := false, refreshFocused := true,
+    refreshClicks := 0, refreshCtrl := 0, refreshCtrlAt := -1, refreshLastClickAt := 0,
+    refreshBacks := 0, refreshLogs := 0, refreshFailure := "", refreshHover := false, refreshCursorClears := 0
+; Options, result, card clicks, LCtrl attempts, confirmed business exits, registration logs.
+for c in [[Map("alreadyBoss",true),true,1,0,1,0],
+    [Map("alreadyBoss",true,"business","bunker_page"),true,1,0,1,0],
+    [Map(),true,2,1,1,1],
+    [Map("business","bunker_page"),true,2,1,1,1],
+    [Map("promptAfter",600,"registerAfter",1200,"titleAfter",400,"businessAfter",500),true,2,1,1,1],
+    [Map("promptWithoutTitle",true),false,1,0,0,0],
+    [Map("registerAfter",9000),false,1,1,0,0],
+    [Map("titleAfter",4000),false,1,1,0,0],
+    [Map("repeatedPrompt",true),false,2,1,0,0],
+    [Map("rejectCtrl",true),false,1,1,0,0],
+    [Map("rejectClick",2),false,2,1,0,0],
+    [Map("promptAfter",600,"abortAt",400),false,1,0,0,0],
+    [Map("registerAfter",1200,"abortAt",400),false,1,1,0,0],
+    [Map("registerAfter",1200,"focusLostAt",400),false,1,1,0,0],
+    [Map("businessAfter",9000),false,2,1,0,0],
+    [Map("noResponse",true),false,1,0,0,0],
+    [Map("rejectClick",1),false,1,0,0,0],
+    [Map("rejectBack",true),false,2,1,1,1],
+    [Map("promptAfter",7000,"registerAfter",1000,"businessAfter",7900),true,2,1,1,1],
+    [Map("alreadyBoss",true,"businessAfter",1200),true,1,0,1,0],
+    [Map("alreadyBoss",true,"rejectCursorClear",true),false,1,0,0,0],
+    [Map("alreadyBoss",true,"abortCursorClear",true),false,1,0,0,0],
+    [Map("alreadyBoss",true,"focusCursorClear",true),false,1,0,0,0]] {
+    refreshOptions := c[1], refreshClockMs := 0, refreshAborted := false, refreshFocused := true,
+        refreshClicks := 0, refreshCtrl := 0, refreshCtrlAt := -1, refreshLastClickAt := 0,
+        refreshBacks := 0, refreshLogs := 0, refreshFailure := "", refreshHover := false, refreshCursorClears := 0
+    result := EarnMCTRefresh()
+    if (result != c[2] || refreshClicks != c[3] || refreshCtrl != c[4] || refreshBacks != c[5] || refreshLogs != c[6])
+        throw Error("MCT register case " A_Index " result=" result " clicks=" refreshClicks " ctrl=" refreshCtrl " backs=" refreshBacks " logs=" refreshLogs)
+    if (refreshCtrl > 1 || refreshClicks > 2)
+        throw Error("MCT registration must never retry LCtrl or click the card more than twice")
+    if (result && (refreshHover || !refreshCursorClears))
+        throw Error("Business screen must be read only after its cursor obstruction is cleared")
+    if (refreshOptions.Get("registerAfter",0) = 9000 && refreshClockMs != 8000)
+        throw Error("Registration disappearance wait exceeded its eight-second deadline")
+    if (refreshOptions.Get("titleAfter",0) = 4000 && refreshClockMs != 3000)
+        throw Error("Registration list recovery wait exceeded its three-second deadline")
+    if (refreshOptions.Get("promptAfter",0) = 7000 && refreshClockMs < 15000)
+        throw Error("Business arrival must use a fresh deadline after successful registration")
+}
+FileAppend("PASS MCTRefresh cases=23`n", "*")
+ExitApp(0)
+EarnSeen(name,*) {
+    alreadyBoss := refreshOptions.Get("alreadyBoss",false)
+    registeredAt := refreshCtrlAt < 0 ? -1 : refreshCtrlAt + refreshOptions.Get("registerAfter",0)
+    if (name = "mct_need_ceo") {
+        if (alreadyBoss || !refreshClicks || refreshOptions.Get("noResponse",false))
+            return false
+        if (refreshClicks = 2)
+            return refreshOptions.Get("repeatedPrompt",false)
+        return refreshHover && refreshClockMs >= refreshOptions.Get("promptAfter",0)
+            && (refreshCtrlAt < 0 || refreshClockMs < registeredAt)
+    }
+    if (name = "mct_title") {
+        if ((refreshOptions.Get("promptWithoutTitle",false) && refreshClicks) || RefreshBusinessFrame())
+            return false
+        return refreshCtrlAt < 0 || refreshClockMs >= registeredAt + refreshOptions.Get("titleAfter",0)
+    }
+    if (name = "bunker_entry" || name = "bunker_page") {
+        return RefreshBusinessFrame() && !refreshHover && name = refreshOptions.Get("business","bunker_entry")
+    }
+    return false
+}
+EarnUIReady(name,*) => !EarnAborted() && EarnSeen(name)
+RefreshBusinessFrame() {
+    ready := (refreshOptions.Get("alreadyBoss",false) && refreshClicks = 1) || (refreshCtrlAt >= 0 && refreshClicks = 2)
+    return ready && !refreshOptions.Get("repeatedPrompt",false) && !refreshOptions.Get("noResponse",false)
+        && refreshClockMs >= refreshLastClickAt + refreshOptions.Get("businessAfter",0)
+}
+EarnUIClick(name,x,y,area := "",clearCursor := true) {
+    global refreshClicks, refreshLastClickAt, refreshHover, refreshCursorClears
+    if (EarnAborted() || name != "mct_bunker_card" || x != 960 || y != 525 || !EarnSeen("mct_title"))
+        throw Error("MCT card click without its confirmed list")
+    if (refreshClicks && (refreshCtrl != 1 || EarnSeen("mct_need_ceo")))
+        throw Error("MCT card re-click before registration prompt disappeared")
+    refreshClicks++, refreshLastClickAt := refreshClockMs
+    if (refreshOptions.Get("rejectClick",0) = refreshClicks)
+        return false
+    refreshHover := !clearCursor
+    if (clearCursor)
+        refreshCursorClears++
+    return true
+}
+EarnUIClearCursor() {
+    global refreshHover, refreshCursorClears, refreshAborted, refreshFocused
+    if (EarnAborted() || EarnSeen("mct_title"))
+        throw Error("Explicit cursor clearing must wait for departure from the MCT list")
+    refreshCursorClears++
+    if (refreshOptions.Get("abortCursorClear",false))
+        refreshAborted := true
+    if (refreshOptions.Get("focusCursorClear",false))
+        refreshFocused := false
+    if (EarnAborted() || refreshOptions.Get("rejectCursorClear",false))
+        return false
+    refreshHover := false
+    return true
+}
+EarnPress(key) {
+    global refreshCtrl, refreshCtrlAt
+    if (EarnAborted() || key != "LCtrl" || !EarnSeen("mct_need_ceo") || !EarnSeen("mct_title") || refreshCtrl)
+        throw Error("LCtrl is allowed once only at the confirmed MCT registration prompt")
+    refreshCtrl++
+    if (refreshOptions.Get("rejectCtrl",false))
+        return false
+    refreshCtrlAt := refreshClockMs
+    return true
+}
+EarnUIBackToMCT(guard,presses) {
+    global refreshBacks
+    if (EarnAborted() || !EarnSeen(guard) || presses != (guard = "bunker_entry" ? 1 : 2))
+        throw Error("MCT refresh must return from a confirmed business screen")
+    refreshBacks++
+    return !refreshOptions.Get("rejectBack",false)
+}
+EarnCEO(*) {
+    throw Error("MCT registration must not open the interaction menu")
+}
+EarnLog(*) {
+    global refreshLogs
+    if (!EarnSeen("bunker_entry") && !EarnSeen("bunker_page"))
+        throw Error("Registration cannot be logged before business entry is confirmed")
+    refreshLogs++
+}
+EarnSleep(ms) {
+    Sleep(ms)
+    return !EarnAborted()
+}
+Sleep(ms) {
+    global refreshClockMs, refreshAborted, refreshFocused
+    refreshClockMs += ms
+    if (refreshOptions.Has("abortAt") && refreshClockMs >= refreshOptions["abortAt"])
+        refreshAborted := true
+    if (refreshOptions.Has("focusLostAt") && refreshClockMs >= refreshOptions["focusLostAt"])
+        refreshFocused := false
+}
+EarnAborted() => refreshAborted || !refreshFocused
+RefreshClock() => refreshClockMs
+EarnFail(reason) {
+    global refreshFailure
+    refreshFailure := reason
+    return false
+}
+'@
+    foreach ($waitFunction in @('EarnWaitSeen','EarnWaitGone')) {
+        $mctRefreshDriver += "`n" + (Get-EarnFunctionBody $promptCoreText $waitFunction).Replace('A_TickCount', 'RefreshClock()')
+    }
+    $savedRefreshSource = $sourceText
+    try {
+        $sourceText = $sourceText.Replace('A_TickCount', 'RefreshClock()')
+        Invoke-EarnOfflineCheck 'MCTRefresh' 'EarnMCTRefresh' $mctRefreshDriver 23
+    } finally { $sourceText = $savedRefreshSource }
     $djFlowDriver = @'
 global config := Map("Settings",Map("EarnDJPopularityPct",95)), popularity := 90, allowRebook := true,
     gain := 10, confirmations := 0, djScene := "mct", djMode := "", homeReads := 0, backs := 0,
@@ -976,11 +1163,15 @@ PixelGetColor(x,y) {
     $policyText = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnPolicy.ahk') -Raw -Encoding UTF8
     $screenText = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnScreen.ahk') -Raw -Encoding UTF8
     $bunkerPolicy = "`n" + (Get-EarnFunctionBody $policyText 'EarnBunkerOrderPlan')
+    $bunkerObserve = "`n" + (Get-EarnFunctionBody $sourceText 'EarnBunkerObservePlan')
     $bunkerTaskDriver = @'
-global config := Map("Settings",Map("EarnBunkerIntervalSec",8400)), gEarnNextDue := Map(), gEarnBunkerOrdered := false
-global c := [], buyCalls := 0, endCalls := 0
+global config := Map("Settings",Map("EarnBunkerIntervalSec",6720)), gEarnNextDue := Map(), gEarnBunkerOrdered := false
+global c := [], buyCalls := 0, beginCalls := 0, endCalls := 0
 ; stock, supply, interval, begin OK, buy OK, end OK, result, buys, ends, due milliseconds.
 cases := [[0.4,1,8400,true,true,true,true,0,1,300000],
+    [0.4,0.25,6720,true,true,true,true,0,1,240000],
+    [0.4,0.24,6720,true,true,true,true,0,1,156000],
+    [0.4,0.2,6720,true,true,true,true,1,1,600000],
     [1,0,8400,true,true,true,true,0,1,300000],
     [0.4,0.75,1680,true,true,true,true,0,1,300000],
     [0.4,0,8400,true,true,true,true,1,1,600000],
@@ -994,19 +1185,37 @@ cases := [[0.4,1,8400,true,true,true,true,0,1,300000],
     [0.4,0,8400,true,true,false,false,1,1,600000]]
 for row in cases {
     c := row, config["Settings"]["EarnBunkerIntervalSec"] := c[3]
-    gEarnNextDue := Map("bunker",0), buyCalls := 0, endCalls := 0, gEarnBunkerOrdered := true
+    gEarnNextDue := Map("bunker",0), buyCalls := 0, beginCalls := 0, endCalls := 0, gEarnBunkerOrdered := true
     before := A_TickCount
     result := EarnBunkerTask()
     after := A_TickCount
     due := gEarnNextDue["bunker"]
-    if (result != c[7] || buyCalls != c[8] || endCalls != c[9])
+    if (result != c[7] || buyCalls != c[8] || beginCalls != 1 || endCalls != c[9])
         throw Error("Bunker task result/cleanup " A_Index)
     if (c[10] = 0 ? due != 0 : due < before+c[10] || due > after+c[10])
         throw Error("Bunker task scheduling " A_Index " due=" due)
 }
-FileAppend("PASS BunkerTask cases=12`n", "*")
+; The grouped scheduler already owns the MCT session, including no-purchase and invalid-read paths.
+for row in [[0.4,1,8400,false,true,false,true,0,0,300000],
+    [0.4,0,8400,false,true,false,true,1,0,600000],
+    [-1,0,8400,false,true,false,false,0,0,0]] {
+    c := row, config["Settings"]["EarnBunkerIntervalSec"] := c[3]
+    gEarnNextDue := Map("bunker",0), buyCalls := 0, beginCalls := 0, endCalls := 0, gEarnBunkerOrdered := true
+    before := A_TickCount
+    result := EarnBunkerTask(false)
+    after := A_TickCount, due := gEarnNextDue["bunker"]
+    if (result != c[7] || buyCalls != c[8] || beginCalls || endCalls)
+        throw Error("Shared-session bunker task reopened or closed the caller's session")
+    if (c[10] = 0 ? due != 0 : due < before+c[10] || due > after+c[10])
+        throw Error("Shared-session bunker scheduling changed")
+}
+FileAppend("PASS BunkerTask cases=18`n", "*")
 ExitApp(0)
-EarnTaskMCTBegin() => c[4]
+EarnTaskMCTBegin() {
+    global beginCalls
+    beginCalls++
+    return c[4]
+}
 EarnTaskMCTEnd() {
     global endCalls, c
     endCalls++
@@ -1020,15 +1229,121 @@ EarnBunkerBuy() {
     return c[5]
 }
 EarnBarFill(x1,x2,y,*) => y = 555 ? c[1] : c[2]
+EarnAborted() => false
+EarnMCTRefresh() {
+    throw Error("Non-near boundary must not refresh in this driver")
+}
+EarnSleep(*) {
+    throw Error("Non-near boundary must not hold MCT in this driver")
+}
 EarnLog(*) => true
 EarnFail(*) => false
 '@
-    Invoke-EarnOfflineCheck 'BunkerTask' 'EarnBunkerTask' ($bunkerTaskDriver + $bunkerPolicy) 12
+    Invoke-EarnOfflineCheck 'BunkerTask' 'EarnBunkerTask' ($bunkerTaskDriver + $bunkerPolicy + $bunkerObserve) 18
+    $bunkerObserveDriver = @'
+global config := Map("Settings",Map("EarnBunkerIntervalSec",6720)), gEarnNextDue := Map(), gEarnBunkerOrdered := false
+global c := Map(), clockMs := 0, supplyNow := 0.21, stockNow := 0.4,
+    refreshes := 0, buys := 0, begins := 0, ends := 0, sleeps := [], abortNow := false, reads := 0
+; Name, observations/options, result, purchases, next delay, expected observation time.
+cases := [
+    ["catch boundary on fresh frame",Map("supply",0.22,"at",150000,"next",0.2),true,1,600000,154000],
+    ["already at boundary",Map("supply",0.2),true,1,600000,0],
+    ["production paused stays bounded",Map(),true,0,5000,240000],
+    ["new delivery resets prediction",Map("at",20000,"next",1),true,0,300000,22000],
+    ["stock fills during observation",Map("at",20000,"nextStock",1),true,0,300000,22000],
+    ["missed boundary preserves spending limit",Map("at",20000,"next",0.19),true,0,300000,22000],
+    ["scheduler late after another task",Map("beginMs",200000,"supply",0.19),true,0,300000,200000],
+    ["invalid later supply stops",Map("at",20000,"next",-1),false,0,0,22000],
+    ["invalid later stock stops",Map("at",20000,"nextStock",-1),false,0,0,22000],
+    ["refresh failure stops",Map("refreshFail",true),false,0,0,11000],
+    ["sleep detects focus loss",Map("sleepAbort",true),false,0,0,10000],
+    ["refresh detects user input",Map("refreshAbort",true),false,0,0,11000],
+    ["abort before observation",Map("abort",true),false,0,0,0],
+    ["late refresh cannot authorize payment",Map("refreshMs",230000,"at",1,"next",0.2),true,0,5000,240000],
+    ["refresh crossing deadline cannot authorize payment",Map("refreshMs",231000,"at",1,"next",0.2),true,0,5000,241000],
+    ["near earlier configured boundary",Map("interval",1680,"supply",0.81,"at",20000,"next",0.8),true,1,600000,22000],
+    ["deadline not extended by closer observation",Map("supply",0.22,"at",20000,"next",0.21),true,0,5000,240000],
+    ["read completing after deadline discarded",Map("lateRead",true,"at",1,"next",0.2),true,0,5000,240000]]
+for scenario in cases {
+    c := scenario[2], config["Settings"]["EarnBunkerIntervalSec"] := c.Get("interval",6720)
+    clockMs := 0, supplyNow := c.Get("supply",0.21), stockNow := 0.4,
+        refreshes := 0, buys := 0, begins := 0, ends := 0, sleeps := [], reads := 0,
+        abortNow := c.Get("abort",false), gEarnBunkerOrdered := true, gEarnNextDue := Map("bunker",0)
+    result := EarnBunkerTask()
+    expectedDue := scenario[5] ? clockMs + scenario[5] : 0
+    if (result != scenario[3] || buys != scenario[4] || gEarnNextDue["bunker"] != expectedDue
+        || clockMs != scenario[6] || begins != 1 || ends != 1)
+        throw Error("Bunker observe " scenario[1] " result=" result " buys=" buys " time=" clockMs " due=" gEarnNextDue["bunker"])
+    for ms in sleeps {
+        if (ms <= 0 || ms > 10000)
+            throw Error("Boundary observation sleeps must stay within ten seconds")
+    }
+    if (scenario[6] >= 240000 && buys)
+        throw Error("No deadline-late purchase permitted")
+}
+FileAppend("PASS BunkerObserve cases=18`n", "*")
+ExitApp(0)
+BunkerClock() => clockMs
+EarnTaskMCTBegin() {
+    global begins, clockMs
+    begins++
+    clockMs += c.Get("beginMs",0)
+    return true
+}
+EarnTaskMCTEnd() {
+    global ends
+    ends++
+    return true
+}
+EarnAborted() => abortNow
+EarnBarFill(x1,x2,y,*) {
+    global reads, clockMs
+    reads++
+    if (c.Get("lateRead",false) && refreshes)
+        clockMs := 240000
+    return y = 555 ? stockNow : supplyNow
+}
+EarnBunkerBuy() {
+    global buys
+    if (gEarnBunkerOrdered || abortNow || clockMs >= 240000)
+        throw Error("Purchase must use current observation, live guard and cleared order state")
+    buys++
+    return true
+}
+EarnSleep(ms) {
+    global clockMs, sleeps, abortNow
+    sleeps.Push(ms), clockMs += ms
+    if (c.Get("sleepAbort",false))
+        abortNow := true
+    return !abortNow
+}
+EarnMCTRefresh() {
+    global clockMs, refreshes, abortNow, supplyNow, stockNow
+    if (abortNow || clockMs >= 240000)
+        throw Error("No refresh may start after abort or deadline")
+    refreshes++, clockMs += c.Get("refreshMs",1000)
+    if (clockMs >= c.Get("at",300000)) {
+        supplyNow := c.Get("next",supplyNow)
+        stockNow := c.Get("nextStock",stockNow)
+    }
+    if (c.Get("refreshAbort",false))
+        abortNow := true
+    return !abortNow && !c.Get("refreshFail",false)
+}
+EarnLog(*) => true
+EarnFail(*) => false
+'@
+    $bunkerObserveDriver += $bunkerPolicy + $bunkerObserve.Replace('A_TickCount', 'BunkerClock()')
+    $savedBunkerSource = $sourceText
+    try {
+        $sourceText = $sourceText.Replace('A_TickCount', 'BunkerClock()')
+        Invoke-EarnOfflineCheck 'BunkerObserve' 'EarnBunkerTask' $bunkerObserveDriver 18
+    } finally { $sourceText = $savedBunkerSource }
     $taskFinallyDriver = @'
 global config := Map("Settings",Map("EarnBunkerIntervalSec",8400,"EarnDJPopularityPct",95)),
     gEarnNextDue := Map(), gEarnBunkerOrdered := false, gEarnFail := "",
     endScene := "mct_title", endFailure := "", endOrder := "", endAbort := false,
-    endBoss := true, endLogs := [], taskMode := "", originalException := 0
+    endBoss := true, endLogs := [], taskMode := "", originalException := 0, taskBegins := 0, taskEnds := 0
 cases := [
     ["read_throw","",false,"C-",false,true],
     ["write_throw","",false,"C-",false,true],
@@ -1039,27 +1354,41 @@ cases := [
     ["ok","close_error",false,"C",true,false],
     ["ok","",true,"C-",false,false]
 ]
+for manageSession in [true,false] {
 for task in [EarnBunkerTask, EarnDJTask, EarnWarehouseTask] {
     for c in cases {
         taskMode := c[1], endFailure := c[2], endScene := "mct_title", endOrder := "",
             endBoss := true, endAbort := false, gEarnFail := "", endLogs := [], gEarnNextDue := Map(),
-            originalException := Error("original task exception"), caught := 0, result := false
-        try result := task.Call()
+            originalException := Error("original task exception"), caught := 0, result := false, taskBegins := 0, taskEnds := 0
+        try result := manageSession ? task.Call() : task.Call(false)
         catch as taskException
             caught := taskException
-        if (result != c[3] || endOrder != c[4] || endBoss != c[5])
+        expectedResult := manageSession ? c[3] : taskMode = "ok"
+        expectedOrder := manageSession ? c[4] : "", expectedBoss := manageSession ? c[5] : true
+        if (result != expectedResult || endOrder != expectedOrder || endBoss != expectedBoss
+            || taskBegins != (manageSession ? 1 : 0) || taskEnds != (manageSession ? 1 : 0))
             throw Error(task.Name " cleanup " c[1] " order=" endOrder " result=" result)
         if (c[6] ? !caught || ObjPtr(caught) != ObjPtr(originalException) : IsObject(caught))
             throw Error(task.Name " original exception was replaced or swallowed")
         if (taskMode = "return_false" && gEarnFail != "original task failure")
             throw Error(task.Name " cleanup replaced the original failure reason")
-        if (taskMode = "ok" && endFailure = "close_error" && !InStr(gEarnFail,"cleanup close exception"))
+        if (manageSession && taskMode = "ok" && endFailure = "close_error" && !InStr(gEarnFail,"cleanup close exception"))
             throw Error(task.Name " cleanup-only error was not reported")
     }
 }
-FileAppend("PASS MCTTaskFinally cases=24`n", "*")
+}
+FileAppend("PASS MCTTaskFinally cases=48`n", "*")
 ExitApp(0)
-EarnTaskMCTBegin() => true
+EarnTaskMCTBegin() {
+    global taskBegins
+    taskBegins++
+    return true
+}
+EarnTaskMCTEnd() {
+    global taskEnds
+    taskEnds++
+    return FixtureTaskMCTEnd()
+}
 TaskReadGuard() {
     global taskMode, originalException
     if (taskMode = "read_throw")
@@ -1078,6 +1407,7 @@ EarnBarFill(x1,x2,y,*) {
     return y = 555 ? 0.4 : 0
 }
 EarnBunkerBuy() => TaskWriteResult()
+EarnMCTRefresh() => false
 EarnDJSwapLoop(*) {
     TaskReadGuard()
     return TaskWriteResult()
@@ -1089,20 +1419,26 @@ EarnWarehouseManage() {
 EarnLog(*) => true
 '@
     $warehouseText = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnWarehouse.ahk') -Raw -Encoding UTF8
-    $taskFinallyDriver += "`n" + $mctCleanupSupport + $bunkerPolicy
-    foreach ($fn in @('EarnTaskMCTEnd','EarnDJTask','EarnDJNeedsRebook')) {
+    $taskFinallyDriver += "`n" + $mctCleanupSupport + $bunkerPolicy + $bunkerObserve
+    $taskFinallyDriver += "`n" + (Get-EarnFunctionBody $sourceText 'EarnTaskMCTEnd').Replace('EarnTaskMCTEnd(', 'FixtureTaskMCTEnd(')
+    foreach ($fn in @('EarnDJTask','EarnDJNeedsRebook')) {
         $taskFinallyDriver += "`n" + (Get-EarnFunctionBody $sourceText $fn)
     }
     $taskFinallyDriver += "`n" + (Get-EarnFunctionBody $warehouseText 'EarnWarehouseTask')
-    Invoke-EarnOfflineCheck 'MCTTaskFinally' 'EarnBunkerTask' $taskFinallyDriver 24
+    Invoke-EarnOfflineCheck 'MCTTaskFinally' 'EarnBunkerTask' $taskFinallyDriver 48
     $bunkerBuyDriver = @'
-global config := Map("Settings",Map("EarnBunkerIntervalSec",8400)), gEarnBunkerOrdered := false
+global config := Map("Settings",Map("EarnBunkerIntervalSec",6720)), gEarnBunkerOrdered := false
 global c := Map(), stage := "mct", pays := 0, cancels := 0, reads := 0, buyClicks := 0
 ; Options, result, payments, cancellations, delivery confirmed, OCR reads.
 cases := [
     ["empty",Map(),true,1,0,true,2],
     ["one-bar",Map("supply",0.8,"interval",1680,"quote","$15,000"),true,1,0,true,2],
     ["two-bars",Map("supply",0.6,"interval",3360,"quote","$30,000"),true,1,0,true,2],
+    ["default four-bars",Map("supply",0.2,"quote","$60,000"),true,1,0,true,2],
+    ["four-bars rounding rejected",Map("supply",0.2,"quote","$75,000"),true,0,1,false,1],
+    ["four-bars price changes while reading",Map("supply",0.2,"quote","$60,000","quote2","$75,000"),true,0,1,false,2],
+    ["default earlier boundary does not buy",Map("supply",0.4,"quote","$45,000"),true,0,0,false,0],
+    ["default missed last boundary does not buy",Map("supply",0.19),true,0,0,false,0],
     ["pending",Map("pending",true),true,0,0,false,0],
     ["price-too-high",Map("supply",0.8,"interval",1680,"quote","$30,000"),true,0,1,false,1],
     ["discount-unknown",Map("quote","$74,000"),true,0,1,false,1],
@@ -1129,7 +1465,7 @@ cases := [
     ["cancel-failed",Map("quote","$90,000","fail","cancel"),false,0,0,false,1],
     ["pending-dismiss-unknown",Map("pendingGone",false),false,1,0,true,2]]
 for scenario in cases {
-    c := scenario[2], config["Settings"]["EarnBunkerIntervalSec"] := c.Get("interval",8400)
+    c := scenario[2], config["Settings"]["EarnBunkerIntervalSec"] := c.Get("interval",6720)
     stage := "mct", pays := 0, cancels := 0, reads := 0, buyClicks := 0, gEarnBunkerOrdered := false
     result := EarnBunkerBuy()
     if (result != scenario[3] || pays != scenario[4] || cancels != scenario[5]
@@ -1138,7 +1474,7 @@ for scenario in cases {
     if (pays > 1)
         throw Error("No repeated payment permitted")
 }
-FileAppend("PASS BunkerBuy cases=28`n", "*")
+FileAppend("PASS BunkerBuy cases=33`n", "*")
 ExitApp(0)
 EarnUIReady(name,*) => name = "mct_bunker_card" && stage = "mct" && c.Get("ready",true)
 EarnBarFill(x1,x2,y,*) => y = 555 ? c.Get("stock",0.4) : c.Get("supply",0)
@@ -1210,16 +1546,20 @@ EarnFail(*) => false
     $bunkerBuyDriver += $bunkerPolicy + "`n" + (Get-EarnFunctionBody $policyText 'EarnBunkerPriceAllowed')
     $bunkerBuyDriver += "`n" + (Get-EarnFunctionBody $screenText 'EarnScreenText')
     $bunkerBuyDriver += "`n" + (Get-EarnFunctionBody $screenText 'EarnReadDollars')
-    Invoke-EarnOfflineCheck 'BunkerBuy' 'EarnBunkerBuy' $bunkerBuyDriver 28
+    Invoke-EarnOfflineCheck 'BunkerBuy' 'EarnBunkerBuy' $bunkerBuyDriver 33
     $uiClickDriver = @'
 global clickMode := "", clickAbort := false, cursorMoves := 0, mouseEvents := [], dpiCalls := 0
 for c in [["normal",true,2,2,2,""],["abort-held",false,1,2,2,""],
     ["abort-before",false,0,0,0,""],["bad-size",false,0,0,2,""],
     ["abort-move",false,1,0,2,""],["lost-context",false,1,0,2,""],
-    ["throw-held",false,1,2,2,"held failure"]] {
+    ["throw-held",false,1,2,2,"held failure"],
+    ["keep-hover",true,1,2,2,"",false],
+    ["abort-held",false,1,2,2,"",false],
+    ["abort-move",false,1,0,2,"",false],
+    ["abort-settle",false,1,2,2,"",false]] {
     clickMode := c[1], clickAbort := clickMode = "abort-before", cursorMoves := 0, mouseEvents := [], dpiCalls := 0
     result := false, caught := ""
-    try result := EarnUIClick("known",100,200)
+    try result := c.Length = 7 ? EarnUIClick("known",100,200,"",c[7]) : EarnUIClick("known",100,200)
     catch as e
         caught := e.Message
     if (result != c[2] || cursorMoves != c[3] || mouseEvents.Length != c[4] || dpiCalls != c[5] || caught != c[6])
@@ -1227,7 +1567,7 @@ for c in [["normal",true,2,2,2,""],["abort-held",false,1,2,2,""],
     if (mouseEvents.Length && (mouseEvents[1] != "{Blind}{LButton down}" || mouseEvents[2] != "{Blind}{LButton up}"))
         throw Error("Mouse button was not released after an interrupted click")
 }
-FileAppend("PASS UIClickBoundary cases=7`n", "*")
+FileAppend("PASS UIClickBoundary cases=11`n", "*")
 ExitApp(0)
 EarnAborted() => clickAbort
 EarnUIReady(*) => !clickAbort && !(clickMode = "lost-context" && cursorMoves)
@@ -1267,11 +1607,13 @@ EarnSleep(ms) {
     global clickAbort
     if (clickMode = "abort-move" && ms = 80)
         clickAbort := true
+    if (clickMode = "abort-settle" && ms = 450)
+        clickAbort := true
     return !clickAbort
 }
 EarnFail(*) => false
 '@
-    Invoke-EarnOfflineCheck 'UIClickBoundary' 'EarnUIClick' $uiClickDriver 7
+    Invoke-EarnOfflineCheck 'UIClickBoundary' 'EarnUIClick' $uiClickDriver 11
     $uiBackDriver = @'
 global backOptions := Map(), backClockMs := 0, backAborted := false, backspaces := 0,
     backPageReadyAt := 0, backMCTAt := -1, backFocused := true
@@ -1350,10 +1692,11 @@ global config := Map("Settings", Map("EarnMCTOnly",1,"EarnBunker",1,"EarnBunkerI
 for mode in [1,0] {
     config["Settings"]["EarnMCTOnly"] := mode
     list := EarnTaskList()
-    if (list.Length != 6 || list[1].id != "safe" || list[2].id != "bunker"
-        || list[3].id != "dj" || list[4].id != "warehouse" || list[5].id != "staff" || list[6].id != "dispatch"
+    ; MCT 묶음(벙커·DJ·창고)이 앞, 앱에서 하는 금고·직원 파견이 뒤다.
+    if (list.Length != 6 || list[1].id != "bunker" || list[2].id != "dj"
+        || list[3].id != "warehouse" || list[4].id != "safe" || list[5].id != "staff" || list[6].id != "dispatch"
         || !list[1].on || !list[2].on || !list[3].on || !list[4].on || !list[5].on || list[6].on != !mode
-        || list[1].fn != EarnVinewoodSafeTask || list[4].fn != EarnWarehouseTask || list[5].fn != EarnVinewoodStaffTask)
+        || list[4].fn != EarnVinewoodSafeTask || list[3].fn != EarnWarehouseTask || list[5].fn != EarnVinewoodStaffTask)
         throw Error("MCT task priority, phone safe, or warehouse routing")
 }
 FileAppend("PASS MCTTaskList cases=2`n", "*")
@@ -1766,15 +2109,50 @@ EarnLog(*) => true
 Sleep(*) => true
 '@
     Invoke-EarnOfflineCheck 'MCTNav' 'EarnNavTo' $mctNavDriver 6
+    $mctStallDriver = @'
+global EARN_PROMPT_AREA := [], config := Map("Settings", Map("EarnTurnUnitsPerDeg",29))
+global walks := 0, progressing := false
+for progress in [false,true] {
+    progressing := progress, walks := 0
+    if (EarnNavTo("mct", "mct_sit") != progress || walks != (progress ? 5 : 4))
+        throw Error("MCT approach must stop oscillation and preserve real progress")
+}
+FileAppend("PASS MCTStall cases=2`n", "*")
+ExitApp(0)
+EarnSeen(*) => progressing && walks >= 5
+EarnAborted() => false
+EarnFail(*) => false
+EarnNavPlan(name, &a, &s, &g) {
+    a := 0, s := 20, g := 0
+    return true
+}
+EarnBlip(name, &a, &d) {
+    a := 0, d := progressing ? 60-walks*10 : 40-Mod(walks,2)*2
+    return true
+}
+EarnWalk(path) {
+    global walks
+    if (!RegExMatch(path,"^w:\d+$"))
+        throw Error("MCT stall must not start arbitrary sidesteps")
+    walks++
+    return true
+}
+EarnFace(*) => true
+EarnLog(*) => true
+Sleep(*) => true
+'@
+    Invoke-EarnOfflineCheck 'MCTStall' 'EarnNavTo' $mctStallDriver 2
     $faceDriver = @'
 global config := Map("Settings", Map("EarnTurnUnitsPerDeg",29)), EARN_PROMPT_AREA := []
 global sensitivity := 29, angle := 0, mode := "ok", turns := 0, walks := 0
 for value in [14.5,29,40] {
     sensitivity := value, angle := 110, mode := "ok", turns := 0, walks := 0
-    Check(EarnFace("mct") && Abs(angle) <= 5 && turns > 0 && turns < 8 && walks = 0, "sensitivity " value)
+    Check(EarnFace("mct") && Abs(angle) <= 5 && turns > 0 && turns < 8 && walks = 0
+        && Abs(config["Settings"]["EarnTurnUnitsPerDeg"]-value) < 1, "sensitivity " value)
 }
 for c in [[179,-179],[-179,179]] {
     sensitivity := 29, angle := c[1], turns := 0
+    config["Settings"]["EarnTurnUnitsPerDeg"] := 29
     Check(EarnFace("mct", c[2], 0.5) && Abs(Wrap(angle-c[2])) <= 0.5 && turns = 1, "angle boundary")
 }
 for testMode in ["blip-initial","blip-after","abort-initial","abort-after"] {

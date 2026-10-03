@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 $source = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\Earner.ahk') -Raw -Encoding UTF8
 $tick = [regex]::Match($source, '(?ms)^EarnTick\(\) \{.*?^\}').Value
 if (-not $tick) { throw 'EarnTick missing' }
-$guards = @('EarnInputGuardStart', 'EarnInputGuardStop', 'EarnInputWatch', 'EarnInputAllowed', 'EarnGamePID', 'EarnTaskList', 'EarnEnabledText', 'SetEarner', 'EarnStatusText') | ForEach-Object {
+$guards = @('EarnInputGuardStart', 'EarnInputGuardStop', 'EarnInputWatch', 'EarnInputAllowed', 'EarnGamePID', 'EarnTaskList', 'EarnEnabledText', 'SetEarner', 'EarnStatusText', 'EarnIsMCTTask', 'EarnRunScheduledTask', 'EarnRunMCTBatch', 'EarnFinishScheduledTask', 'EarnStopAfterFailure') | ForEach-Object {
     $body = [regex]::Match($source, ('(?ms)^' + $_ + '\([^\r\n]*\) \{.*?^\}')).Value
     if (-not $body) { throw "Production function missing: $_" }
     $body
@@ -16,9 +16,15 @@ $driver = @'
 #SingleInstance Off
 #NoTrayIcon
 #Warn All, StdOut
+OnError(EarnerOfflineFailure)
+EarnerOfflineFailure(failure, *) {
+    FileAppend("FAIL scheduler runtime: " failure.Message "`n", "**")
+    ExitApp(1)
+}
 global gEarnOn, gEarnBusy, gEarnDue, gEarnDone, gEarnTasks, gEarnCurrent, gEarnFail, gEarnNextDue, gEarnSoftFails, gEarnRetryIn, gAbort, config, GTA_WIN, afkOn
 global calls, releaseCount, stopped, mode, windowExists, focused, otherBusy, activationCount, idleMs, gEarnGuardArmed, timers
 global gEarnGamePID, fakePID, fakeTick, gEarnGuardStartedTick, lockAvailable, lockCalls, lockReleases, lockHeld, hooks, checkCount := 0
+global beginCount, endCount, beginCleanupCount, beginOK, endOK, beginThrows, endThrows, mctOpen, events, logs, taskModes, taskDurations, beginDelay, endDelay, endInput
 Reset()
 gEarnOn := false
 EarnTick()
@@ -45,7 +51,7 @@ EarnTick()
 Check(calls.Length = 0 && lockCalls = 0 && !gEarnGuardArmed, "two-second start gate waits at 1999ms")
 fakeTick++, idleMs++
 EarnTick()
-Check(calls.Length = 1 && gEarnDone["bunker"] = 1 && lockReleases = 1, "two-second start gate executes at 2000ms")
+Check(calls.Length = 2 && gEarnDone["bunker"] = 1 && lockReleases = 1, "two-second start gate executes at 2000ms")
 Reset()
 idleMs := 2000
 mode := "long-readonly"
@@ -88,7 +94,7 @@ EarnTick()
 EarnTick()
 EarnTick()
 Check(calls.Length = 2 && calls[1] = "bunker" && calls[2] = "dj", "serial and no immediate repeat")
-Check(gEarnDone["bunker"] = 1 && gEarnDone["dj"] = 1 && releaseCount = 2, "counts and release")
+Check(gEarnDone["bunker"] = 1 && gEarnDone["dj"] = 1 && releaseCount = 1, "counts and one grouped release")
 gEarnDue["bunker"] := A_TickCount - 1
 EarnTick()
 Check(calls.Length = 3 && gEarnDone["bunker"] = 2, "next cycle")
@@ -115,7 +121,7 @@ Check(lockReleases = 1 && !lockHeld, "exception releases input lock")
 Reset()
 mode := "reenter"
 EarnTick()
-Check(calls.Length = 1 && releaseCount = 1, "reentry blocked")
+Check(calls.Length = 2 && releaseCount = 1, "reentry blocked while outer group continues")
 Reset()
 focused := false
 EarnTick()
@@ -143,7 +149,7 @@ EarnTick()
 Check(gEarnOn && calls.Length = 0 && lockCalls = 1 && lockReleases = 0 && releaseCount = 0, "occupied input lock waits without input")
 lockAvailable := true
 EarnTick()
-Check(calls.Length = 1 && lockReleases = 1 && !lockHeld, "available lock resumes due task")
+Check(calls.Length = 2 && lockReleases = 1 && !lockHeld, "available lock resumes due group")
 Reset()
 mode := "lock-error"
 EarnTick()
@@ -158,17 +164,17 @@ Reset()
 for mctMode in [0,1] {
     config["Settings"]["EarnMCTOnly"] := mctMode
     tasks := EarnTaskList()
-    Check(tasks.Length = 6 && tasks[1].id = "safe" && tasks[2].id = "bunker" && tasks[3].id = "dj"
-        && tasks[4].id = "warehouse" && tasks[5].id = "staff" && tasks[6].id = "dispatch", "task order " mctMode)
-    Check(tasks[1].on && tasks[1].fn.Name = "EarnVinewoodSafeTask" && tasks[4].on
-        && tasks[4].fn.Name = "EarnWarehouseTask" && tasks[5].on
+    Check(tasks.Length = 6 && tasks[1].id = "bunker" && tasks[2].id = "dj" && tasks[3].id = "warehouse"
+        && tasks[4].id = "safe" && tasks[5].id = "staff" && tasks[6].id = "dispatch", "task order " mctMode)
+    Check(tasks[4].on && tasks[4].fn.Name = "EarnVinewoodSafeTask" && tasks[3].on
+        && tasks[3].fn.Name = "EarnWarehouseTask" && tasks[5].on
         && tasks[5].fn.Name = "EarnVinewoodStaffTask" && !tasks[6].on, "production tasks and MCT safe " mctMode)
 }
-Check(tasks[4].every = 600000 && tasks[1].every = 300000, "warehouse default and safe screen check interval")
+Check(tasks[3].every = 600000 && tasks[4].every = 300000, "warehouse default and safe screen check interval")
 config["Settings"]["EarnWarehouse"] := 0
 config["Settings"]["EarnWarehouseIntervalMin"] := 12
 tasks := EarnTaskList()
-Check(!tasks[4].on && tasks[4].every = 720000, "warehouse explicit setting")
+Check(!tasks[3].on && tasks[3].every = 720000, "warehouse explicit setting")
 config["Settings"]["EarnBailAgents"] := 0
 config["Settings"]["EarnCargoStaff"] := 0
 config["Settings"]["EarnStaffIntervalMin"] := 7
@@ -202,8 +208,8 @@ EarnTick()
 EarnTick()
 EarnTick()
 EarnTick()
-Check(calls.Length = 5 && calls[1] = "safe" && calls[2] = "bunker" && calls[3] = "dj"
-    && calls[4] = "warehouse" && calls[5] = "staff" && lockReleases = 5, "real task list consumes all five tasks serially")
+Check(calls.Length = 5 && calls[1] = "bunker" && calls[2] = "dj" && calls[3] = "warehouse"
+    && calls[4] = "safe" && calls[5] = "staff" && lockReleases = 3, "real task list consumes MCT group then two app tasks")
 FileAppend("PASS Earner: " checkCount " cases; no game input`n", "*")
 ExitApp(0)
 
@@ -211,59 +217,70 @@ Reset() {
     global
     fakeTick := 100000, idleMs := 60000, gEarnGuardArmed := false, gEarnGuardStartedTick := 0
     timers := [], fakePID := 101, gEarnGamePID := 101
+    beginCount := 0, endCount := 0, beginCleanupCount := 0, beginOK := true, endOK := true,
+        beginThrows := false, endThrows := false, mctOpen := false, events := [], logs := [],
+        taskModes := Map(), taskDurations := Map(), beginDelay := 0, endDelay := 0, endInput := false
     lockAvailable := true, lockCalls := 0, lockReleases := 0, lockHeld := false, hooks := 0
     gEarnOn := true, gEarnBusy := false, gEarnCurrent := "", gEarnFail := "", gEarnRetryIn := 0, gAbort := false, afkOn := false
     gEarnDue := Map("bunker", A_TickCount - 1, "dj", A_TickCount - 1)
     gEarnDone := Map("bunker", 0, "dj", 0), gEarnNextDue := Map(), gEarnSoftFails := Map()
     gEarnTasks := [{id:"bunker", label:"bunker", on:true, every:300000, fn:RunTask.Bind("bunker")}, {id:"dj", label:"dj", on:true, every:300000, fn:RunTask.Bind("dj")}]
     config := Map("Settings", Map("EarnUserIdleSec", 2, "EarnSoftFailMax", 1, "EarnMCTOnly",1,
-        "EarnSafe",1,"EarnSafeIntervalMin",5,"EarnSafeFirstMin",0,"EarnBunker",1,"EarnBunkerIntervalSec",8400,
+        "EarnSafe",1,"EarnSafeIntervalMin",5,"EarnSafeFirstMin",0,"EarnBunker",1,"EarnBunkerIntervalSec",6720,
         "EarnDJ",1,"EarnDJIntervalMin",5,"EarnDispatch",0,"EarnDispatchIntervalMin",48,"EarnDispatchFirstMin",0),
         "Features", Map("AntiAFK", 0))
     GTA_WIN := "fake", calls := [], releaseCount := 0, stopped := 0, mode := "ok", windowExists := true, focused := true, otherBusy := false, activationCount := 0
 }
-RunTask(id) {
+RunTask(id, manageSession := true) {
     global calls, mode, gEarnNextDue, gEarnRetryIn, idleMs, focused, fakePID, fakeTick
+    if (!lockHeld || !gEarnBusy || !gEarnGuardArmed)
+        throw Error("Every body must share the live input lock and guard")
+    if (EarnIsMCTTask(id) ? manageSession || !mctOpen : mctOpen)
+        throw Error("MCT bodies require the shared session; apps require it closed")
     calls.Push(id)
-    if (mode = "long-readonly") {
+    events.Push(id)
+    taskMode := taskModes.Get(id,mode)
+    duration := taskDurations.Get(id,0)
+    fakeTick += duration, idleMs += duration
+    if (taskMode = "long-readonly") {
         fakeTick += 30000
         idleMs += 30000
         EarnInputWatch()
         return true
     }
-    if (mode = "long-physical") {
+    if (taskMode = "long-physical") {
         fakeTick += 10000
         idleMs := 5000
         EarnInputWatch()
         return true
     }
-    if (mode = "pid") {
+    if (taskMode = "pid") {
         fakePID++
         EarnInputWatch()
         return true
     }
-    if (mode = "physical" || mode = "idle-zero") {
+    if (taskMode = "physical" || taskMode = "idle-zero") {
         idleMs := 0
         EarnInputWatch()
         gEarnRetryIn := 60000
         return true
     }
-    if (mode = "focus") {
+    if (taskMode = "focus") {
         focused := false
         EarnInputWatch()
         return true
     }
-    if (mode = "override")
+    if (taskMode = "override")
         gEarnNextDue[id] := A_TickCount + 300000
-    if (mode = "retry") {
+    if (taskMode = "retry") {
         gEarnRetryIn := 60000
         return false
     }
-    if (mode = "fail")
+    if (taskMode = "fail")
         return EarnFail("expected failure")
-    if (mode = "throw")
+    if (taskMode = "throw")
         throw Error("test exception")
-    if (mode = "reenter")
+    if (taskMode = "reenter")
         EarnTick()
     return true
 }
@@ -331,12 +348,47 @@ InstallMouseHook(*) {
 }
 KeyLabelFor(*) => "F9"
 EarnVinewoodSafeTask() => RunTask("safe")
-EarnBunkerTask() => RunTask("bunker")
-EarnDJTask() => RunTask("dj")
-EarnWarehouseTask() => RunTask("warehouse")
+EarnBunkerTask(manageSession := true) => RunTask("bunker",manageSession)
+EarnDJTask(manageSession := true) => RunTask("dj",manageSession)
+EarnWarehouseTask(manageSession := true) => RunTask("warehouse",manageSession)
 EarnVinewoodStaffTask() => RunTask("staff")
 EarnDispatchTask() => RunTask("dispatch")
-EarnLog(*) {
+EarnTaskMCTBegin() {
+    global beginCount, beginCleanupCount, mctOpen, fakeTick, idleMs
+    if (!lockHeld || !gEarnGuardArmed || mctOpen)
+        throw Error("Group begin requires one guarded lock and no open session")
+    beginCount++, events.Push("begin")
+    fakeTick += beginDelay, idleMs += beginDelay
+    if (!beginOK || beginThrows) {
+        beginCleanupCount++
+        if (beginThrows)
+            throw Error("begin exception")
+        return EarnFail("begin failed")
+    }
+    mctOpen := true
+    return true
+}
+EarnTaskMCTEnd() {
+    global endCount, mctOpen, fakeTick, idleMs
+    if (!lockHeld || !gEarnGuardArmed || !mctOpen)
+        throw Error("Group end must retain its single input lock and guard")
+    endCount++, events.Push("end")
+    fakeTick += endDelay, idleMs += endDelay
+    if (endInput) {
+        idleMs := 0
+        EarnInputWatch()
+    }
+    if (endThrows)
+        throw Error("end exception")
+    if (!endOK || gAbort)
+        return EarnFail("end failed")
+    mctOpen := false
+    return true
+}
+EarnLog(message) {
+    logs.Push(message)
+    if (SubStr(message,1,3) = "끝: " && mctOpen)
+        throw Error("Completion log cannot precede MCT cleanup")
 }
 ShowTooltip(*) {
 }

@@ -18,15 +18,24 @@ $driver = @'
 #SingleInstance Off
 #NoTrayIcon
 #Warn All, StdOut
+OnError(PolicyRuntimeFailure)
+PolicyRuntimeFailure(failure, *) {
+    FileAppend("FAIL policy runtime: " failure.Message "`n", "**")
+    ExitApp(1)
+}
 global assertions := 0
 
 ; Name, supply, stock, requested seconds, buy, bars, wait milliseconds, reason.
 cases := [
-    ["default full", 1, 0, 8400, false, 5, 8400000, "wait_boundary"],
-    ["default half", 0.5, 0.4, 8400, false, 5, 4200000, "wait_boundary"],
-    ["default does not buy one bar", 0.8, 0.4, 8400, false, 5, 6720000, "wait_boundary"],
-    ["default empty", 0, 0.4, 8400, true, 5, 0, "boundary"],
-    ["default nearly empty waits", 0.002, 0.4, 8400, false, 5, 16800, "wait_boundary"],
+    ["112 minute full", 1, 0, 6720, false, 4, 6720000, "wait_boundary"],
+    ["112 minute half", 0.5, 0.4, 6720, false, 4, 2520000, "wait_boundary"],
+    ["112 minute remaining one bar", 0.2, 0.4, 6720, true, 4, 0, "boundary"],
+    ["112 minute observed after delivery", 0.99, 0.4, 6720, false, 4, 6636000, "wait_boundary"],
+    ["explicit 140 minute full", 1, 0, 8400, false, 5, 8400000, "wait_boundary"],
+    ["explicit 140 minute half", 0.5, 0.4, 8400, false, 5, 4200000, "wait_boundary"],
+    ["explicit 140 minute does not buy one bar", 0.8, 0.4, 8400, false, 5, 6720000, "wait_boundary"],
+    ["explicit 140 minute empty", 0, 0.4, 8400, true, 5, 0, "boundary"],
+    ["explicit 140 minute nearly empty waits", 0.002, 0.4, 8400, false, 5, 16800, "wait_boundary"],
     ["one bar", 0.8, 0.4, 1680, true, 1, 0, "boundary"],
     ["two bars", 0.6, 0.4, 3360, true, 2, 0, "boundary"],
     ["three bars", 0.4, 0.4, 5040, true, 3, 0, "boundary"],
@@ -64,7 +73,11 @@ for c in cases {
     Check(plan.buy = c[5] && plan.bars = c[6] && plan.waitMs = c[7] && plan.reason = c[8], c[1])
 }
 plan := EarnBunkerOrderPlan(0.8, 0.4)
-Check(!plan.buy && plan.bars = 5, "omitted interval defaults to 140 minutes")
+Check(!plan.buy && plan.bars = 4, "omitted interval defaults to 112 minutes")
+plan := EarnBunkerOrderPlan(0.21, 0.4)
+Check(!plan.buy && plan.bars = 4 && plan.waitMs = 84000, "default waits one production tick before remaining 20 percent")
+plan := EarnBunkerOrderPlan(0.19, 0.4)
+Check(!plan.buy && plan.bars = 5, "missed final nonempty boundary does not silently allow rounded spending")
 
 priceCases := [
     [15000, 1, true], [30000, 2, true], [45000, 3, true], [60000, 4, true], [75000, 5, true],
@@ -257,7 +270,7 @@ try {
     }
     $stdout = $testProcess.StandardOutput.ReadToEnd().Trim()
     $stderr = $testProcess.StandardError.ReadToEnd().Trim()
-    if ($testProcess.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnPolicy cases=101') {
+    if ($testProcess.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnPolicy cases=107') {
         throw "EarnPolicy failed (exit=$($testProcess.ExitCode))`nstdout: $stdout`nstderr: $stderr"
     }
     Write-Output $stdout

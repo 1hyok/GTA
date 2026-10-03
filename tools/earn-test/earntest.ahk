@@ -41,7 +41,7 @@ Hotkey("~End", StopAll)
 global gImageRoot := A_ScriptDir "\..\..\Images"
 global config := Map("Settings", Map("KeyHoldTime", 100, "EarnKeyDelay", 350, "SessionMenuDelay", 600, "EarnLoadMinSec", 8, "EarnLoadTimeoutSec", 240, "EarnTurnUnitsPerDeg", 29, "EarnRerollMax", 12, "EarnReachPx", 14, "EarnWalkRetry", 3, "EarnSafeRetryMin", 15, "EarnSoftFailMax", 12))
 config["Settings"]["EarnDJPopularityPct"] := 95
-config["Settings"]["EarnBunkerIntervalSec"] := 8400
+config["Settings"]["EarnBunkerIntervalSec"] := 6720
 config["Settings"]["EarnBailAgents"] := 1
 config["Settings"]["EarnCargoStaff"] := 1
 if (!A_Args.Length) {
@@ -83,6 +83,7 @@ Probe() {
 
 MCTStatus() {
     return "mct=" EarnSeen("mct_title", [0.3,0,0.7,0.1])
+        . " needsCEO=" EarnSeen("mct_need_ceo") " seated=" EarnSeen("mct_seated", [0,0,0.3,0.1]) " sit=" EarnSeen("mct_sit", [0,0,0.3,0.1])
         . " bunkerPage=" EarnSeen("bunker_page") " bunkerPageExplicit=" EarnSeen("bunker_page", [0.15,0,0.35,0.12])
         . " bunkerBuy=" EarnSeen("bunker_buy") " bunkerConfirm=" EarnSeen("bunker_confirm") " bunkerPending=" EarnSeen("bunker_pending")
         . " bunkerCard=" EarnSeen("mct_bunker_card") " nightclubCard=" EarnSeen("mct_nightclub_card")
@@ -128,7 +129,7 @@ MCTTasksSmoke() {
         return false
     config["Settings"]["EarnMCTOnly"] := 1
     config["Settings"]["EarnDJPopularityPct"] := 95
-    config["Settings"]["EarnBunkerIntervalSec"] := 8400
+    config["Settings"]["EarnBunkerIntervalSec"] := 6720
     if (EarnSeen("nc_home")) {
         EarnLog("DJ 복귀: Tale Resident=" EarnSeen("dj_resident_right", [0.61,0.50,0.835,0.58]))
         if (!EarnUIClick("nc_home", 495, 596) || !EarnUIBackToMCT("nc_dj_menu", 1))
