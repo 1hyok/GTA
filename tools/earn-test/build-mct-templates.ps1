@@ -39,8 +39,13 @@ foreach ($item in $items) {
  $source = [Drawing.Bitmap]::FromFile((Join-Path $sourceDirectory ($item[0]+'.png')))
  $comparison = $null
  try {
-  if ($item[1] -in @('nc_dj_menu','nc_home')) {
-   $comparison = [Drawing.Bitmap]::FromFile((Join-Path $fixtures ($item[1]+'-current.png')))
+  if ($item[1] -in @('nc_dj_menu','nc_home','bunker_buy','bunker_confirm')) {
+   $comparisonName = switch ($item[1]) {
+    'bunker_buy' { 'bunker-buy-75000.png' }
+    'bunker_confirm' { 'bunker-confirm-75000.png' }
+    default { $item[1]+'-current.png' }
+   }
+   $comparison = [Drawing.Bitmap]::FromFile((Join-Path $fixtures $comparisonName))
   }
   $rect = New-Object Drawing.Rectangle ([int]$item[2]),([int]$item[3]),([int]$item[4]),([int]$item[5])
   $crop = $source.Clone($rect, $source.PixelFormat)
@@ -51,8 +56,9 @@ foreach ($item in $items) {
      for ($x=0; $x -lt $crop.Width; $x++) {
       $c = $crop.GetPixel($x,$y)
       if ($null -ne $comparison) {
-       # Stable glyph interiors across the old DJ page and current Home page.
-       # Antialias fringes need variation 58-66; keep both samples within 30.
+       # Stable glyph interiors across independently observed pages. Bunker
+       # price widths move the centered label by a subpixel ($45,000/$75,000);
+       # its antialias fringe needs variation 105. Keep both samples within 30.
        $other = $comparison.GetPixel($x,$y)
        $bright = $c.R -ge 200 -and $c.G -ge 200 -and $c.B -ge 200 -and $other.R -ge 200 -and $other.G -ge 200 -and $other.B -ge 200
        $stable = [Math]::Abs([int]$c.R-$other.R) -le 60 -and [Math]::Abs([int]$c.G-$other.G) -le 60 -and [Math]::Abs([int]$c.B-$other.B) -le 60
