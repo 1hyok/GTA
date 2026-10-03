@@ -21,7 +21,7 @@ $workingTree = $null
 $runtimeVersion = $null
 $runtimeHash = $null
 $sourceHashes = @()
-$ahkSuites = @('test-earner', 'test-antiafk', 'test-altf4teleport', 'test-earnnav', 'test-earntasks', 'test-earnblip',
+$ahkSuites = @('test-earner', 'test-antiafk', 'test-altf4teleport', 'test-botwarp-stop', 'test-claw-stop', 'test-autoclick-stop', 'test-earnnav', 'test-earntasks', 'test-earnblip',
     'test-earnpolicy', 'test-earnscreen', 'test-earnscreen-command', 'test-earnvinewood', 'test-earnwarehouse-read', 'test-earnwarehouse',
     'test-earnstaff', 'test-afk-notification-command', 'test-afk-input-lock')
 $expectedChecks = @('syntax-powershell', 'syntax-python', 'validate-main') + $ahkSuites + @(
