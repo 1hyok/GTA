@@ -1764,6 +1764,8 @@ MenuCheck(condition,label) {
         throw Error(label)
     menuTests++
 }
+; 글자 템플릿이 맞으면 안내 상자 바탕 확인도 통과한 것으로 본다.
+TemplateAt(*) => true
 TemplateSeen(folder,name,area := "",&fx := 0,&fy := 0,variation := 40) {
     global menuScene, menuBoss, menuCursor, menuMode
     if (name = "mct_need_ceo" && (!(area is Array) || area.Length != 4

@@ -476,6 +476,8 @@ AFKDismissNotification(*) {
     return notificationResult
 }
 ShowTooltip(message,*) => warnings.Push(message)
+; 글자 템플릿이 맞으면 안내 상자 바탕 확인도 통과한 것으로 본다.
+TemplateAt(*) => true
 TemplateSeen(folder,name,*) {
     global menuReads
     if (folder != "Earn" && folder != "JobWarp")
