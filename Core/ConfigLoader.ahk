@@ -24,7 +24,7 @@ CONFIG_DEFAULTS["Settings"] := Map(
     "SessionMenuDelay", 600,
     "AFKUserIdleSec", 45, "AFKIntervalSec", 200, "AFKJitterSec", 20, "AFKTapMs", 150, "AFKGapMs", 250, "AFKOnStart", 1,
     "AFKRefocusIdleSec", 300, "AFKRefocusSettleMs", 800,
-    "OverlayEnabled", 1, "OverlayXPct", 98, "OverlayYPct", 18, "DiscordHUDPath", "",
+    "OverlayEnabled", 1, "OverlayXPct", 98, "OverlayYPct", 18, "DiscordHUDPath", "", "SaleAlertName", "", "SaleAlertIntervalSec", 10,
     "MenuTopOffset", 0, "SnackMenuSteps", 4, "SnackSubSteps", 2, "SnackItemSteps", 0, "SnackCount", 1, "SnackCloseMenu", 1,
     "EarnKeyDelay", 350, "EarnTurnUnitsPerDeg", 29, "EarnRerollMax", 12, "EarnReachPx", 14, "EarnWalkRetry", 3, "EarnUserIdleSec", 2, "EarnLoadMinSec", 8, "EarnLoadTimeoutSec", 240,
     "EarnMCTOnly", 1, "EarnBunker", 0, "EarnBunkerIntervalSec", 6720, "EarnDJ", 0, "EarnDJIntervalMin", 5, "EarnDJPopularityPct", 95,

@@ -41,6 +41,7 @@ A_MenuMaskKey := "vkE8"
 #Include Features\Overlay.ahk
 #Include Features\Panel.ahk
 #Include Features\DiscordHUD.ahk
+#Include Features\SaleQueueAlert.ahk
 
 ; === 초기화 ===
 ; 0929 04:14 이후 AFK 로그가 끊기고 15시쯤 방치 킥을 당했다. 04:15:52 에 Claude 데스크톱 앱이 자동 업데이트로 재시작했는데,
@@ -90,6 +91,8 @@ if (config["Settings"]["OverlayEnabled"])
     SetOverlay(true)
 ; 디코 오버레이(DiscordChatHUD)를 같이 띄운다. 경로는 Config [Settings] DiscordHUDPath, 비우면 끈다.
 StartDiscordHUD()
+; 디코 오버레이의 판매 대기열 맨 위에 내 이름이 오면 알린다. Config [Settings] SaleAlertName 이 비면 끈다.
+SetSaleQueueAlert()
 
 ; === 시작 메시지 ===
 ShowTooltip("✅ GTA 매크로 시작됨 (게임 창에서만 동작)`n" KeyLabelFor("Help") ": 단축키 보기 (두 번: 설정 창) | " KeyLabelFor("StopAll") ": 전체 멈춤 | " KeyLabelFor("Exit") ": 종료", 3000)
