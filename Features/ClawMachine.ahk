@@ -176,7 +176,8 @@ ClawAttempt() {
         ClawLog("이전 판이 중간 단계에 멈춰 있어 내려서 정리")
         if (ClawSeen("right"))
             PressKey("d")
-        ClawWaitFor("down", 3000)
+        if (!ClawWaitFor("down", 3000))
+            return false
         PressKey("Enter")
         Sleep(3000)
         ClawWaitFor("play", s["ClawResultTimeout"])

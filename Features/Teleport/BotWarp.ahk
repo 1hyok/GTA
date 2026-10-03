@@ -391,10 +391,19 @@ BotWarpSteamJoin(chat, &why) {
     if (!BotWarpSteamClick(wx + BOTWARP_FILTER_OFS[1], wy + BOTWARP_FILTER_OFS[2], "Left", chatWin, &why))
         return false
     Sleep(150)
+    if (BotWarpStopPressed() || !WinActive(chatWin)) {
+        why := BotWarpStopPressed() ? "중단" : "스팀 창이 앞에 없음"
+        return false
+    }
     Send("^a")
     Sleep(100)
-    for ch in StrSplit(BOTWARP_FILTER_TEXT)
+    for ch in StrSplit(BOTWARP_FILTER_TEXT) {
+        if (BotWarpStopPressed() || !WinActive(chatWin)) {
+            why := BotWarpStopPressed() ? "중단" : "스팀 창이 앞에 없음"
+            return false
+        }
         Send("{U+" Format("{:04X}", Ord(ch)) "}")
+    }
     if (!BotWarpSteamWait(s["BotWarpSteamFilterMs"])) {
         why := "중단"
         return false
@@ -429,7 +438,10 @@ BotWarpSteamJoin(chat, &why) {
     if (!BotWarpSteamClick(fx, fy, "Left", "ahk_exe " BOTWARP_STEAM_EXE, &why))
         return false
     MacroLog("botwarp", "Join Game 누름 (" fx "," fy ", 예상 자리에서 " (fx - jx) "," (fy - jy) ", 봇 줄 " s["BotWarpBotRow"] ")")
-    Sleep(300)
+    if (!BotWarpSteamWait(300)) {
+        why := "중단"
+        return false
+    }
     return true
 }
 
@@ -599,6 +611,15 @@ BotWarpSteamClick(x, y, button, activeTitle, &why) {
         }
     }
     Sleep(80)
+    ; 대기 중 End나 창 전환이 끼어들면 이미 시작한 호출도 입력 없이 끝낸다.
+    if (BotWarpStopPressed()) {
+        why := "중단"
+        return false
+    }
+    if (!WinActive(activeTitle)) {
+        why := "스팀 창이 앞에 없음"
+        return false
+    }
     Click(button)   ; 지금 커서 자리에서
     MacroLog("botwarp", "스팀 " button " 클릭 " x "," y)
     return true
