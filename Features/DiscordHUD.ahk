@@ -28,6 +28,13 @@ StartDiscordHUD() {
 
 DiscordHUDKeepGTAFront(deadline) {
     global GTA_WIN
+    static loginNoticed := false
+    ; 로그인 창(제목 "계정 연결")이 뜨면 GTA 뒤로 숨기 전에 한 번 알린다(1003 20:22 실측: 강제 종료 뒤 새로 띄우자 다시 로그인을 물었다).
+    if (!loginNoticed && WinExist("계정 연결 ahk_exe DiscordChatHUD.exe")) {
+        loginNoticed := true
+        MacroLog("hud", "디코 오버레이가 로그인을 기다림")
+        ShowTooltip("💬 디코 오버레이 로그인 필요: 작업 표시줄의 DiscordChatHUD 창", 8000)
+    }
     if (A_TickCount >= deadline || !WinExist(GTA_WIN))
         return
     if (WinActive("ahk_exe DiscordChatHUD.exe") || WinActive("ahk_exe DiscordChatHUD_Config.exe")) {
