@@ -34,6 +34,7 @@ RegisterActions() {
     gActions.Push({id: "WalkCtrl", label: "벨럼", fn: (*) => ToggleVellumDriving(), feature: "Movement", state: (*) => vellumDrivingRunning ? "켜짐" : ""})
     gActions.Push({id: "CayoPericoTimer", label: "카요 타이머", fn: (*) => ToggleCayoPericoTimer(), feature: "Timer", state: (*) => cayoTimerRunning ? "켜짐" : ""})
     gActions.Push({id: "Snack", label: "스낵", fn: (*) => EatSnack(), feature: "MenuMacros"})
+    gActions.Push({id: "SaleAlert", label: "판매 차례 알림", fn: (*) => ToggleSaleAlert(), state: (*) => gSaleOn ? "켜짐" : ""})
     gActions.Push({id: "Earner", label: "수익 자동화", fn: (*) => ToggleEarner(), feature: "Earner", confirm: true, state: (*) => gEarnOn ? "켜짐" : ""})
     gActions.Push({id: "Help", label: "도움말", fn: (*) => HelpKey()})   ; 두 번 누르면 설정 창
     gActions.Push({id: "StopAll", label: "전체 멈춤", fn: (*) => StopAll("hotkey")})
