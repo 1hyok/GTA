@@ -25,7 +25,7 @@ FileAppend("PASS EarnVinewood cases=" gTests Chr(10), "*", "UTF-8")
 ExitApp(0)
 
 RunTests() {
-    global gClaims, gClaimAttempts, gKeys, gState, gMctCloses, gCEOCalls, gFailure
+    global gSelected, gClaims, gClaimAttempts, gKeys, gState, gMctCloses, gCEOCalls, gFailure
     ; mode, starting screen, success, successful nightclub claims, final screen.
     cases := [
         ["full", "main", true, 1, "standing"],
@@ -95,6 +95,11 @@ RunTests() {
     Check(EarnVinewoodNightclubAmount(lines) = 250000, "comma-formatted detail amount")
     Check(EarnVinewoodNightclubAmount(Frame("Claim $250000 from your Nightclub safe.")) = 250000, "plain detail amount")
     Check(EarnVinewoodNightclubAmount(Frame("Claim $50000 from ydÜr Nightclub safe.")) = 50000, "garbled your still reads amount")
+    savedSelected := gSelected, gSelected := ": Nightclub"
+    Check(EarnVinewoodNightclubAmount([FakeLine("THE VINEWOOD CLUB APP"), FakeLine(": Nightclub"), FakeLine("Claim $100000 from your Nightclub safe.")]) = 100000, "leading colon on selected Nightclub row")
+    gSelected := savedSelected
+    for item in [[0,232],[50000,184],[150000,88],[200000,40],[245000,40]]
+        Check(EarnVinewoodSafeNextMs(item[1]) = item[2]*60000, "safe next check after $" item[1])
     Check(EarnVinewoodNightclubAmount(Frame("Your Nightclub safe is empty.")) = 0, "explicit nightclub empty detail")
     for text in ["Claim $250000 from your Arcade safe.", "Your Arcade safe is empty.", "Nightclub $250000", "Claim $25O000 from your Nightclub safe.", "Claim $250,00 from your Nightclub safe.", "Claim $250 000 from your Nightclub safe.", "Claim $250000 from your Nightclub safe. Confirm?", "Claim $250000 from Nightclub safe.", "Claim $250000 from your Arcade Nightclub safe"]
         Check(EarnVinewoodNightclubAmount(Frame(text)) = -1, "reject detail: " text)
@@ -222,6 +227,7 @@ EarnFail(message) {
     gFailure := message
     return false
 }
+EarnScheduleNext(*) => true
 EarnLog(*) {
 }
 Check(ok, name) {

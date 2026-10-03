@@ -1,4 +1,4 @@
-; 1920x1080 영어 나이트클럽 웹 UI. 판매 탭은 수량을 읽는 데만 쓴다.
+﻿; 1920x1080 영어 나이트클럽 웹 UI. 판매 탭은 수량을 읽는 데만 쓴다.
 ; 재고는 OCR, 직원 연결은 선택된 품목의 사람 아이콘으로 각각 확인한다.
 EarnWarehouseTask(manageSession := true) {
     if (manageSession && !EarnTaskMCTBegin())
@@ -21,8 +21,11 @@ EarnWarehouseManage() {
         if (!goods)
             return false
         EarnWarehouseSellNotice(goods)
+        if (A_Index = 1)
+            EarnWarehouseTrack(goods)
         if (stockOnly) {
             EarnLog("창고: 판매 탭 재고상 옮길 일 없음(만재 품목과 빈자리 품목이 함께 있지 않음), 직원 관리 화면 생략")
+            EarnWarehouseSchedule()
             return EarnWarehouseReturn()
         }
         try moves := EarnWarehousePlan(goods)
@@ -30,6 +33,8 @@ EarnWarehouseManage() {
             return EarnFail("창고: " e.Message)
         if (!moves.Length) {
             EarnLog("창고: 이동할 만재 담당 직원 또는 빈 목적지 없음")
+            if (A_Index = 1)
+                EarnWarehouseSchedule()
             return EarnWarehouseReturn()
         }
         if (A_Index = 6)
@@ -283,6 +288,63 @@ EarnWarehouseSellNotice(goods) {
         ShowTooltip("💰 " gEarnSellNotice, 10000)
     }
     return count
+}
+
+; 판매 탭 재고가 늘어난 시점들로 품목별 생산 속도를 재고, 가장 먼저 만재가 될 시각까지 다음 확인을 미룬다.
+; 재고가 늘어난 때는 직전 관측과 이번 관측 사이 어딘가이므로 직전 관측 시각으로 잡는다(일찍 보는 쪽으로만 어긋난다).
+; goods 없이 부르면 다음 확인까지 ms 를 낸다. 0 이면 기본 간격(EarnWarehouseIntervalMin)을 쓴다:
+; 늘고 있는데 속도를 아직 모르는 품목이 있거나, 처음 본 지 150분이 안 돼 생산 중인지 모르는 품목이 있을 때다.
+EarnWarehouseTrack(goods := "", now := 0) {
+    static seen := Map()
+    now := now ? now : A_TickCount
+    if (goods = "reset") {
+        seen.Clear()
+        return 0
+    }
+    if (IsObject(goods)) {
+        for row in goods {
+            if (!seen.Has(row.id)) {
+                seen[row.id] := {count: row.count, cap: row.capacity, obs: now, first: now, rose: 0, roseCount: 0, rate: 0}
+                continue
+            }
+            g := seen[row.id]
+            if (row.count > g.count) {
+                if (g.rose)
+                    g.rate := (g.obs - g.rose) / (row.count - g.roseCount)
+                g.rose := g.obs, g.roseCount := row.count
+            } else if (row.count < g.count) {
+                g.rose := 0
+            }
+            g.count := row.count, g.cap := row.capacity, g.obs := now
+        }
+        return 0
+    }
+    next := 0
+    for id, g in seen {
+        if (g.count >= g.cap)
+            continue
+        if (!g.rate) {
+            if (g.rose || now - g.first < 150 * 60000)
+                return 0
+            continue
+        }
+        ; 두 번의 생산 주기 넘게 안 늘었으면 직원이 빠진 품목으로 본다.
+        if (!g.rose || now - g.rose > 2 * g.rate + 20 * 60000)
+            continue
+        full := g.rose + (g.cap - g.roseCount) * g.rate
+        next := next ? Min(next, full) : full
+    }
+    if (!next || next - now < 15 * 60000)
+        return 0
+    return Min(next - now, 240 * 60000)
+}
+
+EarnWarehouseSchedule() {
+    ms := EarnWarehouseTrack()
+    if (!ms)
+        return true
+    EarnLog("창고: 가장 먼저 만재될 품목 예상까지 " Round(ms / 60000) "분, 그때 다시 확인")
+    return EarnScheduleNext("warehouse", ms)
 }
 
 EarnWarehouseReturn() {

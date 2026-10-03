@@ -1,10 +1,11 @@
-; Vinewood 앱 직원 파견. 화면의 선택·상세 문구와 파견 후 상태를 함께 확인한다.
+﻿; Vinewood 앱 직원 파견. 화면의 선택·상세 문구와 파견 후 상태를 함께 확인한다.
 EarnVinewoodStaffTask() {
     global config
     s := config["Settings"]
     bail := s["EarnBailAgents"], cargo := s["EarnCargoStaff"]
     if (!bail && !cargo)
         return true
+    EarnStaffTrack("reset")
     if (!EarnVinewoodOpen() || !EarnStaffRoot())
         return false
     if (bail && !EarnStaffBailAgents())
@@ -13,7 +14,39 @@ EarnVinewoodStaffTask() {
         if (!EarnStaffRoot() || !EarnStaffCargoWarehouses())
             return false
     }
+    ms := EarnStaffTrack()
+    EarnLog("직원: 다음 확인 " Round(ms / 60000) "분 뒤")
+    EarnScheduleNext("staff", ms)
     return EarnVinewoodClose()
+}
+
+; 보석 집행 요원과 스페셜 패키지 직원은 파견 뒤 게임 하루(48분) 안팎에 돌아온다
+; (1003 실측: 두 종류 모두 파견 43분 뒤엔 작업 중, 55분 뒤엔 준비). 앱에는 남은 시간이 안 나온다.
+; 이 회차에 본 대상마다 보낸 시각으로 복귀 예정을 잡고, 가장 이른 복귀 1분 뒤에 다시 본다.
+; 언제 보냈는지 모르는 작업 중 대상(Main 재시작 뒤)이나 예정을 넘겨도 작업 중인 대상은 5분 뒤 다시 본다. 만재 창고는 판매 전에는 안 바뀌므로 빼고 센다.
+EarnStaffTrack(key := "", state := "") {
+    static sent := Map(), seen := Map()
+    if (key = "reset") {
+        seen.Clear()
+        return 0
+    }
+    if (key != "") {
+        if (state = "sent")
+            sent[key] := A_TickCount, state := "busy"
+        seen[key] := state
+        return 0
+    }
+    now := A_TickCount, next := 0
+    for name, st in seen {
+        if (st != "busy")
+            continue
+        due := sent.Has(name) ? sent[name] + 49 * 60000 : 0
+        if (due <= now)
+            due := now + 300000
+        next := next ? Min(next, due) : due
+    }
+    seen.Clear()
+    return next ? Max(60000, next - now) : 300000
 }
 
 ; 확인한 앱 메뉴만 거슬러 올라간다. 알 수 없는 화면에는 Backspace를 보내지 않는다.
@@ -58,6 +91,7 @@ EarnStaffBailAgents() {
     if (!EarnStaffMenuTarget("i)^Agent 1$") && EarnStaffMenuTarget("i)^Warehouse$")
         && EarnStaffMenuTarget("i)^Bail Office$")) {
         EarnLog("직원: 보석 사무소 비활성(요원 모두 작업 중), 건너뜀")
+        EarnStaffTrack("bail 1", "busy"), EarnStaffTrack("bail 2", "busy")
         return true
     }
     Loop 2 {
@@ -67,6 +101,7 @@ EarnStaffBailAgents() {
         state := EarnStaffReadBail(agent)
         if (state = "busy") {
             EarnLog("직원: 보석 집행 요원 " agent " 작업 중, 건너뜀")
+            EarnStaffTrack("bail " agent, "busy")
             continue
         }
         if (state != "ready")
@@ -79,6 +114,7 @@ EarnStaffBailAgents() {
         if (!EarnStaffWaitBusy("bail", agent, deadline))
             return EarnFail("직원: 보석 집행 요원 " agent " 파견 결과 미확인, 재요청 중단")
         EarnLog("직원: 보석 집행 요원 " agent " 파견 확인")
+        EarnStaffTrack("bail " agent, "sent")
     }
     return true
 }
@@ -99,6 +135,7 @@ EarnStaffCargoWarehouses() {
         visited[StrLower(current.name)] := true
         if (current.state = "busy" || current.state = "full") {
             EarnLog("직원: " current.name (current.state = "busy" ? " 조달 중" : " 만재") ", 건너뜀")
+            EarnStaffTrack("cargo " current.name, current.state)
         } else {
             if (current.state != "ready" || current.price != 7500)
                 return EarnFail("직원: " current.name " 준비 문구 또는 $7,500 미확인")
@@ -111,6 +148,7 @@ EarnStaffCargoWarehouses() {
             if (!EarnStaffWaitBusy("cargo", current, deadline))
                 return EarnFail("직원: " current.name " 조달 결과 미확인, 재구매 중단")
             EarnLog("직원: " current.name " $7,500 조달 확인")
+            EarnStaffTrack("cargo " current.name, "sent")
         }
         if (A_Index < count && (!EarnPress("Down") || !EarnSleep(200)))
             return false
