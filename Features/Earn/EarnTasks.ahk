@@ -472,9 +472,17 @@ EarnMCTRefresh() {
     ; 등록 안내는 커서를 사업장 버튼에서 치우면 사라진다.
     if (!EarnUIClick("mct_bunker_card", 960, 525, "", false))
         return false
-    registered := false
+    registered := false, reclicked := false
     deadline := A_TickCount + 8000
     Loop {
+        ; 화면이 막 열린 직후의 Enter 가 씹혀 첫 화면에 그대로 머물 때가 있다(1004 00:36 녹화: 8초 동안 변화 없음).
+        ; 벙커 카드는 들어가기만 하는 화면이라 3초 뒤에도 그대로면 한 번 더 누른다.
+        if (!reclicked && !registered && deadline - A_TickCount <= 5000
+            && EarnSeen("mct_title", [0.3,0,0.7,0.1]) && !EarnSeen("mct_need_ceo")) {
+            reclicked := true
+            if (!EarnUIClick("mct_bunker_card", 960, 525, "", false))
+                return false
+        }
         if (EarnAborted())
             return false
         if (!EarnSeen("mct_title", [0.3,0,0.7,0.1]) && !EarnUIClearCursor())
