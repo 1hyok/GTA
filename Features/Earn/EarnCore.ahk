@@ -786,13 +786,20 @@ EarnMCTOpen() {
             return false
         if (!EarnWaitSeen("mct_seated", EARN_PROMPT_AREA, 8000))
             return EarnFail("MCT: 앉았다는 안내가 안 뜸")
+        ; 앉는 동작 중에도 앉은 안내가 먼저 뜬다. 그때 Enter 를 보내면 동작이 끊겨 다시 일어선다(1003 16:47 실측).
+        if (!EarnSleep(1500))
+            return false
     }
     if (!EarnSeen("mct_seated", EARN_PROMPT_AREA))
         return EarnFail("MCT: 열기 직전 앉은 상태 안내 없음")
     if (!EarnPress("Enter"))
         return false
-    if (!EarnWaitSeen("mct_title", [0.3, 0, 0.7, 0.1], 8000))
-        return EarnFail("MCT: 화면이 안 열림")
+    if (!EarnWaitSeen("mct_title", [0.3, 0, 0.7, 0.1], 8000)) {
+        ; 앉는 동작 중 Enter 가 씹히면 앉은 안내만 남는다(1003 16:37 실측). 그때만 한 번 더 보낸다.
+        if (!EarnSeen("mct_seated", EARN_PROMPT_AREA) || !EarnPress("Enter")
+            || !EarnWaitSeen("mct_title", [0.3, 0, 0.7, 0.1], 8000))
+            return EarnFail("MCT: 화면이 안 열림")
+    }
     Sleep(800)
     return true
 }
@@ -821,9 +828,19 @@ EarnMCTClose() {
     if (!EarnSleep(3500))
         return false
     if (!EarnWaitSeen("mct_sit", EARN_PROMPT_AREA, 8000)) {
-        ; 저택 MCT는 일어서면 반대 벽을 본다(2026-10-03 실측). 제자리에서 화면만 되돌린다.
-        if (!EarnTurn(Round(180 * config["Settings"]["EarnTurnUnitsPerDeg"]))
-            || !EarnWaitSeen("mct_sit", EARN_PROMPT_AREA, 8000))
+        ; 일어선 방향은 매번 다르다(1003 실측: 의자를 등지거나 벽을 본다). 저택 MCT는 미니맵 블립이 없어
+        ; 길찾기를 못 쓴다. 카메라를 90도씩 돌리며 W 를 짧게 눌러 캐릭터를 카메라 방향으로 세우고,
+        ; 의자 쪽을 향했을 때 뜨는 접근 안내를 찾는다. 한 번에 조금만 움직여 네 방향을 돌아도 의자 곁에 남는다.
+        found := false
+        Loop 4 {
+            if (A_Index > 1 && !EarnTurn(Round(90 * config["Settings"]["EarnTurnUnitsPerDeg"])))
+                return EarnFail("MCT: 일어선 뒤 접근 안내 미확인")
+            if (!EarnWalk("w:150"))
+                return false
+            if (found := EarnWaitSeen("mct_sit", EARN_PROMPT_AREA, 2000))
+                break
+        }
+        if (!found)
             return EarnFail("MCT: 일어선 뒤 접근 안내 미확인")
     }
     return true
