@@ -1,4 +1,4 @@
-﻿; === 수익 자동화 공통: 화면 확인 · 상호작용 메뉴 · 스폰 위치 · 세션 재접속 ===
+; === 수익 자동화 공통: 화면 확인 · 상호작용 메뉴 · 스폰 위치 · 세션 재접속 ===
 ; 이 파일의 함수는 게임에 키를 하나 보낼 때마다 "지금 화면에 무엇이 보이는지" 를 템플릿(Images\Earn\<가로>x<세로>\*.png)으로 확인한다.
 ; 확인이 안 되면 그 자리에서 false 를 돌려주고 더 누르지 않는다. 되돌리는 키는 Backspace·M 만 쓴다(Esc 금지: 런처 종료창).
 ; 템플릿은 1920x1080 테두리 없는 창에서 뜬 것이다. 해상도가 다르면 그 해상도 폴더에 같은 이름으로 떠 넣어야 동작한다(없으면 멈춘다).
@@ -865,18 +865,22 @@ EarnMCTClose() {
     ; 일어서는 중 잠깐 뜨는 접근 안내로 완료를 판정하면 M 입력이 애니메이션에 씹힌다.
     if (!EarnSleep(3500))
         return false
-    if (!EarnWaitSeen("mct_sit", EARN_PROMPT_AREA, 8000)) {
-        ; 일어선 방향은 매번 다르다(1003 실측: 의자를 등지거나 벽을 본다). 저택 MCT는 미니맵 블립이 없어
-        ; 길찾기를 못 쓴다. 카메라를 90도씩 돌리며 W 를 짧게 눌러 캐릭터를 카메라 방향으로 세우고,
-        ; 의자 쪽을 향했을 때 뜨는 접근 안내를 찾는다. 한 번에 조금만 움직여 네 방향을 돌아도 의자 곁에 남는다.
-        found := false
+    if (!EarnWaitSeen("mct_sit", EARN_PROMPT_AREA, 3000)) {
+        ; 1인칭이면 저택 MCT에서 일어선 시선은 늘 의자 반대쪽 구석이고, 제자리 180도 회전만으로 접근 안내가 뜬다
+        ; (1003 23:54~23:59 실측 7/7). 걷지 않으니 자리가 흐트러지지 않는다.
+        ; 3인칭처럼 시선이 다를 때는 카메라를 90도씩 돌리며 W 를 짧게 눌러 캐릭터를 카메라 방향으로 세우고 안내를 찾는다.
+        ; 저택 MCT는 미니맵 블립이 없어 길찾기를 못 쓴다. 한 번에 조금만 움직여 네 방향을 돌아도 의자 곁에 남는다.
+        if (!EarnTurn(Round(180 * config["Settings"]["EarnTurnUnitsPerDeg"])))
+            return EarnFail("MCT: 일어선 뒤 접근 안내 미확인")
+        found := EarnWaitSeen("mct_sit", EARN_PROMPT_AREA, 2000)
         Loop 4 {
+            if (found)
+                break
             if (A_Index > 1 && !EarnTurn(Round(90 * config["Settings"]["EarnTurnUnitsPerDeg"])))
                 return EarnFail("MCT: 일어선 뒤 접근 안내 미확인")
             if (!EarnWalk("w:150"))
                 return false
-            if (found := EarnWaitSeen("mct_sit", EARN_PROMPT_AREA, 2000))
-                break
+            found := EarnWaitSeen("mct_sit", EARN_PROMPT_AREA, 2000)
         }
         if (!found)
             return EarnFail("MCT: 일어선 뒤 접근 안내 미확인")

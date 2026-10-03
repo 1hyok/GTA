@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 Runs the actual EarnTasks.ahk functions with all game dependencies replaced.
 No game input, screen reads, window activation, or Main.ahk execution.
@@ -1911,7 +1911,7 @@ EarnFail(*) => false
     Invoke-EarnOfflineCheck 'MCTOpen' 'EarnMCTOpen' $mctOpenDriver 11
     $mctCloseDriver = @'
 global EARN_PROMPT_AREA := [], config := Map("Settings",Map("EarnTurnUnitsPerDeg",29))
-global closeCase := Map(), scene := "", aborted := false, backspaces := 0, clicks := [], promptReads := 0, turns := 0, turnUnits := 0,
+global closeCase := Map(), scene := "", aborted := false, backspaces := 0, clicks := [], promptReads := 0, turns := 0, turnUnits := 0, turnList := [],
     closeClockMs := 0, seatedWaits := 0, seatedReads := 0, seatedAt := -1, stoodAt := -1, abortInputs := -1, steps := []
 ; Options, result, Backspace presses, right-button events, camera turns, prompt waits.
 cases := [
@@ -1923,10 +1923,10 @@ cases := [
     ["press-failed",Map("scene","mct_title","press",false),false,0,0,0,0],
     ["abort-before-click",Map("abortAt","start"),false,0,0,0,0],
     ["still-seated",Map("gone",false),false,0,2,0,0],
-    ["reverse-wall",Map("prompt",false),true,0,2,0,2],
-    ["prompt-still-missing",Map("prompt",false,"foundAt",0),false,0,2,3,5],
+    ["reverse-wall",Map("prompt",false),true,0,2,1,2],
+    ["prompt-still-missing",Map("prompt",false,"foundAt",0),false,0,2,4,6],
     ["back-to-chair",Map("prompt",false,"foundAt",4),true,0,2,2,4],
-    ["turn-failed",Map("prompt",false,"foundAt",0,"turn",false),false,0,2,0,2],
+    ["turn-failed",Map("prompt",false,"foundAt",0,"turn",false),false,0,2,0,1],
     ["abort-during-prompt",Map("abortAt","prompt"),false,0,2,0,1],
     ["abort-button-held",Map("abortAt","held"),false,0,2,0,0],
     ["abort-after-back",Map("scene","mct_title","abortAt","back"),false,1,0,0,0],
@@ -1937,7 +1937,7 @@ cases := [
     ["abort-standing",Map("abortAt","standing"),false,0,2,0,0]]
 for scenario in cases {
     closeCase := scenario[2], scene := closeCase.Get("scene","mct_seated")
-    aborted := closeCase.Get("abortAt","") = "start", backspaces := 0, clicks := [], promptReads := 0, turns := 0, turnUnits := 0,
+    aborted := closeCase.Get("abortAt","") = "start", backspaces := 0, clicks := [], promptReads := 0, turns := 0, turnUnits := 0, turnList := [],
         closeClockMs := 0, seatedWaits := 0, seatedReads := 0, seatedAt := -1, stoodAt := -1, abortInputs := -1, steps := []
     config["Settings"]["EarnTurnUnitsPerDeg"] := closeCase.Get("sensitivity",29)
     result := EarnMCTClose()
@@ -1946,13 +1946,14 @@ for scenario in cases {
         throw Error("MCT close " scenario[1] " result=" result " keys=" backspaces " clicks=" clicks.Length " turns=" turns " waits=" promptReads)
     if (clicks.Length && (clicks[1] != "Right Down" || clicks[2] != "Right Up"))
         throw Error("Right button must be released even after interruption")
-    if (steps.Length != Max(0, promptReads-1))
+    if (steps.Length != Max(0, promptReads-2))
         throw Error("MCT close " scenario[1] " must take one short step before each later prompt read")
     for step in steps
         if (step != "w:150")
             throw Error("Recovery steps must be short forward taps")
-    if (turns && turnUnits != Round(90*config["Settings"]["EarnTurnUnitsPerDeg"]))
-        throw Error("Recovery must use calibrated quarter-turns")
+    for i, units in turnList
+        if (units != Round((i = 1 ? 180 : 90)*config["Settings"]["EarnTurnUnitsPerDeg"]))
+            throw Error("Recovery must turn 180 degrees first, then calibrated quarter-turns")
     if (backspaces > 1 || (scenario[1] = "seated" && seatedWaits))
         throw Error("A known seated state needs no close key; a transition must never resend it")
     if (scenario[1] = "delayed-seated" && (seatedWaits != 1 || seatedReads < 7 || seatedAt != 1200))
@@ -2027,7 +2028,7 @@ EarnWaitGone(name,area,timeoutMs) {
 }
 EarnWaitSeen(name,area,timeoutMs) {
     global closeCase, promptReads, aborted, seatedWaits
-    if (timeoutMs != (name = "mct_sit" && promptReads >= 1 ? 2000 : 8000))
+    if (timeoutMs != (name = "mct_sit" ? (promptReads >= 1 ? 2000 : 3000) : 8000))
         throw Error("Recovery must wait for the seated-entry prompt")
     if (name = "mct_seated") {
         seatedWaits++
@@ -2051,10 +2052,10 @@ EarnWalk(path) {
     return true
 }
 EarnTurn(units) {
-    global closeCase, aborted, turns, turnUnits
+    global closeCase, aborted, turns, turnUnits, turnList
     if (aborted || !closeCase.Get("turn",true))
         return false
-    turns++, turnUnits := units
+    turns++, turnUnits := units, turnList.Push(units)
     return true
 }
 EarnFail(*) => false
