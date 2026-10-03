@@ -814,7 +814,8 @@ EarnMCTOpen() {
             return EarnFail("MCT: 앞에 서 있지 않음 (Press E to sit down 안내 없음)")
         if (!EarnPress("e"))
             return false
-        if (!EarnWaitSeen("mct_seated", EARN_PROMPT_AREA, 8000))
+        ; 앉을 때 게임 알림(1003 23:24 실측: unclaimed Career Progress)이 같은 칸을 13초 가린 뒤에야 메뉴가 보였다.
+        if (!EarnWaitSeen("mct_seated", EARN_PROMPT_AREA, 20000))
             return EarnFail("MCT: 앉았다는 안내가 안 뜸")
         ; 앉는 동작 중에도 앉은 안내가 먼저 뜬다. 그때 Enter 를 보내면 동작이 끊겨 다시 일어선다(1003 16:47 실측).
         if (!EarnSleep(1500))

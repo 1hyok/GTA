@@ -176,7 +176,7 @@ EarnConfirmMCTSeat() {
     global EARN_PROMPT_AREA
     if (!EarnSeen("mct_sit", EARN_PROMPT_AREA) || !EarnPress("e"))
         return false
-    return EarnWaitSeen("mct_seated", EARN_PROMPT_AREA, 8000)
+    return EarnWaitSeen("mct_seated", EARN_PROMPT_AREA, 20000)
         || EarnFail("복귀: MCT 전용 접근 안내가 아님")
 }
 
