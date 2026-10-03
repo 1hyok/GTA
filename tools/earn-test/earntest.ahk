@@ -317,7 +317,9 @@ BunkerBuyProbe() {
         }
         if (!EarnWaitSeen("bunker_page", [0.15,0,0.35,0.12], 15000) || !EarnUIClick("bunker_resupply", 460, 490))
             return EarnFail("조사: 보급 메뉴 진입 실패")
-        EarnSleep(2500)
+        EarnWaitSeen("bunker_buy", "", 15000)
+        EarnSleep(1000)
+        RunWait('powershell -NoProfile -ExecutionPolicy Bypass -File "' A_ScriptDir '\capscreen.ps1" -Name buyprobe -X 0 -Y 0 -W 1920 -H 1080 -Scale 1', , "Hide")
         out := ""
         for v in [40, 60, 80, 100] {
             found := EarnSeen("bunker_buy", "", &fx, &fy, v)
