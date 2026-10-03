@@ -37,6 +37,8 @@ foreach ($name in @('bunker_page', 'bunker_entry', 'bunker_resupply', 'bunker_bu
         $right = [int][Math]::Round(1920 * $ratios[2])
         $bottom = [int][Math]::Round(1080 * $ratios[3])
         $area = New-Object Drawing.Rectangle $left, $top, ($right - $left), ($bottom - $top)
+        # EarnSeen 이 구매 버튼만 오차 100까지 본다(가격에 따라 글자 위치가 1~2px 밀림).
+        $limit = if ($name -eq 'bunker_buy') { 100 } else { 40 }
         $pairs = @($samples | ForEach-Object { ,@((Join-Path $evidence $_[0]), ($_.Item(1).Split(',') -contains $name)) })
         foreach ($path in $AdditionalResupplySamplePath) {
             $pairs += ,@([IO.Path]::GetFullPath($path), ($name -in @('bunker_page', 'bunker_resupply', 'bunker_buy')))
@@ -50,7 +52,7 @@ foreach ($name in @('bunker_page', 'bunker_entry', 'bunker_resupply', 'bunker_bu
                 if ($source.Width -ne 1920 -or $source.Height -ne 1080) { throw 'Expected a 1920x1080 screenshot' }
                 $x = 0; $y = 0
                 $variation = [EarnNightclubTemplateTest]::MinimumVariation($source, $template, $area, [ref]$x, [ref]$y)
-                if (($variation -le 40) -ne $pair[1]) {
+                if (($variation -le $limit) -ne $pair[1]) {
                     throw "$name $([IO.Path]::GetFileName($pair[0])) expected=$($pair[1]) minVariation=$variation at $x,$y"
                 }
                 $cases++
@@ -60,9 +62,11 @@ foreach ($name in @('bunker_page', 'bunker_entry', 'bunker_resupply', 'bunker_bu
         }
         # Raw $75,000 glyphs from 2026-10-03 bunker-fix-resupply-raw.png and
         # bunker-fix-confirm-raw.png, restored at the observed crop positions.
+        # $60,000 is a 2026-10-04 03:20 recording frame (lossy; the button text sits 2px left).
         # Store only these tiny crops, excluding player names and balances.
         foreach ($fixture in @(
             @('bunker-buy-75000.png', 'bunker_buy', 802, 769, 165, 29),
+            @('bunker-buy-60000.png', 'bunker_buy', 800, 769, 165, 29),
             @('bunker-confirm-75000.png', 'bunker_confirm', 700, 463, 519, 31)
         )) {
             $crop = [Drawing.Bitmap]::FromFile((Join-Path $PSScriptRoot ('mct-template-fixtures\' + $fixture[0])))
@@ -76,7 +80,7 @@ foreach ($name in @('bunker_page', 'bunker_entry', 'bunker_resupply', 'bunker_bu
                 $x = 0; $y = 0
                 $variation = [EarnNightclubTemplateTest]::MinimumVariation($canvas, $template, $area, [ref]$x, [ref]$y)
                 $expected = $name -eq $fixture[1]
-                if (($variation -le 40) -ne $expected -or ($expected -and ($x -ne $fixture[2] -or $y -ne $fixture[3]))) {
+                if (($variation -le $limit) -ne $expected -or ($expected -and ($x -ne $fixture[2] -or $y -ne $fixture[3]))) {
                     throw "$name $($fixture[0]) expected=$expected minVariation=$variation at $x,$y"
                 }
                 $cases++

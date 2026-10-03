@@ -94,6 +94,10 @@ EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
         "dj_confirm_tale", [0.30,0.46,0.70,0.53])
     if (!IsObject(area) && mctAreas.Has(name))
         area := mctAreas[name]
+    ; 구매 버튼 글자는 가격과 함께 가운데 정렬이라 보급 칸 수에 따라 1~2px 씩 밀리고 글자 가장자리가 달라진다.
+    ; 1004 03:20 실측: $60,000 에서 8초 동안 버튼이 보였는데 오차 40으로는 못 찾았다. 다른 화면은 이 자리에서 오차 226 이상이다.
+    if (name = "bunker_buy")
+        variation := Max(variation, 100)
     return TemplateSeen("Earn", name, area, &fx, &fy, variation)
 }
 ; timeoutMs 안에 name 이 보이면 true. 전체 멈춤·포커스 이탈이면 바로 false.
