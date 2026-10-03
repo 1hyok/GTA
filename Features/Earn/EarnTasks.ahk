@@ -392,7 +392,8 @@ EarnBunkerBuy() {
         return EarnFail("벙커: 사업장 페이지 미확인")
     if (!EarnUIClick("bunker_resupply", 460, 490))
         return EarnFail("벙커: 보급 메뉴 선택 실패")
-    if (!EarnWaitSeen("bunker_buy", "", 3000))
+    ; 보급 화면은 시작 화면·통계 화면을 거쳐 늦게 뜬다. 3초로는 버튼이 막 보이는 순간에 포기했다(1004 00:49 녹화). 기다리는 동안 입력은 없다.
+    if (!EarnWaitSeen("bunker_buy", "", 8000))
         return EarnFail("벙커: 보급 구매 버튼 미확인")
     if (!EarnUIClick("bunker_buy", 1150, 795))
         return EarnFail("벙커: 구매 버튼 클릭 전 화면 변경")

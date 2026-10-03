@@ -298,3 +298,34 @@ VinewoodEarningsSurvey(rows := 10) {
     }
     return EarnVinewoodClose()
 }
+; 벙커 보급 화면까지만 들어가 구매 버튼 템플릿을 허용 오차별로 판독하고 결제 없이 나온다.
+BunkerBuyProbe() {
+    if (!EarnTaskMCTBegin())
+        return false
+    try {
+        if (!EarnUIClick("mct_bunker_card", 960, 525))
+            return false
+        deadline := A_TickCount + 15000
+        while (!EarnSeen("bunker_page", [0.15,0,0.35,0.12])) {
+            if (EarnSeen("bunker_entry", [0.34,0.54,0.64,0.64])) {
+                if (!EarnUIClick("bunker_entry", 1150, 650))
+                    return false
+                break
+            }
+            if (!EarnSleep(100) || A_TickCount >= deadline)
+                return EarnFail("조사: 벙커 시작 화면 미확인")
+        }
+        if (!EarnWaitSeen("bunker_page", [0.15,0,0.35,0.12], 15000) || !EarnUIClick("bunker_resupply", 460, 490))
+            return EarnFail("조사: 보급 메뉴 진입 실패")
+        EarnSleep(2500)
+        out := ""
+        for v in [40, 60, 80, 100] {
+            found := EarnSeen("bunker_buy", "", &fx, &fy, v)
+            out .= " v" v "=" (found ? fx "," fy : "0")
+        }
+        EarnLog("조사: 보급 구매 버튼" out)
+        return true
+    } finally {
+        EarnTaskMCTEnd()
+    }
+}
