@@ -1929,7 +1929,7 @@ cases := [
     ["abort-transition",Map("scene","mct_title","seatedAfter",1200,"abortAt","transition"),false,1,0,0,0],
     ["transient-stand-prompt",Map(),true,0,2,0,1],
     ["abort-standing",Map("abortAt","standing"),false,0,2,0,0],
-    ; 일어선 직후 게임 전화가 오면 통화가 끝날 때까지 기다렸다 안내를 찾는다(1004 17:41).
+    ; 일어선 직후 게임 전화가 오면 Backspace 로 끊고 안내를 찾는다(1004 17:41).
     ["game-call",Map("call",true),true,0,2,0,1],
     ["game-call-stuck",Map("call",true,"callStuck",true),false,0,2,0,0]]
 for scenario in cases {
@@ -1964,8 +1964,8 @@ for scenario in cases {
         throw Error("Close allowed CEO menu entry before the stand animation finished")
     if (scenario[1] = "transient-stand-prompt" && closeClockMs - stoodAt != 3500)
         throw Error("A transient approach prompt must not bypass the stand animation wait")
-    if (InStr(scenario[1], "game-call") && callWaits != 1)
-        throw Error("A game phone call must be waited out exactly once")
+    if (callWaits != (scenario[1] = "game-call" ? 1 : scenario[1] = "game-call-stuck" ? 3 : 0))
+        throw Error("A game phone call must be hung up with Backspace, at most three times")
     if (scenario[1] = "abort-standing" && (closeClockMs - stoodAt != 700
         || abortInputs != backspaces + clicks.Length + turns))
         throw Error("Stand wait did not stop promptly without further input")
@@ -1985,11 +1985,17 @@ EarnSeen(name,*) {
 }
 EarnAborted() => aborted
 EarnPress(key) {
-    global closeCase, aborted, backspaces, scene
+    global closeCase, aborted, backspaces, scene, callActive, callWaits
     if (key != "Backspace")
         throw Error("Unexpected close key " key)
     if (aborted || !closeCase.Get("press",true))
         return false
+    if (callActive) {
+        callWaits++
+        if (!closeCase.Get("callStuck",false))
+            callActive := false
+        return true
+    }
     backspaces++
     scene := "transition"
     if (closeCase.Get("abortAt","") = "back")
@@ -2022,13 +2028,9 @@ FixtureCEOEntryReady() => !aborted && stoodAt >= 0 && closeClockMs - stoodAt >= 
 EarnWaitGone(name,area,timeoutMs) {
     global closeCase, aborted, stoodAt, scene, callActive, callWaits
     if (name = "afk_phone_frame") {
-        if (timeoutMs != 90000)
-            throw Error("A game call must be waited out up to 90 seconds")
-        callWaits++
-        if (aborted || closeCase.Get("callStuck",false))
-            return false
-        callActive := false
-        return true
+        if (timeoutMs != 3000)
+            throw Error("A hung-up call must disappear within 3 seconds")
+        return !aborted && !callActive
     }
     if (name != "mct_seated" || timeoutMs != 8000)
         throw Error("Must confirm standing before camera recovery")
