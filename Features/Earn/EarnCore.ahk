@@ -192,8 +192,12 @@ EarnMenuOpen() {
 
 ; 열려 있으면 M 으로 닫고 닫혔는지 본다. 하위 메뉴에서도 M 한 번에 전체가 닫힌다.
 EarnMenuClose() {
-    if (!EarnMenuIsOpen())
-        return true
+    ; 다시 그려지는 동안 잠깐 접힌 메뉴를 닫힌 것으로 보지 않게 0.6초 뒤 한 번 더 본다(1004 18:11 녹화).
+    if (!EarnMenuIsOpen()) {
+        Sleep(600)
+        if (!EarnMenuIsOpen())
+            return true
+    }
     if (!EarnPress("m"))
         return false
     deadline := A_TickCount + 2500
@@ -1031,6 +1035,13 @@ EarnCEO(on) {
         ; SecuroServ 줄이 보이면 CEO 이므로 그것부터 본다.
         ; CEO 면 SecuroServ 줄이 늘 맨 위에 있다. 해제 직후 맨션 안에서는 Register as a Boss 줄도 메뉴에서
         ; 빠지므로(1004 15:43 녹화: 맨 위가 Mansion Management, 11줄 중 보스 줄 없음) SecuroServ 가 없으면 해제로 본다.
+        ; 둘 다 안 보이면 메뉴가 다시 그려지는 중일 수 있다. 열자마자 11줄이었다가 Register as a Boss 가 끼어 12줄로
+        ; 다시 그려지며 잠깐 접힌다(1004 18:11 녹화). 그 순간 읽고 해제로 넘겨 메뉴가 열린 채 전화 키가 메뉴로 갔다.
+        if (!EarnSeen("m_securo_sel", EARN_MENU_AREA) && !EarnSeen("m_securo", EARN_MENU_AREA)
+            && !EarnSeen("m_boss_sel", EARN_MENU_AREA) && !EarnSeen("m_boss", EARN_MENU_AREA)) {
+            if (!EarnSleep(1500))
+                return false
+        }
         if (!EarnSeen("m_securo_sel", EARN_MENU_AREA) && !EarnSeen("m_securo", EARN_MENU_AREA)) {
             if (!EarnSeen("m_boss_sel", EARN_MENU_AREA) && !EarnSeen("m_boss", EARN_MENU_AREA))
                 EarnLog("CEO 해제: 메뉴에 SecuroServ·Register as a Boss 둘 다 없음, 이미 해제로 봄")
