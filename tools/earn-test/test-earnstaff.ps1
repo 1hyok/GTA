@@ -31,6 +31,7 @@ global config, cargoNames, cargoStatuses, cargoRequests, cargoReads, activeCount
 global fixtureData := Map(), fixtureKey := ""
 global observedDeadlines := []
 global menuReads := 0, mainNames := []
+global hangarState := "ready", hangarRequests := 0
 OnError(TestUnhandledError)
 __FIXTURE_INIT__
 try {
@@ -216,6 +217,7 @@ RunMenuTests() {
 }
 
 RunCargoTests() {
+    global hangarState, hangarRequests
     global mode, screenState, selected, statuses, requests, keys, config
     global cargoNames, cargoStatuses, cargoRequests, activeCount, opens
     ; mode, statuses, success, per-run cargo request count.
@@ -311,6 +313,15 @@ RunCargoTests() {
     Check(EarnVinewoodStaffTask() && Sum(requests) = 0, "grey Bail Office skips bail agents without entering")
     Reset("grey_warehouse_root",["busy","busy"])
     Check(EarnVinewoodStaffTask() && Sum(cargoRequests) = 0, "grey Warehouse skips cargo staff without entering")
+    for c in [["hangar_ready","ready",true,1,"busy"], ["hangar_busy","busy",true,0,"busy"],
+        ["hangar_bad_price","ready",true,0,"ready"], ["hangar_unknown","odd",true,0,"odd"],
+        ["hangar_unconfirmed","ready",false,1,"ready"]] {
+        Reset(c[1],["busy","busy"])
+        hangarState := c[2]
+        config["Settings"]["EarnBailAgents"] := 0, config["Settings"]["EarnCargoStaff"] := 0, config["Settings"]["EarnHangarStaff"] := 1
+        result := EarnVinewoodStaffTask()
+        Check(result = c[3] && hangarRequests = c[4] && hangarState = c[5], c[1] " hangar result=" result " requests=" hangarRequests)
+    }
     Reset("close_fail",["busy","busy"])
     cargoStatuses := ["busy","busy","full","busy","busy"]
     Check(!EarnVinewoodStaffTask(), "app-close failure prevents success")
@@ -326,8 +337,9 @@ Reset(nextMode, initial) {
     global mode, screenState, selected, statuses, requests, keys, reads, failure
     global config, cargoNames, cargoStatuses, cargoRequests, cargoReads, activeCount, opens, postReads
     global observedDeadlines
-    global menuReads, mainNames
+    global menuReads, mainNames, hangarState, hangarRequests
     mode := nextMode, screenState := "staff", selected := "Hangar"
+    hangarState := "ready", hangarRequests := 0
     statuses := initial.Clone(), requests := [0,0], keys := [], reads := 0, failure := ""
     config := Map("Settings",Map("EarnBailAgents",1,"EarnCargoStaff",1))
     cargoNames := ["Discount Retail Unit","Railyard Warehouse","Foreclosed Garage","Darnell Bros Warehouse","West Vinewood Backlot"]
@@ -384,6 +396,13 @@ MockReadScreen(area, whiteText) {
     if (screenState = "staff") {
         rows := [TextLine("THE VINEWOOD CLUB APP",144),TextLine("Hangar",181),TextLine("Warehouse",218),TextLine("Bail Office",255),
             TextLine("Manage your Warehouse staff.",300)]
+        ; 격납고 줄이 선택되면 같은 줄 오른쪽에 가격, 목록 아래에 상태 문구가 뜬다(1004 21:36 녹화).
+        if (selected = "Hangar" && hangarState != "") {
+            if (hangarState = "ready")
+                rows.Push(TextLine(mode = "hangar_bad_price" ? "$250000" : "$25000",181,420,80))
+            rows[5].text := hangarState = "ready" ? "Send your Hangar staff member out on a job."
+                : hangarState = "busy" ? "Your Hangar staff member is currently out on a job." : "Something else."
+        }
         ; 요원이 모두 나가 회색인 Bail Office: 일반 판독은 "pail Office", 흰 글자 판독은 줄이 빠진다(1004 15:04 녹화 실측).
         if (mode = "grey_bail_root") {
             if (whiteText)
@@ -529,7 +548,7 @@ EarnMenuRowSelected(row) {
     return row.text = selected || row.text = selected " $7500"
 }
 EarnPress(key) {
-    global mode, screenState, selected, statuses, requests, keys
+    global mode, screenState, selected, statuses, requests, keys, hangarState, hangarRequests
     global cargoNames, cargoStatuses, cargoRequests, activeCount
     global mainNames
     keys.Push(key)
@@ -592,6 +611,12 @@ EarnPress(key) {
                 screenState := "cargo", selected := cargoNames[1]
             } else if (selected = "Bail Office") {
                 screenState := "bail", selected := "Agent 1"
+            } else if (selected = "Hangar") {
+                if (hangarState != "ready")
+                    throw Error("Attempt to dispatch busy hangar staff")
+                hangarRequests += 1
+                if (mode != "hangar_unconfirmed")
+                    hangarState := "busy"
             } else
                 throw Error("Attempt to dispatch wrong business")
         } else if (screenState = "cargo") {

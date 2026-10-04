@@ -182,6 +182,9 @@ config["Settings"]["EarnBailAgents"] := 0
 config["Settings"]["EarnCargoStaff"] := 0
 config["Settings"]["EarnStaffIntervalMin"] := 7
 tasks := EarnTaskList()
+Check(tasks[5].on && tasks[5].every = 420000, "hangar staff alone keeps staff task on")
+config["Settings"]["EarnHangarStaff"] := 0
+tasks := EarnTaskList()
 Check(!tasks[5].on && tasks[5].every = 420000, "staff disabled and interval")
 config["Settings"]["EarnCargoStaff"] := 1
 Check(EarnTaskList()[5].on, "cargo alone enables staff")
@@ -422,7 +425,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 53 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 54 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout
