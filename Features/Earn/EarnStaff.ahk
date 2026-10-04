@@ -6,17 +6,25 @@ EarnVinewoodStaffTask() {
     if (!bail && !cargo && !hangar)
         return true
     EarnStaffTrack("reset")
-    if (!EarnVinewoodOpen() || !EarnStaffRoot())
+    if (!EarnVinewoodOpen())
         return false
-    if (bail && !EarnStaffBailAgents())
+    root := EarnStaffRoot()
+    if (!root)
         return false
-    if (cargo) {
-        if (!EarnStaffRoot() || !EarnStaffCargoWarehouses())
+    if (root = "idle") {
+        EarnLog("직원: 직원 관리 메뉴 회색(모든 직원 작업 중), 건너뜀")
+        EarnStaffTrack("all", "busy")
+    } else {
+        if (bail && !EarnStaffBailAgents())
             return false
-    }
-    if (hangar) {
-        if (!EarnStaffRoot() || !EarnStaffHangar())
-            return false
+        if (cargo) {
+            if (!EarnStaffRoot() || !EarnStaffCargoWarehouses())
+                return false
+        }
+        if (hangar) {
+            if (!EarnStaffRoot() || !EarnStaffHangar())
+                return false
+        }
     }
     ms := EarnStaffTrack()
     EarnLog("직원: 다음 확인 " Round(ms / 60000) "분 뒤")
@@ -89,6 +97,11 @@ EarnStaffRoot() {
                 return false
             continue
         }
+        ; 직원이 모두 일하러 나가면 첫 메뉴의 Manage Staff Members 줄이 회색이 되고 판독이 "Manage Staff Mempers" 로 깨진다
+        ; (1005 01:59 캡처: 흰 줄 밝기 240, 회색 줄 155). 밝은 글자가 아니면 들어갈 수 없는 메뉴이므로 건너뛴다.
+        dim := EarnStaffUniqueRow(lines, "i)^Manage\h+Sta\S*\h+Mem\S*$")
+        if (dim && !EarnWarehouseBrightLabel(dim))
+            return "idle"
         return EarnFail("직원: 직원 관리 메뉴 위치 미확인")
     }
     return EarnFail("직원: 직원 관리 메뉴 복귀 제한")
