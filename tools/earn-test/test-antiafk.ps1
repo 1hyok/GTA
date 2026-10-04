@@ -253,6 +253,11 @@ AntiAFKTick()
 Check(events.Length = 4 && menuState = "mct_seated" && LogHas("시작 화면 복귀 미확인") && !LogHas("MCT 메뉴 왕복 확인"),
     "missing final screen does not report verified activity")
 Reset()
+config["Settings"].Delete("AFKHudIdleSec")
+menuState := "ground", hudVisible := true, hudOriginX := -2560, hudOriginY := 100, idleMs := 3600000
+AntiAFKTick()
+Check(events.Length = 0 && menuState = "ground", "default never sends input on plain gameplay HUD")
+Reset()
 config["Settings"]["AFKHudIdleSec"] := 600
 menuState := "ground", hudVisible := true, hudOriginX := -2560, hudOriginY := 100
 AntiAFKTick()
