@@ -1767,8 +1767,8 @@ for c in [["normal","closed",true,false,true,"MUUEUUUEMM",false,1,3],
     ["verify_missing","closed",true,false,false,"MUUEUUUEMM",false,1,3],
     ; 해제 뒤 화살표가 흰색이면 메뉴를 다시 열지 않는다.
     ["arrow_white","closed",true,false,true,"MUUEUUUE",false,1,3],
-    ; 화살표가 이미 원하는 색이면 메뉴를 열지 않는다.
-    ["arrow_already_white","closed",false,false,true,"",false,0,0],
+    ; 이미 CEO(노랑)면 메뉴를 열지 않는다. 흰색은 MCT 아이콘이 덮은 것일 수 있어 해제 전에는 믿지 않고 메뉴로 본다.
+    ["arrow_already_white","closed",true,false,true,"MUUEUUUE",false,1,3],
     ["arrow_already_yellow","closed",true,true,true,"",true,0,0]] {
     arrowState := c[1] = "arrow_already_white" ? 0 : c[1] = "arrow_already_yellow" ? 1 : -1
     menuMode := c[1], menuScene := c[2], menuBoss := c[3], menuCursor := 2,
