@@ -26,7 +26,7 @@ EarnTaskList() {
         {id: "dj", label: "DJ 교체", on: s["EarnDJ"], every: s["EarnDJIntervalMin"] * 60000, fn: EarnDJTask},
         {id: "warehouse", label: "창고 직원", on: s.Get("EarnWarehouse", 1), every: s.Get("EarnWarehouseIntervalMin", 10) * 60000, fn: EarnWarehouseTask},
         {id: "safe", label: "사업장 금고", on: s["EarnSafe"], every: s["EarnSafeIntervalMin"] * 60000, fn: EarnVinewoodSafeTask},
-        {id: "staff", label: "앱 직원 파견", on: s.Get("EarnBailAgents", 1) || s.Get("EarnCargoStaff", 1), every: s.Get("EarnStaffIntervalMin", 5) * 60000, fn: EarnVinewoodStaffTask},
+        {id: "staff", label: "앱 직원 파견", on: s.Get("EarnBailAgents", 1) || s.Get("EarnCargoStaff", 1) || s.Get("EarnHangarStaff", 1), every: s.Get("EarnStaffIntervalMin", 5) * 60000, fn: EarnVinewoodStaffTask},
         {id: "dispatch", label: "현장 파견", on: s["EarnDispatch"] && !s.Get("EarnMCTOnly", 0), every: s["EarnDispatchIntervalMin"] * 60000, fn: EarnDispatchTask}
     ]
 }
