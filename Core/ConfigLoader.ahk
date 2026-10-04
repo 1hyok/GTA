@@ -30,7 +30,7 @@ CONFIG_DEFAULTS["Settings"] := Map(
     "EarnMCTOnly", 1, "EarnBunker", 0, "EarnBunkerIntervalSec", 6720, "EarnDJ", 0, "EarnDJIntervalMin", 5, "EarnDJPopularityPct", 95,
     "EarnSafe", 1, "EarnSafeIntervalMin", 5, "EarnSafeFirstMin", 0, "EarnSafeRetryMin", 15, "EarnSoftFailMax", 12,
     "EarnWarehouse", 1, "EarnWarehouseIntervalMin", 10,
-    "EarnBailAgents", 1, "EarnCargoStaff", 1, "EarnStaffIntervalMin", 5,
+    "EarnBailAgents", 1, "EarnCargoStaff", 1, "EarnHangarStaff", 1, "EarnStaffIntervalMin", 5,
     "EarnDispatch", 0, "EarnDispatchIntervalMin", 48, "EarnDispatchFirstMin", 0)
 
 LoadConfig() {
