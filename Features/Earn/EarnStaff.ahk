@@ -49,6 +49,11 @@ EarnStaffTrack(key := "", state := "") {
     return next ? Max(60000, next - now) : 300000
 }
 
+; 직원 관리 목록(Hangar·Warehouse·Bail Office)인지 본다. 요원이 모두 나가 Bail Office 가 회색이면
+; 일반 판독은 "pail Office", 흰 글자 판독은 줄을 빠뜨린다(1004 15:04 녹화 실측). Hangar 줄은 이 목록에만 있어 대신 쓴다.
+EarnStaffListSeen(lines) => EarnStaffUniqueRow(lines, "i)^Warehouse$")
+    && (EarnStaffUniqueRow(lines, "i)^Bail Office$") || EarnStaffUniqueRow(lines, "i)^Hangar$"))
+
 ; 확인한 앱 메뉴만 거슬러 올라간다. 알 수 없는 화면에는 Backspace를 보내지 않는다.
 EarnStaffRoot() {
     Loop 4 {
@@ -56,18 +61,18 @@ EarnStaffRoot() {
         if (!EarnStaffUniqueRow(lines, "i)^THE VINEWOOD CLUB APP$"))
             return EarnFail("직원: Vinewood 앱 제목 미확인")
         if (!EarnStaffUniqueRow(lines, "i)^Manage Staff Members$")
-            && !(EarnStaffUniqueRow(lines, "i)^Warehouse$") && EarnStaffUniqueRow(lines, "i)^Bail Office$"))
+            && !EarnStaffListSeen(lines)
             && !EarnStaffBailIdentity(lines, 1) && !EarnStaffBailIdentity(lines, 2)) {
             white := EarnReadScreen([25,125,450,263], true)
             if (!EarnStaffUniqueRow(white, "i)^THE VINEWOOD CLUB APP$"))
                 return EarnFail("직원: Vinewood 앱 제목 재확인 실패")
             ; 작업 중인 요원 행은 밝은 막대 위 회색 글자라 일반 판독이 깨진다(1004 02:01 실측: "I Agent 2").
             if (EarnStaffUniqueRow(white, "i)^Manage Staff Members$")
-                || (EarnStaffUniqueRow(white, "i)^Warehouse$") && EarnStaffUniqueRow(white, "i)^Bail Office$"))
+                || EarnStaffListSeen(white)
                 || EarnStaffBailIdentity(white, 1) || EarnStaffBailIdentity(white, 2))
                 lines := white
         }
-        if (EarnStaffUniqueRow(lines, "i)^Warehouse$") && EarnStaffUniqueRow(lines, "i)^Bail Office$"))
+        if (EarnStaffListSeen(lines))
             return true
         if (EarnStaffUniqueRow(lines, "i)^Manage Staff Members$")) {
             if (!EarnStaffSelectEnter("i)^Manage Staff Members$", 6))
@@ -86,6 +91,13 @@ EarnStaffRoot() {
 }
 
 EarnStaffBailAgents() {
+    ; 회색 Bail Office 는 흰 글자 판독에서 줄째 빠진다(1004 15:04 실측). 그 줄을 고르려 들면 진입 실패로 멈추므로 먼저 거른다.
+    white := EarnReadScreen([25,125,450,263], true)
+    if (IsObject(white) && EarnStaffUniqueRow(white, "i)^Warehouse$") && !EarnStaffUniqueRow(white, "i)^Bail Office$")) {
+        EarnLog("직원: 보석 사무소 회색(요원 모두 작업 중), 건너뜀")
+        EarnStaffTrack("bail 1", "busy"), EarnStaffTrack("bail 2", "busy")
+        return true
+    }
     if (!EarnStaffSelectEnter("i)^Bail Office$", 3))
         return EarnFail("직원: 보석 사무소 목록 진입 실패")
     ; 두 요원이 모두 작업 중이면 Bail Office 줄이 회색이고 Enter 가 무시된다(1003 17:39 실측).
