@@ -486,6 +486,17 @@ AFKMCTPulse() {
     } else {
         return AFKMCTBlocked("전화/앱/미확인 화면. MCT 또는 메뉴 없는 HUD에서만 입력")
     }
+    if (start = "mct_sit" || start = "mct_terrorbyte") {
+        ; MCT 앞에 서 있을 때는 M 메뉴 대신 Z(미니맵 확대)를 두 번 눌러 원래 크기로 돌린다(1005 사용자 요청).
+        ; 캐릭터·카메라를 움직이지 않고 메뉴도 열지 않는다. 그 뒤 MCT 앞 안내가 그대로인지 본다.
+        if (!AFKMenuSeen(start) || !AFKMenuTap("z") || !AFKWait(1500) || !AFKMenuTap("z") || !AFKWait(900))
+            return AFKMCTBlocked("Z 입력 중단: " start)
+        if (!AFKMenuSeen(start))
+            return AFKMCTBlocked("Z 뒤 시작 화면 미확인: " start)
+        afkMCTLastErr := ""
+        AFKLog("MCT state confirmed: " start " → Z 두 번 → " start)
+        return true
+    }
     if (!AFKMenuSeen(start) || !AFKMenuTap(openKey) || !AFKWaitMenu(middle, 8000))
         return AFKMCTBlocked("메뉴 진입 미확인: " start " → " middle)
     if (!AFKMenuSeen(middle) || !AFKMenuTap(closeKey) || !AFKWaitMenu(start, 8000))
