@@ -40,7 +40,7 @@ try {
 RunWarehouseTests() {
     global whAssigned, whCounts, whActive, whAttempts, whMoves, whBegins, whEnds, whSelections, whState, whHistory, whTooltips, whCancels
     scenarios := [
-        ["normal",true,1], ["two_moves",true,2], ["no_full",true,0],
+        ["normal",true,1], ["two_moves",true,2], ["no_full",true,1],
         ["no_available",true,0], ["idle_staff",false,0], ["stock_noocr",false,0],
         ["labels_noocr",false,0], ["source_changed",false,0],
         ["target_inactive",false,0], ["move_noocr",false,0],
@@ -56,10 +56,13 @@ RunWarehouseTests() {
         Check(actual = scenario[2] && whAttempts = scenario[3], scenario[1] " result=" actual " attempts=" whAttempts)
         Check(whBegins = 1 && whEnds = (scenario[1] = "begin_rejected" ? 0 : 1), scenario[1] " MCT lifetime")
         Check(whAssigned[3] = (scenario[1] = "idle_staff" ? "" : scenario[1] = "full_staff" ? "pharmaceutical" : "organic")
-            && whAssigned[4] = "printing" && whAssigned[5] = "cash", scenario[1] " producing and idle staff preserved")
+            && whAssigned[4] = (scenario[1] = "no_full" ? "pharmaceutical" : "printing") && whAssigned[5] = "cash", scenario[1] " producing and idle staff preserved")
         Check(whAttempts <= 2, scenario[1] " no repeated assignment requests")
         if (scenario[1] = "stock_none_full" || scenario[1] = "stock_all_full")
             Check(whSelections = 0 && whState = "mct", scenario[1] " decides from Sell Goods stock without opening staff management")
+        if (scenario[1] = "no_full")
+            Check(whMoves = 1 && whHistory[1] = "printing:pharmaceutical" && whState = "mct",
+                "cheapest producing technician moves to empty higher value Pharmaceutical")
         if (scenario[1] = "normal")
             Check(whAssigned[1] = "pharmaceutical" && whMoves = 1 && whState = "mct", "full source moves once then reobserves")
         if (scenario[1] = "two_moves")
@@ -143,15 +146,15 @@ RunWarehouseTests() {
     }
     Check(!EarnWarehouseAvailable("pharmaceutical", labels), "icon merged into label is rejected")
     ResetWarehouse("normal")
-    invalidMove := {from:"cargo",to:"pharmaceutical",technician:1}
+    invalidMove := {from:"pharmaceutical",to:"cargo",technician:1}
     goods := [
-        {id:"cargo",count:49,capacity:50,technician:1,unlocked:1},
-        {id:"pharmaceutical",count:16,capacity:20,technician:0,unlocked:1}
+        {id:"pharmaceutical",count:16,capacity:20,technician:1,unlocked:1},
+        {id:"cargo",count:30,capacity:50,technician:0,unlocked:1}
     ]
-    Check(!EarnWarehouseMove(invalidMove, goods) && whAttempts = 0 && whSelections = 0, "producing source cannot be moved")
-    goods[1].count := 50, goods[2].technician := 2
+    Check(!EarnWarehouseMove(invalidMove, goods) && whAttempts = 0 && whSelections = 0, "producing source cannot move to cheaper goods")
+    goods[1].count := 20, goods[2].technician := 2
     Check(!EarnWarehouseMove(invalidMove, goods) && whAttempts = 0 && whSelections = 0, "occupied target cannot be overwritten")
-    goods[2].technician := 0, goods[2].count := 20
+    goods[2].technician := 0, goods[2].count := 50
     Check(!EarnWarehouseMove(invalidMove, goods) && whAttempts = 0 && whSelections = 0, "full target cannot be assigned")
 }
 
@@ -177,6 +180,15 @@ ResetWarehouse(mode) {
         ; 2026-10-03 actual stock when the selected Organic person turned gray.
         whCounts["cargo"] := 31, whCounts["sporting"] := 56, whCounts["organic"] := 80,
             whCounts["printing"] := 58, whCounts["cash"] := 36
+    }
+    ; 직원 화면을 이미 읽은 뒤 재고 변화가 없는 상황. 그 밖에는 처음 보는 상태로 시작한다.
+    EarnWarehouseNeedStaff("reset")
+    if (mode = "stock_none_full") {
+        caps := Map("cargo",50,"sporting",100,"south_american",10,"pharmaceutical",20,"organic",80,"printing",60,"cash",40)
+        seen := []
+        for id, count in whCounts
+            seen.Push({id: id, count: count, capacity: caps[id]})
+        EarnWarehouseNeedStaff(seen, true)
     }
     whSelected := 0, whSelections := 0, whAttempts := 0, whMoves := 0,
         whBegins := 0, whEnds := 0, whError := "", whHistory := [], whPending := "", whCancels := 0
@@ -395,7 +407,7 @@ try {
     }
     $stdout = $process.StandardOutput.ReadToEnd().Trim()
     $stderr = $process.StandardError.ReadToEnd().Trim()
-    if ($process.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnWarehouse cases=140 (no game input)') {
+    if ($process.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnWarehouse cases=141 (no game input)') {
         throw "Warehouse flow failed (exit=$($process.ExitCode))`nstdout: $stdout`nstderr: $stderr"
     }
     Write-Output $stdout
