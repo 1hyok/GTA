@@ -104,6 +104,65 @@ EarnVinewoodSafeClaimDue(amount, cap := 250000, daily := 50000) {
     return amount + daily > cap
 }
 
+; 입금 때마다 미니맵 위에 뜨는 알림으로 금고를 지킨다. 예약 확인을 빗나간 입금(1004 14:18 실측: 꺼진 동안 나이트클럽이
+; "Safe total: $250000 (at capacity)" 로 넘쳐 약 $40,000 손실)을 놓치지 않으려는 보조 장치다. 수거 자체는 앱에서 다시 읽고 한다.
+; 알림 문구(1004 녹화): "Your daily Nightclub take has been added to the office safe. Safe total: $245000",
+; "Your daily Salvage Yard earnings have been added to the office safe. Safe total: $11400". 일반 판독은 $ 를 5 로 읽어 흰 글자로만 읽는다.
+global gEarnFeedSeen := Map()
+
+EarnSafeFeedWatch() {
+    global gEarnOn, gEarnBusy, gEarnDue, gEarnNextDue, gEarnFeedSeen, config
+    if (!gEarnOn || gEarnBusy || A_TimeIdlePhysical < config["Settings"]["EarnUserIdleSec"] * 1000 || !IsGTAActive())
+        return
+    ; 판독 중 Sleep 사이에 예약 작업이 끼어들지 않게 막는다.
+    gEarnBusy := true
+    try lines := EarnReadScreen([20, 560, 460, 300], true)
+    finally gEarnBusy := false
+    for note in EarnSafeFeedParse(lines) {
+        key := note.name "|" note.total "|" note.full
+        if (gEarnFeedSeen.Has(key) && A_TickCount - gEarnFeedSeen[key] < 120000)
+            continue
+        gEarnFeedSeen[key] := A_TickCount
+        limits := EarnSafeLimits()
+        due := note.full || note.total >= 0 && EarnVinewoodSafeClaimDue(note.total, limits[note.name]*)
+        EarnLog("금고 알림: " note.name (note.total >= 0 ? " $" note.total : "") (note.full ? " 가득 참" : "") (due ? " → 금고 확인 앞당김" : ""))
+        if (due && gEarnDue.Has("safe")) {
+            gEarnDue["safe"] := Min(gEarnDue["safe"], A_TickCount)
+            if (gEarnNextDue.Has("safe"))
+                gEarnNextDue.Delete("safe")
+        }
+    }
+}
+
+; 판독한 줄에서 아는 사업장의 입금 알림을 찾는다. 이름은 글자만 비교한다(1004 판독: "Night.club", "earrnings").
+; 금액이 깨지면 -1, "(at capacity)" 가 있으면 full. 모르는 사업장·무시하는 사업장은 돌려주지 않는다.
+EarnSafeFeedParse(lines) {
+    notes := []
+    if (!IsObject(lines))
+        return notes
+    text := ""
+    for line in lines
+        text .= " " line.text
+    pos := 1
+    while (pos := RegExMatch(text, "i)Your daily (.+?) (?:take|ear\w*) ha", &m, pos)) {
+        pos += m.Len
+        raw := RegExReplace(StrLower(m[1]), "[^a-z]")
+        name := ""
+        for known in EarnSafeLimits()
+            if (RegExReplace(StrLower(known), "[^a-z]") = raw)
+                name := known
+        if (name = "")
+            continue
+        rest := SubStr(text, pos, 120)
+        next := RegExMatch(rest, "i)Your daily ")
+        if (next)
+            rest := SubStr(rest, 1, next - 1)
+        total := RegExMatch(rest, "i)Safe total: \$([0-9,]+)(?:\s|$)", &t) ? EarnReadDollars("$" t[1]) : -1
+        notes.Push({name: name, total: total, full: RegExMatch(rest, "i)at\s+capacity") > 0})
+    }
+    return notes
+}
+
 ; 수거할 때가 되려면 입금이 몇 번 더 들어와야 하는지로 다음 확인을 미룬다. 매번 앱을 열지 않는다.
 ; k번째 입금이 수거 금액(> 한도-하루 입금)을 만든다면 그 입금은 빨라야 (k-1)×48분 뒤이고, 늦어도 k×48분 뒤다.
 ; 수거는 그 입금과 다음 입금 사이 48분 안에 하면 되므로 k×48-8분 뒤에 본다. 아직이면 그때 k=1 로 40분 뒤 다시 본다.
