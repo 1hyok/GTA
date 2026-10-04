@@ -415,6 +415,14 @@ AFKInputAllowed() {
         && !IsTeleportRunning() && !AnyInputToggleOn()
 }
 
+; 키를 누른 채 있으면(헬기 상승·가속 유지) 유휴 시간이 늘어도 조작 중이다. 그동안은 아무것도 보내지 않는다.
+AFKKeysHeld() {
+    for k in ["w","a","s","d","q","e","Space","Shift","Ctrl","LButton","RButton","Up","Down","Left","Right","Numpad8","Numpad5","Numpad4","Numpad6"]
+        if (GetKeyState(k, "P"))
+            return true
+    return false
+}
+
 AFKWait(ms) {
     deadline := A_TickCount + ms
     while (A_TickCount < deadline) {
@@ -426,8 +434,9 @@ AFKWait(ms) {
 }
 
 AFKMCTPulse() {
-    global afkMCTLastErr
-    if (!AFKInputAllowed())
+    global afkMCTLastErr, config
+    ; 누르고 있는 키가 있으면(헬기 상승·가속 유지) 조작 중이다.
+    if (!AFKInputAllowed() || AFKKeysHeld())
         return false
     start := "", middle := "", openKey := "", closeKey := ""
     if (AFKMenuSeen("m_title")) {
@@ -452,6 +461,11 @@ AFKMCTPulse() {
     } else if (AFKMenuSeen("mct_sit")) {
         start := "mct_sit", middle := "m_title", openKey := "m", closeKey := "m"
     } else if (AFKFreeHud()) {
+        ; MCT 앞이 아닌 빈 HUD 는 미션·비행 중일 수 있다(1004 23:26 헬기 의뢰인 호송 중 M 메뉴 → 추락·미션 실패.
+        ; 키보드 훅이 입력을 놓쳐 조작 중에도 유휴로 봤다. 같은 날 23:01 플레이 중 idle=2668s). 훅과 시스템 입력 시각 중 더 최근 쪽으로,
+        ; 게임의 방치 킥(15분)이 가까운 AFKHudIdleSec(기본 600초) 무입력에서만 연다.
+        if (Min(AFKPhysicalIdleMs(), AFKOthersIdleMs()) < config["Settings"].Get("AFKHudIdleSec", 600) * 1000)
+            return false
         start := "game_hud", middle := "m_title", openKey := "m", closeKey := "m"
     } else if (AFKPhoneOrAppOpen()) {
         ; 수익 작업이 실패해 전화·Vinewood 앱이 남으면 메뉴 왕복을 못 해 무입력이 쌓였다(1003 17:28·17:39 실측).

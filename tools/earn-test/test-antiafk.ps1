@@ -2,7 +2,7 @@
 param([string]$AhkPath = "$env:LOCALAPPDATA\Programs\AutoHotkey\v2\AutoHotkey64.exe")
 $ErrorActionPreference = 'Stop'
 $source = Get-Content (Join-Path $PSScriptRoot '..\..\Features\AntiAFK.ahk') -Raw -Encoding UTF8
-$functions = @('AntiAFKTick', 'AFKInputAllowed', 'AFKMCTPulse', 'AFKMenuSeen', 'AFKMenuTap', 'AFKWaitMenu', 'AFKMCTBlocked', 'AFKFreeHud', 'AFKPhoneOrAppOpen', 'AFKHudVisible',
+$functions = @('AntiAFKTick', 'AFKInputAllowed', 'AFKMCTPulse', 'AFKKeysHeld', 'AFKMenuSeen', 'AFKMenuTap', 'AFKWaitMenu', 'AFKMCTBlocked', 'AFKFreeHud', 'AFKPhoneOrAppOpen', 'AFKHudVisible',
     'AFKRefocusGTA', 'AFKRefocusFailed', 'AFKForegroundLabel', 'AFKPhysicalIdleMs', 'AFKOthersIdleMs', 'AFKSelfInput',
     'AFKRefocusAllowed', 'AFKRefocusCanceled') | ForEach-Object {
     $body = [regex]::Match($source, ('(?ms)^' + $_ + '\([^)\r\n]*\) \{.*?^\}')).Value
@@ -253,7 +253,18 @@ AntiAFKTick()
 Check(events.Length = 4 && menuState = "mct_seated" && LogHas("시작 화면 복귀 미확인") && !LogHas("MCT 메뉴 왕복 확인"),
     "missing final screen does not report verified activity")
 Reset()
+config["Settings"]["AFKHudIdleSec"] := 600
 menuState := "ground", hudVisible := true, hudOriginX := -2560, hudOriginY := 100
+AntiAFKTick()
+Check(events.Length = 0 && menuState = "ground", "plain gameplay HUD is left alone before ten idle minutes (mission safety)")
+Reset()
+config["Settings"]["AFKHudIdleSec"] := 600
+menuState := "ground", hudVisible := true, hudOriginX := -2560, hudOriginY := 100, idleMs := 601000, anyIdleMs := 20000
+AntiAFKTick()
+Check(events.Length = 0 && menuState = "ground", "hook-missed input (system input 20s ago) keeps HUD untouched")
+Reset()
+config["Settings"]["AFKHudIdleSec"] := 600
+menuState := "ground", hudVisible := true, hudOriginX := -2560, hudOriginY := 100, idleMs := 601000
 AntiAFKTick()
 Check(events.Length = 4 && events[1] = "{m down}" && events[3] = "{m down}" && menuState = "ground"
     && releases = 1 && LogHas("game_hud → m_title → game_hud"), "plain gameplay HUD opens and closes interaction menu without movement")
@@ -341,7 +352,7 @@ Reset() {
         hudWidth := 1920, hudHeight := 1080, hudWindowError := false, visibleOverlay := "", guardAssetMissing := false, menuReturnState := "", gImageRoot := "fake",
         phonePresses := 0, phoneCloseAfter := 2
     logs := [], waits := [], warnings := []
-    config := Map("Settings", Map("AFKUserIdleSec",45,"AFKJitterSec",0,"AFKIntervalSec",200,"AFKTapMs",100,"AFKGapMs",100,"EarnMCTOnly",1,
+    config := Map("Settings", Map("AFKUserIdleSec",45,"AFKHudIdleSec",60,"AFKJitterSec",0,"AFKIntervalSec",200,"AFKTapMs",100,"AFKGapMs",100,"EarnMCTOnly",1,
         "AFKRefocusIdleSec",300,"AFKRefocusSettleMs",800))
 }
 ; 전체 입력 유휴(GetLastInputInfo). 물리 입력도 세므로 훅이 본 물리 유휴(+훅 설치 전 유휴)보다 길 수 없고, 주입 입력마다 0 이 된다.
