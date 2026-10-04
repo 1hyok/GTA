@@ -1904,7 +1904,8 @@ EarnFail(*) => false
     $mctCloseDriver = @'
 global EARN_PROMPT_AREA := [], config := Map("Settings",Map("EarnTurnUnitsPerDeg",29))
 global closeCase := Map(), scene := "", aborted := false, backspaces := 0, clicks := [], promptReads := 0, turns := 0, turnUnits := 0, turnList := [],
-    closeClockMs := 0, seatedWaits := 0, seatedReads := 0, seatedAt := -1, stoodAt := -1, abortInputs := -1, steps := []
+    closeClockMs := 0, seatedWaits := 0, seatedReads := 0, seatedAt := -1, stoodAt := -1, abortInputs := -1, steps := [],
+    callActive := false, callWaits := 0
 ; Options, result, Backspace presses, right-button events, camera turns, prompt waits.
 cases := [
     ["list",Map("scene","mct_title"),true,1,2,0,1],
@@ -1927,11 +1928,15 @@ cases := [
     ["delayed-seated",Map("scene","mct_title","seatedAfter",1200),true,1,2,0,1],
     ["abort-transition",Map("scene","mct_title","seatedAfter",1200,"abortAt","transition"),false,1,0,0,0],
     ["transient-stand-prompt",Map(),true,0,2,0,1],
-    ["abort-standing",Map("abortAt","standing"),false,0,2,0,0]]
+    ["abort-standing",Map("abortAt","standing"),false,0,2,0,0],
+    ; 일어선 직후 게임 전화가 오면 통화가 끝날 때까지 기다렸다 안내를 찾는다(1004 17:41).
+    ["game-call",Map("call",true),true,0,2,0,1],
+    ["game-call-stuck",Map("call",true,"callStuck",true),false,0,2,0,0]]
 for scenario in cases {
     closeCase := scenario[2], scene := closeCase.Get("scene","mct_seated")
     aborted := closeCase.Get("abortAt","") = "start", backspaces := 0, clicks := [], promptReads := 0, turns := 0, turnUnits := 0, turnList := [],
-        closeClockMs := 0, seatedWaits := 0, seatedReads := 0, seatedAt := -1, stoodAt := -1, abortInputs := -1, steps := []
+        closeClockMs := 0, seatedWaits := 0, seatedReads := 0, seatedAt := -1, stoodAt := -1, abortInputs := -1, steps := [],
+        callActive := closeCase.Get("call",false), callWaits := 0
     config["Settings"]["EarnTurnUnitsPerDeg"] := closeCase.Get("sensitivity",29)
     result := EarnMCTClose()
     if (result != scenario[3] || backspaces != scenario[4] || clicks.Length != scenario[5]
@@ -1959,11 +1964,13 @@ for scenario in cases {
         throw Error("Close allowed CEO menu entry before the stand animation finished")
     if (scenario[1] = "transient-stand-prompt" && closeClockMs - stoodAt != 3500)
         throw Error("A transient approach prompt must not bypass the stand animation wait")
+    if (InStr(scenario[1], "game-call") && callWaits != 1)
+        throw Error("A game phone call must be waited out exactly once")
     if (scenario[1] = "abort-standing" && (closeClockMs - stoodAt != 700
         || abortInputs != backspaces + clicks.Length + turns))
         throw Error("Stand wait did not stop promptly without further input")
 }
-FileAppend("PASS MCTClose cases=21`n", "*")
+FileAppend("PASS MCTClose cases=" cases.Length "`n", "*")
 ExitApp(0)
 EarnSeen(name,*) {
     global scene, closeCase, seatedReads, seatedAt
@@ -1972,6 +1979,8 @@ EarnSeen(name,*) {
         if (closeClockMs >= closeCase.Get("seatedAfter",0))
             scene := "mct_seated", seatedAt := closeClockMs
     }
+    if (name = "afk_phone_frame")
+        return callActive
     return scene = name
 }
 EarnAborted() => aborted
@@ -2011,7 +2020,16 @@ Sleep(ms) {
 CloseClock() => closeClockMs
 FixtureCEOEntryReady() => !aborted && stoodAt >= 0 && closeClockMs - stoodAt >= 3500
 EarnWaitGone(name,area,timeoutMs) {
-    global closeCase, aborted, stoodAt, scene
+    global closeCase, aborted, stoodAt, scene, callActive, callWaits
+    if (name = "afk_phone_frame") {
+        if (timeoutMs != 90000)
+            throw Error("A game call must be waited out up to 90 seconds")
+        callWaits++
+        if (aborted || closeCase.Get("callStuck",false))
+            return false
+        callActive := false
+        return true
+    }
     if (name != "mct_seated" || timeoutMs != 8000)
         throw Error("Must confirm standing before camera recovery")
     if (aborted || !closeCase.Get("gone",true))
@@ -2052,11 +2070,13 @@ EarnTurn(units) {
     return true
 }
 EarnFail(*) => false
+EarnLog(*) => true
 '@
     # Keep the production polling loop; replace only its clock and input-free dependencies.
     $closeWaitBody = (Get-EarnFunctionBody $sourceText 'EarnWaitSeen').Replace('EarnWaitSeen(', 'FixtureWaitSeen(').Replace('A_TickCount', 'CloseClock()')
     $mctCloseDriver += "`n" + $closeWaitBody + "`n" + (Get-EarnFunctionBody $sourceText 'EarnSleep').Replace('A_TickCount', 'CloseClock()')
-    Invoke-EarnOfflineCheck 'MCTClose' 'EarnMCTClose' $mctCloseDriver 21
+    $mctCloseDriver += "`n" + (Get-EarnFunctionBody $sourceText 'EarnWaitCallEnd')
+    Invoke-EarnOfflineCheck 'MCTClose' 'EarnMCTClose' $mctCloseDriver 23
     $turnGuardDriver = @'
 global turnCase := [], moves := 0, movedX := 0, movedY := 0
 ; Relative mouse calls are intercepted. Run the actual turn loop and input guards.
