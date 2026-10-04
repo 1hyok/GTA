@@ -974,8 +974,9 @@ EarnCEO(on) {
     global EARN_MENU_AREA
     ok := false
     try {
-        ; 화살표가 이미 원하는 색(CEO 노랑, 해제 흰색)이면 메뉴를 열지 않는다. 판단이 안 서면(-1) 메뉴로 본다.
-        if (EarnArrowCEOColor() = (on ? 1 : 0)) {
+        ; 이미 CEO(노랑 화살표)면 메뉴를 열지 않는다. 해제 쪽은 쓰지 않는다: 해제는 MCT 앞에서 하는데
+        ; 흰 노트북 아이콘이 화살표를 덮어 CEO 인데도 흰색으로 읽혀 해제를 건너뛰었다(1004 15:25 실측).
+        if (on && EarnArrowCEOColor() = 1) {
             ok := true
             return true
         }
