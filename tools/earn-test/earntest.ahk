@@ -331,3 +331,12 @@ BunkerBuyProbe() {
         EarnTaskMCTEnd()
     }
 }
+
+; 벙커 만재 상태처럼 나이트클럽 카드로 MCT 를 갱신한 뒤 정리한다. 정리의 CEO 해제가 화살표 판정을 쓴다.
+NightclubRefreshProbe() {
+    global gEarnBunkerFull
+    gEarnBunkerFull := true
+    if (!EarnTaskMCTBegin())
+        return false
+    return EarnTaskMCTEnd()
+}
