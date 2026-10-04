@@ -1008,8 +1008,11 @@ EarnCEO(on) {
         }
         ; m_boss 는 허용 오차가 커서 테러바이트 CEO 메뉴의 다른 줄에도 맞았다(1003 17:13 실측).
         ; SecuroServ 줄이 보이면 CEO 이므로 그것부터 본다.
-        if (!EarnSeen("m_securo_sel", EARN_MENU_AREA) && !EarnSeen("m_securo", EARN_MENU_AREA)
-            && (EarnSeen("m_boss_sel", EARN_MENU_AREA) || EarnSeen("m_boss", EARN_MENU_AREA))) {
+        ; CEO 면 SecuroServ 줄이 늘 맨 위에 있다. 해제 직후 맨션 안에서는 Register as a Boss 줄도 메뉴에서
+        ; 빠지므로(1004 15:43 녹화: 맨 위가 Mansion Management, 11줄 중 보스 줄 없음) SecuroServ 가 없으면 해제로 본다.
+        if (!EarnSeen("m_securo_sel", EARN_MENU_AREA) && !EarnSeen("m_securo", EARN_MENU_AREA)) {
+            if (!EarnSeen("m_boss_sel", EARN_MENU_AREA) && !EarnSeen("m_boss", EARN_MENU_AREA))
+                EarnLog("CEO 해제: 메뉴에 SecuroServ·Register as a Boss 둘 다 없음, 이미 해제로 봄")
             ok := true
             return true              ; 이미 해제
         }
