@@ -461,10 +461,12 @@ AFKMCTPulse() {
     } else if (AFKMenuSeen("mct_sit")) {
         start := "mct_sit", middle := "m_title", openKey := "m", closeKey := "m"
     } else if (AFKFreeHud()) {
-        ; MCT 앞이 아닌 빈 HUD 는 미션·비행 중일 수 있다(1004 23:26 헬기 의뢰인 호송 중 M 메뉴 → 추락·미션 실패.
-        ; 키보드 훅이 입력을 놓쳐 조작 중에도 유휴로 봤다. 같은 날 23:01 플레이 중 idle=2668s). 훅과 시스템 입력 시각 중 더 최근 쪽으로,
-        ; 게임의 방치 킥(15분)이 가까운 AFKHudIdleSec(기본 600초) 무입력에서만 연다.
-        if (Min(AFKPhysicalIdleMs(), AFKOthersIdleMs()) < config["Settings"].Get("AFKHudIdleSec", 600) * 1000)
+        ; MCT 앞이 아닌 빈 HUD 는 사람이 플레이 중일 수 있어 기본으로 아무것도 누르지 않는다(AFKHudIdleSec=0).
+        ; 1004 23:26 헬기 의뢰인 호송 중 M 메뉴 → 추락·미션 실패. 키보드 훅이 입력을 놓쳐 조작 중에도 유휴로 봤다
+        ; (같은 날 23:01 플레이 중 idle=2668s). 「움직이는 게 안 되는데 메뉴 여는 게 되겠냐」 — 플레이 중 끼어드는 건 어느 키든 같다.
+        ; 켜면 훅과 시스템 입력 시각 중 더 최근 쪽으로 그 초만큼 무입력일 때만 연다.
+        hudSec := config["Settings"].Get("AFKHudIdleSec", 0)
+        if (!hudSec || Min(AFKPhysicalIdleMs(), AFKOthersIdleMs()) < hudSec * 1000)
             return false
         start := "game_hud", middle := "m_title", openKey := "m", closeKey := "m"
     } else if (AFKPhoneOrAppOpen()) {
