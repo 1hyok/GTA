@@ -227,6 +227,12 @@ EarnVinewoodOpen() {
         if (!EarnCEO(false) || !EarnPress("Up") || !EarnSleep(700))
             return false
     }
+    ; 휴대폰이 다 올라오기까지 1초 넘게 걸릴 때가 있다(1004 14:20 녹화). 홈의 선택 제목이 보일 때까지 기다린다.
+    deadline := A_TickCount + 4000
+    while (!EarnSeen("ph_joblist_sel", [0.83,0.66,0.98,0.73]) && !EarnSeen("ph_vinewood_sel", [0.83,0.66,0.98,0.73])) {
+        if (A_TickCount >= deadline || !EarnSleep(200))
+            return EarnFail("금고: 전화 홈 화면 미확인")
+    }
     if (EarnSeen("ph_joblist_sel", [0.83,0.66,0.98,0.73])) {
         if (!EarnPress("Right"))
             return false
