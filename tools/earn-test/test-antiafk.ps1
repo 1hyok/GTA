@@ -280,9 +280,10 @@ menuState := "ground", hudVisible := true, visibleOverlay := "afk_vinewood_title
 AntiAFKTick()
 Check(events.Length = 12 && releases = 1 && LogHas("6번에도"), "phone that never closes stops after six Backspaces")
 Reset()
-menuState := "m_title", hudVisible := true
+menuState := "m_title", menuReturnState := "ground", hudVisible := true
 AntiAFKTick()
-Check(events.Length = 0, "already-open interaction menu is not mistaken for a free HUD")
+Check(events.Length = 2 && events[1] = "{m down}" && menuState = "ground" && releases = 1
+    && LogHas("상호작용 메뉴를 M 으로 닫음"), "leftover interaction menu is closed with M once")
 Reset()
 menuState := "ground", hudVisible := true, guardAssetMissing := true
 AntiAFKTick()
