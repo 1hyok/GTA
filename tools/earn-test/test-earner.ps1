@@ -24,7 +24,7 @@ EarnerOfflineFailure(failure, *) {
 global gEarnOn, gEarnBusy, gEarnDue, gEarnDone, gEarnTasks, gEarnCurrent, gEarnFail, gEarnNextDue, gEarnSoftFails, gEarnRetryIn, gAbort, config, GTA_WIN, afkOn
 global calls, releaseCount, stopped, mode, windowExists, focused, otherBusy, activationCount, idleMs, gEarnGuardArmed, timers
 global feedTimer := 0
-global gEarnGamePID, fakePID, fakeTick, gEarnGuardStartedTick, lockAvailable, lockCalls, lockReleases, lockHeld, hooks, checkCount := 0
+global gEarnGamePID, fakePID, fakeTick, gEarnGuardStartedTick, gEarnUserAbort, lockAvailable, lockCalls, lockReleases, lockHeld, hooks, checkCount := 0
 global beginCount, endCount, beginCleanupCount, beginOK, endOK, beginThrows, endThrows, mctOpen, events, logs, taskModes, taskDurations, beginDelay, endDelay, endInput
 Reset()
 gEarnOn := false
@@ -62,7 +62,7 @@ Reset()
 idleMs := 2000
 mode := "long-physical"
 EarnTick()
-Check(!gEarnOn && gAbort && idleMs > 2000 && gEarnDone["bunker"] = 0 && lockReleases = 1,
+Check(gEarnOn && !gAbort && idleMs > 2000 && gEarnDone["bunker"] = 0 && lockReleases = 1 && gEarnDue["bunker"] >= A_TickCount + 170000,
     "input during blocked work aborts even when newer idle exceeds start wait")
 Reset()
 idleMs := 0
@@ -130,16 +130,18 @@ Check(calls.Length = 0 && activationCount = 0 && gEarnDue["bunker"] > A_TickCoun
 Reset()
 mode := "physical"
 EarnTick()
-Check(!gEarnOn && gAbort && stopped = 1 && !gEarnGuardArmed && gEarnDone["bunker"] = 0 && gEarnRetryIn = 0, "physical input stops instead of retry")
+Check(gEarnOn && !gAbort && stopped = 0 && !gEarnGuardArmed && gEarnDone["bunker"] = 0 && gEarnRetryIn = 0
+    && gEarnDue["bunker"] >= A_TickCount + 170000 && gEarnSoftFails.Get("bunker", 0) = 0, "physical input retries in 3 minutes instead of stopping")
 Reset()
 mode := "focus"
 EarnTick()
-Check(!gEarnOn && gAbort && !gEarnGuardArmed && gEarnDone["bunker"] = 0, "focus loss stops")
+Check(gEarnOn && !gAbort && !gEarnGuardArmed && gEarnDone["bunker"] = 0 && gEarnDue["bunker"] >= A_TickCount + 170000,
+    "focus loss retries in 3 minutes instead of stopping")
 Reset()
 config["Settings"]["EarnUserIdleSec"] := 0
 mode := "idle-zero"
 EarnTick()
-Check(!gEarnOn && gAbort, "physical guard still enabled with zero start wait")
+Check(gEarnOn && gEarnDone["bunker"] = 0 && gEarnDue["bunker"] >= A_TickCount + 170000, "physical guard still enabled with zero start wait")
 Reset()
 mode := "pid"
 EarnTick()
@@ -217,7 +219,7 @@ ExitApp(0)
 
 Reset() {
     global
-    fakeTick := 100000, idleMs := 60000, gEarnGuardArmed := false, gEarnGuardStartedTick := 0
+    fakeTick := 100000, idleMs := 60000, gEarnGuardArmed := false, gEarnGuardStartedTick := 0, gEarnUserAbort := false
     timers := [], fakePID := 101, gEarnGamePID := 101
     beginCount := 0, endCount := 0, beginCleanupCount := 0, beginOK := true, endOK := true,
         beginThrows := false, endThrows := false, mctOpen := false, events := [], logs := [],
