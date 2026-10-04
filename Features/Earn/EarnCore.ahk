@@ -880,6 +880,8 @@ EarnMCTClose() {
     ; 일어서는 중 잠깐 뜨는 접근 안내로 완료를 판정하면 M 입력이 애니메이션에 씹힌다.
     if (!EarnSleep(3500))
         return false
+    if (!EarnWaitCallEnd())
+        return false
     if (!EarnWaitSeen("mct_sit", EARN_PROMPT_AREA, 3000)) {
         ; 1인칭이면 저택 MCT에서 일어선 시선은 늘 의자 반대쪽 구석이고, 제자리 180도 회전만으로 접근 안내가 뜬다
         ; (1003 23:54~23:59 실측 7/7). 걷지 않으니 자리가 흐트러지지 않는다.
@@ -891,6 +893,8 @@ EarnMCTClose() {
         Loop 4 {
             if (found)
                 break
+            if (!EarnWaitCallEnd())
+                return false
             if (A_Index > 1 && !EarnTurn(Round(90 * config["Settings"]["EarnTurnUnitsPerDeg"])))
                 return EarnFail("MCT: 일어선 뒤 접근 안내 미확인")
             if (!EarnWalk("w:150"))
@@ -901,6 +905,18 @@ EarnMCTClose() {
             return EarnFail("MCT: 일어선 뒤 접근 안내 미확인")
     }
     return true
+}
+
+; 게임 인물(Lester 등)의 전화가 오면 휴대폰이 오른쪽 아래를 가려 접근 안내를 못 찾는다(1004 17:41 실측:
+; 일어선 직후 Lester 전화로 네 방향을 다 돌고 꺼짐). 전화가 보이면 통화가 끝날 때까지 기다린다. 끊지 않는다.
+EarnWaitCallEnd() {
+    area := [0.83, 0.58, 0.98, 0.72]
+    if (!EarnSeen("afk_phone_frame", area))
+        return true
+    EarnLog("MCT: 게임 전화가 와 통화가 끝날 때까지 기다림")
+    if (!EarnWaitGone("afk_phone_frame", area, 90000))
+        return EarnFail("MCT: 게임 전화가 90초 안에 끝나지 않음")
+    return EarnSleep(1000)
 }
 
 ; MCT 화면의 (x, y)(1920x1080 기준 좌표) 위에 커서를 두고, hover 템플릿이 area 안에 보이면 Enter. hover 가 "" 이면 확인 없이 Enter 하지 않는다.
