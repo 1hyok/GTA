@@ -24,7 +24,7 @@ EarnWarehouseManage() {
         if (A_Index = 1)
             EarnWarehouseTrack(goods)
         if (stockOnly) {
-            EarnLog("창고: 판매 탭 재고상 옮길 일 없음(만재 품목과 빈자리 품목이 함께 있지 않음), 직원 관리 화면 생략")
+            EarnLog("창고: 판매 탭 재고상 옮길 일 없음(전부 만재이거나, 지난 배정 확인 뒤 새 만재·판매 없음), 직원 관리 화면 생략")
             EarnWarehouseSchedule()
             return EarnWarehouseReturn()
         }
@@ -40,6 +40,8 @@ EarnWarehouseManage() {
         if (A_Index = 6)
             return EarnFail("창고: 직원 5명 재배정 뒤 상태 불일치")
         move := moves[1]
+        ; 옮긴 뒤 다음 관찰은 재고가 그대로여도 직원 화면을 다시 읽어 남은 이동을 계획한다.
+        EarnWarehouseNeedStaff("reset")
         if (!EarnWarehouseMove(move, goods))
             return false
         EarnLog("창고: 직원 " move.technician " " move.from " → " move.to " 배정 확인")
@@ -47,8 +49,8 @@ EarnWarehouseManage() {
     return false
 }
 
-; 직원을 옮기려면 만재 품목(옮길 직원)과 빈자리 품목(옮겨 갈 곳)이 함께 있어야 한다.
-; 판매 탭 재고만으로 그렇지 않다고 나오면 직원 관리 화면에 들어가지 않고 stockOnly 로 알린다.
+; 배정이 바뀌어야 하는 때는 품목이 새로 만재가 됐거나(직원이 놀게 됨) 판매로 줄었을 때(비싼 품목이 비었을 수 있음)뿐이다.
+; 지난 직원 화면 확인 뒤 그런 변화가 없거나 전부 만재면 직원 관리 화면에 들어가지 않고 stockOnly 로 알린다.
 EarnWarehouseObserve(&stockOnly := false) {
     stockOnly := false
     if (!EarnUIClick("nc_dj_menu", 500, 920) || !EarnSleep(400))
@@ -56,14 +58,7 @@ EarnWarehouseObserve(&stockOnly := false) {
     goods := EarnWarehouseReadStock(EarnReadScreen([728,130,880,420]))
     if (!goods)
         return EarnFail("창고: 7품목 현재/최대 재고 판독 실패")
-    full := 0, open := 0
-    for row in goods {
-        if (row.count >= row.capacity)
-            full += 1
-        else
-            open += 1
-    }
-    if (!full || !open) {
+    if (!EarnWarehouseNeedStaff(goods)) {
         stockOnly := true
         return goods
     }
@@ -94,7 +89,41 @@ EarnWarehouseObserve(&stockOnly := false) {
         if (!row.technician && row.count < row.capacity)
             row.unlocked := EarnWarehouseAvailable(row.id, lines) ? 1 : 0
     }
+    EarnWarehouseNeedStaff(goods, true)
     return goods
+}
+
+; 판매 탭 재고만 보고 직원 화면이 필요한지 정한다. checked=true 는 직원 화면을 막 읽었다는 표시다.
+; 처음 보거나, 지난 확인 뒤 만재가 된 품목이 있거나, 재고가 줄었으면(판매) 필요하다. 전부 만재면 옮길 곳이 없다.
+EarnWarehouseNeedStaff(goods, checked := false) {
+    static last := ""
+    if (goods = "reset") {
+        last := ""
+        return true
+    }
+    counts := Map(), open := 0
+    for row in goods {
+        counts[row.id] := row
+        open += row.count < row.capacity
+    }
+    if (checked) {
+        last := Map()
+        for row in goods
+            last[row.id] := {count: row.count, full: row.count >= row.capacity}
+        return true
+    }
+    if (!open)
+        return false
+    if (!IsObject(last))
+        return true
+    for id, prev in last {
+        if (!counts.Has(id))
+            return true
+        row := counts[id]
+        if (row.count < prev.count || (row.count >= row.capacity && !prev.full))
+            return true
+    }
+    return false
 }
 
 EarnWarehouseTiles() {
@@ -198,7 +227,7 @@ EarnWarehouseMove(move, goods) {
         if (row.id = move.to)
             target := row
     }
-    if (!source || !target || source.count != source.capacity
+    if (!source || !target || !EarnWarehouseMoveJustified(move.from, move.to, source.count >= source.capacity)
         || source.technician != move.technician || !target.unlocked
         || target.technician || target.count >= target.capacity)
         return EarnFail("창고: 재배정 조건 불일치")
