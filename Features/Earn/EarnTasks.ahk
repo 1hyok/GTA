@@ -293,9 +293,11 @@ EarnSafeCollect() {
 ; 막대는 MCT 첫 화면 벙커 카드(재고 초록 y 555, 보급 파랑 y 577, x 766~1154)에서 읽는다. 판단이 안 되면 사지 않고 로그만 남긴다.
 ; 주문 시각을 배송 완료 시각으로 사용하지 않는다. 매번 갱신한 막대와 실제 가격으로 판단한다.
 global gEarnBunkerOrdered := false
+; 재고가 가득 찬 것을 본 뒤에는 true. 판매(사용자 조작)가 있어야 줄어들고, 그 조작이 자동화를 멈추므로 F9 로 다시 켤 때 지운다.
+global gEarnBunkerFull := false
 
 EarnBunkerTask(manageSession := true) {
-    global config, gEarnNextDue, gEarnBunkerOrdered
+    global config, gEarnNextDue, gEarnBunkerOrdered, gEarnBunkerFull
     s := config["Settings"]
     if (manageSession && !EarnTaskMCTBegin())
         return false
@@ -303,7 +305,13 @@ EarnBunkerTask(manageSession := true) {
         plan := EarnBunkerObservePlan(s["EarnBunkerIntervalSec"])
         if (!IsObject(plan))
             return false
-        if (!plan.buy) {
+        gEarnBunkerFull := plan.reason = "stock_full"
+        if (gEarnBunkerFull) {
+            ; 가득 찬 동안은 보급이 줄지 않아 5분마다 볼 까닭이 없다(1004 10:43~ 실측: 5분마다 같은 99%).
+            EarnLog("벙커: 재고 가득 참. 판매 전까지 30분마다만 확인하고 MCT 갱신은 나이트클럽 카드로 한다")
+            gEarnNextDue["bunker"] := A_TickCount + 1800000
+            ok := true
+        } else if (!plan.buy) {
             EarnLog("벙커: " plan.reason " → 다음 " plan.bars "칸 소모 경계에서 재확인")
             ; 84초 생산 틱·막대 판독·MCT 진입 지연을 위해 경계보다 3분 먼저 준비한다.
             ; waitMs는 구매 시각이 아니다. 재진입 뒤 반드시 새 보급량과 가격을 읽는다.
@@ -470,8 +478,12 @@ EarnTaskMCTBegin() {
 
 ; MCT 막대는 화면에 재진입해 갱신한다. 사업장 진입 화면에서는 결제 없이 뒤로 돌아온다.
 EarnMCTRefresh() {
+    global gEarnBunkerFull
+    ; 벙커 재고가 가득 찬 동안은 벙커 화면에 들어갈 일이 없다. 등록·갱신은 나이트클럽 카드로 하고 Home 에서 바로 돌아온다.
+    nightclub := gEarnBunkerFull
+    card := nightclub ? "mct_nightclub_card" : "mct_bunker_card", cardX := nightclub ? 520 : 960
     ; 등록 안내는 커서를 사업장 버튼에서 치우면 사라진다.
-    if (!EarnUIClick("mct_bunker_card", 960, 525, "", false))
+    if (!EarnUIClick(card, cardX, 525, "", false))
         return false
     registered := false, reclicked := false
     deadline := A_TickCount + 8000
@@ -481,13 +493,18 @@ EarnMCTRefresh() {
         if (!reclicked && !registered && deadline - A_TickCount <= 5000
             && EarnSeen("mct_title", [0.3,0,0.7,0.1]) && !EarnSeen("mct_need_ceo")) {
             reclicked := true
-            if (!EarnUIClick("mct_bunker_card", 960, 525, "", false))
+            if (!EarnUIClick(card, cardX, 525, "", false))
                 return false
         }
         if (EarnAborted())
             return false
         if (!EarnSeen("mct_title", [0.3,0,0.7,0.1]) && !EarnUIClearCursor())
             return false
+        if (nightclub && EarnSeen("nc_dj_menu")) {
+            if (registered)
+                EarnLog("MCT: 화면 안내로 CEO 등록 확인")
+            return EarnUIBackToMCT("nc_dj_menu", 1)
+        }
         if (EarnSeen("bunker_entry", [0.34,0.54,0.64,0.64])) {
             if (registered)
                 EarnLog("MCT: 화면 안내로 CEO 등록 확인")
@@ -507,7 +524,7 @@ EarnMCTRefresh() {
                 || !EarnWaitSeen("mct_title", [0.3,0,0.7,0.1], 3000))
                 return EarnFail("MCT: 화면 안내를 통한 CEO 등록 미확인")
             registered := true
-            if (!EarnUIClick("mct_bunker_card", 960, 525))
+            if (!EarnUIClick(card, cardX, 525))
                 return false
             deadline := A_TickCount + 8000
         }
