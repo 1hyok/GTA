@@ -1011,7 +1011,19 @@ EarnCEO(on) {
             return EarnFail("CEO 해제: Retire 줄을 찾지 못함")
         if (!EarnPress("Enter"))
             return false
-        EarnSleep(2500)
+        ; 화살표가 흰색으로 돌아오면 메뉴를 다시 열지 않는다(녹화 실측: 메뉴 확인보다 3초 빠름). 판단이 안 서면 메뉴로 본다.
+        deadline := A_TickCount + 4000
+        Loop {
+            if (!EarnSleep(300))
+                return false
+            if (EarnArrowCEOColor() = 0) {
+                ok := true
+                EarnLog("CEO 해제 (화살표 흰색)")
+                return true
+            }
+            if (A_TickCount >= deadline)
+                break
+        }
         ok := EarnCEOIs(false)
         if (!ok)
             return EarnFail("CEO 해제: 해제 뒤 메뉴에 Register as a Boss 가 안 보임")
@@ -1020,6 +1032,40 @@ EarnCEO(on) {
     } finally {
         EarnMenuClose()
     }
+}
+
+; 미니맵 가운데 플레이어 화살표 색으로 CEO 여부를 본다. CEO 면 조직 색(1004 실측: 노랑), 아니면 흰색이다.
+; 1004 11:15~11:16 녹화 실측(150~178, 990~1020): CEO 동안 채도 높은 픽셀 24~31, 해제 뒤 0.
+; MCT 노트북 아이콘(흰색)이 화살표에 겹쳐 흰 픽셀은 양쪽 다 있다. 1=조직 색, 0=흰 화살표뿐, -1=판단 못 함.
+EarnArrowCEOColor() {
+    hwnd := IsGTAActive()
+    if (!hwnd)
+        return -1
+    prev := DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
+    try {
+        WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
+    } finally {
+        if (prev)
+            DllCall("SetThreadDpiAwarenessContext", "ptr", prev, "ptr")
+    }
+    if (cw != 1920 || ch != 1080)
+        return -1
+    w := 29, h := 31
+    return EarnArrowColorOf(EarnGrab(cx + 150, cy + 990, w, h), w, h)
+}
+
+EarnArrowColorOf(buf, w, h) {
+    sat := 0, white := 0
+    Loop w * h {
+        o := (A_Index - 1) * 4
+        b := NumGet(buf, o, "UChar"), g := NumGet(buf, o + 1, "UChar"), r := NumGet(buf, o + 2, "UChar")
+        hi := Max(r, g, b), lo := Min(r, g, b)
+        if (hi >= 120 && hi - lo >= 60)
+            sat += 1
+        else if (lo >= 200)
+            white += 1
+    }
+    return sat >= 12 ? 1 : sat = 0 && white >= 40 ? 0 : -1
 }
 
 ; 상호작용 메뉴를 열어 등록 상태를 본다. want=true 면 SecuroServ 줄, false 면 Register as a Boss 줄이 보여야 true. 메뉴는 열어 둔 채 돌려준다(부르는 쪽이 닫는다)

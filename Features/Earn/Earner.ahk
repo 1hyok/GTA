@@ -36,7 +36,7 @@ ToggleEarner(*) {
 }
 
 SetEarner(on, reason := "") {
-    global gEarnOn, gEarnDue, gEarnDone, gEarnFail, gEarnTasks, gEarnNextDue, gEarnSoftFails, gEarnRetryIn, gEarnBusy, gAbort, gEarnGamePID, config, afkOn
+    global gEarnOn, gEarnDue, gEarnDone, gEarnFail, gEarnTasks, gEarnNextDue, gEarnSoftFails, gEarnRetryIn, gEarnBusy, gAbort, gEarnGamePID, gEarnBunkerFull, config, afkOn
     if (on) {
         gEarnGamePID := EarnGamePID()
         if (!gEarnGamePID)
@@ -50,6 +50,8 @@ SetEarner(on, reason := "") {
         gEarnTasks := EarnTaskList()
         gEarnDue := Map(), gEarnDone := Map(), gEarnNextDue := Map(), gEarnSoftFails := Map()
         gEarnRetryIn := 0
+        ; 끈 사이에 벙커를 팔았을 수 있다. 첫 확인은 벙커 카드로 새로 읽는다.
+        gEarnBunkerFull := false
         now := A_TickCount
         s := config["Settings"]
         for t in gEarnTasks {

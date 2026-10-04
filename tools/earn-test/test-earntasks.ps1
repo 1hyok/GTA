@@ -776,7 +776,8 @@ EarnMCTRefresh() {
     $mctRefreshDriver = @'
 global refreshOptions := Map(), refreshClockMs := 0, refreshAborted := false, refreshFocused := true,
     refreshClicks := 0, refreshCtrl := 0, refreshCtrlAt := -1, refreshLastClickAt := 0,
-    refreshBacks := 0, refreshLogs := 0, refreshFailure := "", refreshHover := false, refreshCursorClears := 0
+    refreshBacks := 0, refreshLogs := 0, refreshFailure := "", refreshHover := false, refreshCursorClears := 0,
+    gEarnBunkerFull := false
 ; Options, result, card clicks, LCtrl attempts, confirmed business exits, registration logs.
 for c in [[Map("alreadyBoss",true),true,1,0,1,0],
     [Map("alreadyBoss",true,"business","bunker_page"),true,1,0,1,0],
@@ -818,7 +819,18 @@ for c in [[Map("alreadyBoss",true),true,1,0,1,0],
     if (refreshOptions.Get("promptAfter",0) = 7000 && refreshClockMs < 15000)
         throw Error("Business arrival must use a fresh deadline after successful registration")
 }
-FileAppend("PASS MCTRefresh cases=23`n", "*")
+; 벙커 재고가 가득 찬 동안은 나이트클럽 카드로 갱신하고 벙커 화면에는 들어가지 않는다.
+gEarnBunkerFull := true
+for c in [[Map("alreadyBoss",true,"business","nc_dj_menu"),true,1,0,1,0],
+    [Map("business","nc_dj_menu"),true,2,1,1,1]] {
+    refreshOptions := c[1], refreshClockMs := 0, refreshAborted := false, refreshFocused := true,
+        refreshClicks := 0, refreshCtrl := 0, refreshCtrlAt := -1, refreshLastClickAt := 0,
+        refreshBacks := 0, refreshLogs := 0, refreshFailure := "", refreshHover := false, refreshCursorClears := 0
+    result := EarnMCTRefresh()
+    if (result != c[2] || refreshClicks != c[3] || refreshCtrl != c[4] || refreshBacks != c[5] || refreshLogs != c[6])
+        throw Error("MCT nightclub refresh case " A_Index " result=" result " clicks=" refreshClicks " ctrl=" refreshCtrl " backs=" refreshBacks " logs=" refreshLogs)
+}
+FileAppend("PASS MCTRefresh cases=25`n", "*")
 ExitApp(0)
 EarnSeen(name,*) {
     alreadyBoss := refreshOptions.Get("alreadyBoss",false)
@@ -836,7 +848,7 @@ EarnSeen(name,*) {
             return false
         return refreshCtrlAt < 0 || refreshClockMs >= registeredAt + refreshOptions.Get("titleAfter",0)
     }
-    if (name = "bunker_entry" || name = "bunker_page") {
+    if (name = "bunker_entry" || name = "bunker_page" || name = "nc_dj_menu") {
         return RefreshBusinessFrame() && !refreshHover && name = refreshOptions.Get("business","bunker_entry")
     }
     return false
@@ -849,7 +861,8 @@ RefreshBusinessFrame() {
 }
 EarnUIClick(name,x,y,area := "",clearCursor := true) {
     global refreshClicks, refreshLastClickAt, refreshHover, refreshCursorClears
-    if (EarnAborted() || name != "mct_bunker_card" || x != 960 || y != 525 || !EarnSeen("mct_title"))
+    if (EarnAborted() || name != (gEarnBunkerFull ? "mct_nightclub_card" : "mct_bunker_card")
+        || x != (gEarnBunkerFull ? 520 : 960) || y != 525 || !EarnSeen("mct_title"))
         throw Error("MCT card click without its confirmed list")
     ; 첫 클릭이 씹혀 아무 변화가 없을 때의 한 번 재클릭은 허용한다.
     unanswered := refreshClicks = 1 && refreshCtrl = 0 && !EarnSeen("mct_need_ceo")
@@ -889,7 +902,8 @@ EarnPress(key) {
 }
 EarnUIBackToMCT(guard,presses) {
     global refreshBacks
-    if (EarnAborted() || !EarnSeen(guard) || presses != (guard = "bunker_entry" ? 1 : 2))
+    if (EarnAborted() || !EarnSeen(guard) || presses != (guard = "bunker_page" ? 2 : 1)
+        || (gEarnBunkerFull && guard != "nc_dj_menu"))
         throw Error("MCT refresh must return from a confirmed business screen")
     refreshBacks++
     return !refreshOptions.Get("rejectBack",false)
@@ -899,7 +913,7 @@ EarnCEO(*) {
 }
 EarnLog(*) {
     global refreshLogs
-    if (!EarnSeen("bunker_entry") && !EarnSeen("bunker_page"))
+    if (!EarnSeen("bunker_entry") && !EarnSeen("bunker_page") && !EarnSeen("nc_dj_menu"))
         throw Error("Registration cannot be logged before business entry is confirmed")
     refreshLogs++
 }
@@ -929,7 +943,7 @@ EarnFail(reason) {
     $savedRefreshSource = $sourceText
     try {
         $sourceText = $sourceText.Replace('A_TickCount', 'RefreshClock()')
-        Invoke-EarnOfflineCheck 'MCTRefresh' 'EarnMCTRefresh' $mctRefreshDriver 23
+        Invoke-EarnOfflineCheck 'MCTRefresh' 'EarnMCTRefresh' $mctRefreshDriver 25
     } finally { $sourceText = $savedRefreshSource }
     $djFlowDriver = @'
 global config := Map("Settings",Map("EarnDJPopularityPct",95)), popularity := 90, allowRebook := true,
@@ -1181,14 +1195,14 @@ PixelGetColor(x,y) {
     $bunkerPolicy = "`n" + (Get-EarnFunctionBody $policyText 'EarnBunkerOrderPlan')
     $bunkerObserve = "`n" + (Get-EarnFunctionBody $sourceText 'EarnBunkerObservePlan')
     $bunkerTaskDriver = @'
-global config := Map("Settings",Map("EarnBunkerIntervalSec",6720)), gEarnNextDue := Map(), gEarnBunkerOrdered := false
+global config := Map("Settings",Map("EarnBunkerIntervalSec",6720)), gEarnNextDue := Map(), gEarnBunkerOrdered := false, gEarnBunkerFull := false
 global c := [], buyCalls := 0, beginCalls := 0, endCalls := 0
 ; stock, supply, interval, begin OK, buy OK, end OK, result, buys, ends, due milliseconds.
 cases := [[0.4,1,8400,true,true,true,true,0,1,300000],
     [0.4,0.25,6720,true,true,true,true,0,1,240000],
     [0.4,0.24,6720,true,true,true,true,0,1,156000],
     [0.4,0.2,6720,true,true,true,true,1,1,600000],
-    [1,0,8400,true,true,true,true,0,1,300000],
+    [1,0,8400,true,true,true,true,0,1,1800000],
     [0.4,0.75,1680,true,true,true,true,0,1,300000],
     [0.4,0,8400,true,true,true,true,1,1,600000],
     [0.4,0.8,1680,true,true,true,true,1,1,600000],
@@ -1257,7 +1271,7 @@ EarnFail(*) => false
 '@
     Invoke-EarnOfflineCheck 'BunkerTask' 'EarnBunkerTask' ($bunkerTaskDriver + $bunkerPolicy + $bunkerObserve) 18
     $bunkerObserveDriver = @'
-global config := Map("Settings",Map("EarnBunkerIntervalSec",6720)), gEarnNextDue := Map(), gEarnBunkerOrdered := false
+global config := Map("Settings",Map("EarnBunkerIntervalSec",6720)), gEarnNextDue := Map(), gEarnBunkerOrdered := false, gEarnBunkerFull := false
 global c := Map(), clockMs := 0, supplyNow := 0.21, stockNow := 0.4,
     refreshes := 0, buys := 0, begins := 0, ends := 0, sleeps := [], abortNow := false, reads := 0
 ; Name, observations/options, result, purchases, next delay, expected observation time.
@@ -1266,7 +1280,7 @@ cases := [
     ["already at boundary",Map("supply",0.2),true,1,600000,0],
     ["production paused stays bounded",Map(),true,0,5000,240000],
     ["new delivery resets prediction",Map("at",20000,"next",1),true,0,300000,22000],
-    ["stock fills during observation",Map("at",20000,"nextStock",1),true,0,300000,22000],
+    ["stock fills during observation",Map("at",20000,"nextStock",1),true,0,1800000,22000],
     ["missed boundary preserves spending limit",Map("at",20000,"next",0.19),true,0,300000,22000],
     ["scheduler late after another task",Map("beginMs",200000,"supply",0.19),true,0,300000,200000],
     ["invalid later supply stops",Map("at",20000,"next",-1),false,0,0,22000],
@@ -1357,7 +1371,7 @@ EarnFail(*) => false
     } finally { $sourceText = $savedBunkerSource }
     $taskFinallyDriver = @'
 global config := Map("Settings",Map("EarnBunkerIntervalSec",8400,"EarnDJPopularityPct",95)),
-    gEarnNextDue := Map(), gEarnBunkerOrdered := false, gEarnFail := "",
+    gEarnNextDue := Map(), gEarnBunkerOrdered := false, gEarnBunkerFull := false, gEarnFail := "",
     endScene := "mct_title", endFailure := "", endOrder := "", endAbort := false,
     endBoss := true, endLogs := [], taskMode := "", originalException := 0, taskBegins := 0, taskEnds := 0
 cases := [
@@ -1443,7 +1457,7 @@ EarnLog(*) => true
     $taskFinallyDriver += "`n" + (Get-EarnFunctionBody $warehouseText 'EarnWarehouseTask')
     Invoke-EarnOfflineCheck 'MCTTaskFinally' 'EarnBunkerTask' $taskFinallyDriver 48
     $bunkerBuyDriver = @'
-global config := Map("Settings",Map("EarnBunkerIntervalSec",6720)), gEarnBunkerOrdered := false
+global config := Map("Settings",Map("EarnBunkerIntervalSec",6720)), gEarnBunkerOrdered := false, gEarnBunkerFull := false
 global c := Map(), stage := "mct", pays := 0, cancels := 0, reads := 0, buyClicks := 0
 ; Options, result, payments, cancellations, delivery confirmed, OCR reads.
 cases := [
@@ -1731,7 +1745,7 @@ EarnDispatchTask() => true
     $ceoMenuDriver = @'
 global EARN_MENU_AREA := [0,0,0.3,0.5], menuScene := "closed", menuBoss := true,
     menuCursor := 2, menuMode := "", menuOrder := "", menuAbort := false,
-    retireRequests := 0, submenuUps := 0, menuTests := 0, menuFailure := ""
+    retireRequests := 0, submenuUps := 0, menuTests := 0, menuFailure := "", arrowState := -1
 for c in [["main",true],["preferences",true],["boss",true],["securo",true],["unknown",false],["closed",false]] {
     menuScene := c[1]
     MenuCheck(EarnMenuIsOpen() = c[2], "known title " c[1])
@@ -1750,7 +1764,10 @@ for c in [["normal","closed",true,false,true,"MUUEUUUEMM",false,1,3],
     ["abort_submenu","closed",true,false,false,"MUUE",true,0,0],
     ["missing_retire","closed",true,false,false,"MUUEUUUUUUUUUUUUM",true,0,12],
     ["reject_retire","closed",true,false,false,"MUUEUUUEM",true,1,3],
-    ["verify_missing","closed",true,false,false,"MUUEUUUEMM",false,1,3]] {
+    ["verify_missing","closed",true,false,false,"MUUEUUUEMM",false,1,3],
+    ; 해제 뒤 화살표가 흰색이면 메뉴를 다시 열지 않는다.
+    ["arrow_white","closed",true,false,true,"MUUEUUUE",false,1,3]] {
+    arrowState := c[1] = "arrow_white" ? 0 : -1
     menuMode := c[1], menuScene := c[2], menuBoss := c[3], menuCursor := 2,
         menuOrder := "", menuAbort := false, retireRequests := 0, submenuUps := 0, menuFailure := ""
     result := EarnCEO(c[4])
@@ -1826,6 +1843,7 @@ EarnPress(key) {
     return true
 }
 EarnHudVisible() => menuScene = "closed"
+EarnArrowCEOColor() => arrowState
 EarnWaitSeen(name,*) => EarnSeen(name)
 EarnSleep(*) => !menuAbort
 Sleep(*) => true
@@ -1839,7 +1857,7 @@ EarnFail(reason) {
     foreach ($fn in @('EarnSeen','EarnMenuIsOpen','EarnSelectRow','EarnMenuOpen','EarnMenuClose','EarnCEOIs')) {
         $ceoMenuDriver += "`n" + (Get-EarnFunctionBody $sourceText $fn)
     }
-    Invoke-EarnOfflineCheck 'CEOSubmenu' 'EarnCEO' $ceoMenuDriver 18
+    Invoke-EarnOfflineCheck 'CEOSubmenu' 'EarnCEO' $ceoMenuDriver 19
     $mctOpenDriver = @'
 global EARN_PROMPT_AREA := [0,0,0.3,0.1], openOptions := Map(), openScene := "", openOrder := "",
     openClockMs := 0, openAborted := false, promptWaits := 0, seatedAfterAt := -1, titleAfterAt := -1
