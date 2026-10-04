@@ -1766,8 +1766,11 @@ for c in [["normal","closed",true,false,true,"MUUEUUUEMM",false,1,3],
     ["reject_retire","closed",true,false,false,"MUUEUUUEM",true,1,3],
     ["verify_missing","closed",true,false,false,"MUUEUUUEMM",false,1,3],
     ; 해제 뒤 화살표가 흰색이면 메뉴를 다시 열지 않는다.
-    ["arrow_white","closed",true,false,true,"MUUEUUUE",false,1,3]] {
-    arrowState := c[1] = "arrow_white" ? 0 : -1
+    ["arrow_white","closed",true,false,true,"MUUEUUUE",false,1,3],
+    ; 화살표가 이미 원하는 색이면 메뉴를 열지 않는다.
+    ["arrow_already_white","closed",false,false,true,"",false,0,0],
+    ["arrow_already_yellow","closed",true,true,true,"",true,0,0]] {
+    arrowState := c[1] = "arrow_already_white" ? 0 : c[1] = "arrow_already_yellow" ? 1 : -1
     menuMode := c[1], menuScene := c[2], menuBoss := c[3], menuCursor := 2,
         menuOrder := "", menuAbort := false, retireRequests := 0, submenuUps := 0, menuFailure := ""
     result := EarnCEO(c[4])
@@ -1843,7 +1846,8 @@ EarnPress(key) {
     return true
 }
 EarnHudVisible() => menuScene = "closed"
-EarnArrowCEOColor() => arrowState
+; arrow_white 는 해제 전 노랑, Retire 를 누른 뒤 흰색이다.
+EarnArrowCEOColor() => menuMode = "arrow_white" ? (retireRequests ? 0 : 1) : arrowState
 EarnWaitSeen(name,*) => EarnSeen(name)
 EarnSleep(*) => !menuAbort
 Sleep(*) => true
@@ -1857,7 +1861,7 @@ EarnFail(reason) {
     foreach ($fn in @('EarnSeen','EarnMenuIsOpen','EarnSelectRow','EarnMenuOpen','EarnMenuClose','EarnCEOIs')) {
         $ceoMenuDriver += "`n" + (Get-EarnFunctionBody $sourceText $fn)
     }
-    Invoke-EarnOfflineCheck 'CEOSubmenu' 'EarnCEO' $ceoMenuDriver 19
+    Invoke-EarnOfflineCheck 'CEOSubmenu' 'EarnCEO' $ceoMenuDriver 21
     $mctOpenDriver = @'
 global EARN_PROMPT_AREA := [0,0,0.3,0.1], openOptions := Map(), openScene := "", openOrder := "",
     openClockMs := 0, openAborted := false, promptWaits := 0, seatedAfterAt := -1, titleAfterAt := -1
