@@ -63,6 +63,11 @@ EarnStaffTrack(key := "", state := "") {
 
 ; 직원 관리 목록(Hangar·Warehouse·Bail Office)인지 본다. 요원이 모두 나가 Bail Office 가 회색이면
 ; 일반 판독은 "pail Office", 흰 글자 판독은 줄을 빠뜨린다(1004 15:04 녹화 실측). Hangar 줄은 이 목록에만 있어 대신 쓴다.
+EarnStaffAllBusy() {
+    footer := EarnReadScreen([25,392,450,70])
+    return IsObject(footer) && EarnStaffUniqueRow(footer, "i)^All of your staff members are currently")
+}
+
 EarnStaffListSeen(lines) => EarnStaffUniqueRow(lines, "i)^Warehouse$")
     && (EarnStaffUniqueRow(lines, "i)^Bail Office$") || EarnStaffUniqueRow(lines, "i)^Hangar$"))
 
@@ -86,6 +91,10 @@ EarnStaffRoot() {
         }
         if (EarnStaffListSeen(lines))
             return true
+        ; 회색 Manage Staff Members 가 선택되면 아래에 "All of your staff members are currently busy." 가 뜨고 Enter 는 무시된다
+        ; (1005 02:16 캡처). 회색 줄은 판독이 정확할 때도 깨질 때도 있어 이 문구를 먼저 본다.
+        if (EarnStaffAllBusy())
+            return "idle"
         if (EarnStaffUniqueRow(lines, "i)^Manage Staff Members$")) {
             if (!EarnStaffSelectEnter("i)^Manage Staff Members$", 6))
                 return EarnFail("직원: 직원 관리 목록 진입 실패")
