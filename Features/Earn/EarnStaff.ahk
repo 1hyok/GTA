@@ -244,8 +244,13 @@ EarnStaffHangar() {
         EarnStaffTrack("hangar", state = "full" ? "full" : "busy")
         return true
     }
-    if (EarnStaffReadHangar() != "ready")
-        return EarnFail("직원: 격납고 조달 직전 선택·가격·상태 변경")
+    ; 재확인이 어긋나도 아직 Enter 전이라 산 것이 없다. 자동화를 끄지 않고 5분 뒤 다시 본다(1005 04:20 실측).
+    recheck := EarnStaffReadHangar()
+    if (recheck != "ready") {
+        EarnLog("직원: 격납고 조달 직전 재확인 " recheck ", 사지 않고 건너뜀")
+        EarnStaffTrack("hangar", "busy")
+        return true
+    }
     deadline := A_TickCount + 60000
     if (!EarnPress("Enter") || !EarnSleep(700))
         return false
