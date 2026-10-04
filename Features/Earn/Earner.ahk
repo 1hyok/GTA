@@ -63,10 +63,13 @@ SetEarner(on, reason := "") {
         if (config["Features"]["AntiAFK"] && !afkOn)
             SetAntiAFK(true)
         SetTimer(EarnTick, 1000)
+        if (s["EarnSafe"])
+            SetTimer(EarnSafeFeedWatch, 4000)
         ShowTooltip("💰 수익 자동화 켜짐 (" KeyLabelFor("Earner") " 두 번: 끄기, End: 멈춤)", 2500)
         EarnLog("켜짐: " EarnEnabledText())
     } else {
         SetTimer(EarnTick, 0)
+        SetTimer(EarnSafeFeedWatch, 0)
         if (reason != "")
             gEarnFail := reason
         ; 작업이 도는 중이면 그 자리에서 멈추게 한다 (End 와 같게). 안 그러면 F9 로 꺼도 하던 작업이 끝까지 키를 보낸다

@@ -20,6 +20,9 @@ $driver = @'
 #NoTrayIcon
 #Warn All, StdOut
 global gMode, gState, gSelected, gBiz, gIdx, gReads, gClaims, gClaimAttempts, gKeys, gStandWaits, gMctCloses, gCEOCalls, gFailure, gScheduled, gTests := 0
+; 입금 알림 감시(EarnSafeFeedWatch)는 스케줄러 전역을 쓴다. 이 시험은 파서만 부른다.
+global gEarnOn := false, gEarnBusy := false, gEarnDue := Map(), gEarnNextDue := Map(), config := Map()
+IsGTAActive() => false
 RunTests()
 FileAppend("PASS EarnVinewood cases=" gTests Chr(10), "*", "UTF-8")
 ExitApp(0)
@@ -112,6 +115,28 @@ RunTests() {
     gSelected := "Garment Factory"
     wrapped := [FakeLine("THE VINEWOOD CLUB APP"), FakeLine("Garment Factory"), FakeLine("Claim $35720 from your Garment Factory"), FakeLine("safe.")]
     Check(EarnVinewoodSelectedSafe(wrapped) = "Garment Factory" && EarnVinewoodSafeAmountOf(wrapped, "Garment Factory") = 35720, "footer wrapped onto two lines")
+    ; 입금 알림(1004 녹화의 흰 글자 판독 그대로). 깨진 금액은 -1, 가득 참은 full.
+    feedCases := [
+        [["Your daily Salvage Yard","earrnings have been added to","the office. safe _","Safe total: $11400"], "Salvage Yard", 11400, false],
+        [["Galaxy","Your daily Nightclub take has","been added to the office","safe.","Safe total: $245000"], "Nightclub", 245000, false],
+        [["Galaxy","Your daily Night.club take has","been added to the office","safe.","Safe total: $245c•oa"], "Nightclub", -1, false],
+        [["kicked for idlina: 13rn0Qs","Galaxy","Your daily Nightclub take has","been added to the office","safe.","Safe total: $24500Q"], "Nightclub", -1, false],
+        [["Galaxy","Your daily Nightclub take has","been added to the office","safe.","Safe total: $250000 (at","capacity)"], "Nightclub", 250000, true]]
+    for c in feedCases {
+        feed := []
+        for text in c[1]
+            feed.Push(FakeLine(text))
+        notes := EarnSafeFeedParse(feed)
+        Check(notes.Length = 1 && notes[1].name = c[2] && notes[1].total = c[3] && notes[1].full = c[4], "safe feed " c[2] " " c[3])
+    }
+    both := []
+    for text in ["Your daily Salvage Yard","earnings have been added to","the office safe.","Safe total: $11700","Galaxy","Your daily Nightclub take has","been added to the office","safe.","Safe total: $250000 (at","capacity)"]
+        both.Push(FakeLine(text))
+    notes := EarnSafeFeedParse(both)
+    Check(notes.Length = 2 && notes[1].name = "Salvage Yard" && notes[1].total = 11700 && !notes[1].full
+        && notes[2].name = "Nightclub" && notes[2].total = 250000 && notes[2].full, "two stacked safe feeds")
+    Check(!EarnSafeFeedParse([FakeLine("Your daily Hands On Car Wash earnings have been added"), FakeLine("Safe total: $90000")]).Length, "ignored or unknown business feed")
+    Check(!EarnSafeFeedParse(false).Length, "unreadable feed")
     Check(EarnVinewoodSafeAmountOf(wrapped, "Nightclub") = -1, "another business footer is not this safe's amount")
     gSelected := "Nightclub"
     for item in [[0,232],[50000,184],[150000,88],[200000,40],[245000,40]]
