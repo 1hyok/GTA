@@ -974,6 +974,11 @@ EarnCEO(on) {
     global EARN_MENU_AREA
     ok := false
     try {
+        ; 화살표가 이미 원하는 색(CEO 노랑, 해제 흰색)이면 메뉴를 열지 않는다. 판단이 안 서면(-1) 메뉴로 본다.
+        if (EarnArrowCEOColor() = (on ? 1 : 0)) {
+            ok := true
+            return true
+        }
         if (!EarnMenuOpen())
             return EarnFail("CEO " (on ? "등록" : "해제") ": 상호작용 메뉴가 열리지 않음")
         if (on) {
