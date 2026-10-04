@@ -307,9 +307,9 @@ EarnBunkerTask(manageSession := true) {
             return false
         gEarnBunkerFull := plan.reason = "stock_full"
         if (gEarnBunkerFull) {
-            ; 가득 찬 동안은 보급이 줄지 않아 5분마다 볼 까닭이 없다(1004 10:43~ 실측: 5분마다 같은 99%).
-            EarnLog("벙커: 재고 가득 참. 판매 전까지 30분마다만 확인하고 MCT 갱신은 나이트클럽 카드로 한다")
-            gEarnNextDue["bunker"] := A_TickCount + 1800000
+            ; 재고는 사용자가 직접 팔아야 줄고, 그 조작이 자동화를 멈춘다. 다시 켤 때(F9) 새로 보므로 이번 회차에는 더 보지 않는다.
+            EarnLog("벙커: 재고 가득 참. 판매 뒤 F9 로 다시 켤 때까지 확인하지 않고, MCT 갱신은 나이트클럽 카드로 한다")
+            gEarnNextDue["bunker"] := A_TickCount + 7 * 86400000
             ok := true
         } else if (!plan.buy) {
             EarnLog("벙커: " plan.reason " → 다음 " plan.bars "칸 소모 경계에서 재확인")
