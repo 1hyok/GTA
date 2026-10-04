@@ -44,9 +44,13 @@ EarnBunkerPriceAllowed(price, bars) {
 ; 나이트클럽 창고 직원 재배정. 입력은 7품목의 현재 화면 판독 결과이며 변경하지 않는다.
 ; 각 행: {id, count, capacity, unlocked: 0/1, technician: 0..5}.
 ; 누락/중복/범위 오류는 ValueError. capacity는 화면값을 사용하고 저장층 수를 추정하지 않는다.
-; 정상 생산 중인 직원은 유지하고, 만재 품목에 배정된 직원만 미배정 목적지로 이동한다.
+; 직원 수만큼 '시간당 판매가가 가장 높은, 만재가 아닌 활성 품목'에 직원을 둔다. 그 밖(만재·더 싼 품목)에 있는 직원이
+; 그 안의 빈 품목으로 옮긴다. 판매 뒤 비싼 품목이 비면 싼 품목에서 생산 중인 직원도 데려온다.
+; 시간당 판매가(장비 업그레이드, 단가/개당 생산 시간): 남미 27000/60분, 의약 11475/30분, 현금 4725/15분,
+; 화물 10000/35분, 스포츠 5000/20분, 유기농 2025/10분, 인쇄 1350/7.5분
+; → 27000 > 22950 > 18900 > 17143 > 15000 > 12150 > 10800 (gtaguide.net 창고 관리, 판매 단가는 위키 Sell Goods 표).
 EarnWarehousePlan(goods) {
-    priority := ["south_american", "pharmaceutical", "cash", "cargo", "sporting", "organic", "printing"]
+    priority := EarnWarehousePriority()
     if (!(goods is Array) || goods.Length != priority.Length)
         throw ValueError("EarnWarehousePlan: exactly seven goods are required")
 
@@ -78,20 +82,46 @@ EarnWarehousePlan(goods) {
             unlocked: row.unlocked, technician: row.technician}
     }
 
+    ; 직원 수만큼 위에서부터 고른 목적 품목. 나머지 자리의 직원이 옮길 대상이다.
+    staff := assigned.Count, wanted := Map()
+    for id in priority {
+        row := rows[id]
+        if (wanted.Count < staff && row.unlocked && row.count < row.capacity)
+            wanted[id] := true
+    }
+    ; 옮길 직원: 만재 품목을 비싼 순으로 먼저, 다음으로 목적 밖에서 생산 중인 품목을 싼 순으로.
+    sources := []
+    for id in priority
+        if (rows[id].technician && rows[id].count >= rows[id].capacity)
+            sources.Push(id)
+    Loop priority.Length {
+        id := priority[priority.Length - A_Index + 1]
+        if (rows[id].technician && rows[id].count < rows[id].capacity && !wanted.Has(id))
+            sources.Push(id)
+    }
     moves := []
-    for sourceId in priority {
-        source := rows[sourceId]
-        if (!source.technician || source.count != source.capacity)
+    for targetId in priority {
+        target := rows[targetId]
+        if (!wanted.Has(targetId) || target.technician || !sources.Length)
             continue
-        for targetId in priority {
-            target := rows[targetId]
-            if (!target.unlocked || target.technician || target.count >= target.capacity)
-                continue
-            moves.Push({technician: source.technician, from: sourceId, to: targetId})
-            target.technician := source.technician
-            source.technician := 0
-            break
-        }
+        source := rows[sources.RemoveAt(1)]
+        moves.Push({technician: source.technician, from: source.id, to: targetId})
+        target.technician := source.technician
+        source.technician := 0
     }
     return moves
+}
+
+EarnWarehousePriority() {
+    return ["south_american", "pharmaceutical", "cash", "cargo", "sporting", "organic", "printing"]
+}
+
+; 계획이 낸 이동인지 실행 직전에 다시 본다: 원래 품목이 만재이거나 목적지가 더 비싼 품목이어야 한다.
+EarnWarehouseMoveJustified(fromId, toId, sourceFull) {
+    if (sourceFull)
+        return true
+    rank := Map()
+    for i, id in EarnWarehousePriority()
+        rank[id] := i
+    return rank.Has(fromId) && rank.Has(toId) && rank[toId] < rank[fromId]
 }

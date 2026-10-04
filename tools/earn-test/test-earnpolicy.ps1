@@ -165,6 +165,37 @@ goods := WarehouseFixture()
 for row in goods
     row.technician := 0
 Check(EarnWarehousePlan(goods).Length = 0, "unassigned technicians are not fabricated as full sources")
+; 판매로 남미가 비면 가장 싼 생산 중 품목(유기농)의 직원을 데려온다.
+goods := [
+    {id: "south_american", count: 0, capacity: 10, unlocked: true, technician: 0},
+    {id: "pharmaceutical", count: 5, capacity: 20, unlocked: true, technician: 1},
+    {id: "cash", count: 5, capacity: 40, unlocked: true, technician: 2},
+    {id: "cargo", count: 5, capacity: 50, unlocked: true, technician: 3},
+    {id: "sporting", count: 5, capacity: 100, unlocked: true, technician: 4},
+    {id: "organic", count: 5, capacity: 80, unlocked: true, technician: 5},
+    {id: "printing", count: 0, capacity: 60, unlocked: true, technician: 0}
+]
+moves := EarnWarehousePlan(goods)
+Check(moves.Length = 1 && moves[1].technician = 5 && moves[1].from = "organic" && moves[1].to = "south_american",
+    "sold high value goods pull the cheapest producing technician")
+ApplyMoves(goods, moves)
+Check(EarnWarehousePlan(goods).Length = 0, "top five producing goods are stable")
+; 만재 직원이 먼저 쓰이고, 남는 비싼 빈자리에만 생산 중 직원을 옮긴다.
+goods[1].count := 10
+goods[2].count := 0, goods[2].technician := 0
+goods[7].technician := 1
+moves := EarnWarehousePlan(goods)
+Check(moves.Length = 2 && moves[1].from = "south_american" && moves[1].to = "pharmaceutical"
+    && moves[2].from = "printing" && moves[2].to = "organic", "full source first, then cheapest producer fills next value slot")
+; 잠긴 비싼 품목은 목적지가 아니다.
+goods := WarehouseFixture()
+for row in goods
+    row.count := 0
+goods[1].technician := 0, goods[1].unlocked := false
+goods[6].technician := 1
+Check(EarnWarehousePlan(goods).Length = 0, "locked high value goods do not pull producers")
+Check(EarnWarehouseMoveJustified("organic", "south_american", false) && !EarnWarehouseMoveJustified("south_american", "organic", false)
+    && EarnWarehouseMoveJustified("south_american", "organic", true), "move justification follows value order unless source is full")
 ExpectWarehouseInvalid([], "missing goods")
 ExpectWarehouseInvalid(Map(), "non-array goods")
 goods := WarehouseFixture()
@@ -270,7 +301,7 @@ try {
     }
     $stdout = $testProcess.StandardOutput.ReadToEnd().Trim()
     $stderr = $testProcess.StandardError.ReadToEnd().Trim()
-    if ($testProcess.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnPolicy cases=107') {
+    if ($testProcess.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnPolicy cases=112') {
         throw "EarnPolicy failed (exit=$($testProcess.ExitCode))`nstdout: $stdout`nstderr: $stderr"
     }
     Write-Output $stdout
