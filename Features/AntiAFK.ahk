@@ -430,6 +430,17 @@ AFKMCTPulse() {
     if (!AFKInputAllowed())
         return false
     start := "", middle := "", openKey := "", closeKey := ""
+    if (AFKMenuSeen("m_title")) {
+        ; 수익 작업이 멈추며 상호작용 메뉴를 열어 둔 채 남기면 미확인 화면으로 막혀 방치 킥을 당했다(1004 15:43→15:58 실측).
+        ; 사용자가 손을 뗀 뒤에만 여기 오므로 M 으로 닫는다. 그 입력이 곧 무입력 방지다.
+        if (!AFKMenuTap("m") || !AFKWait(900))
+            return AFKMCTBlocked("상호작용 메뉴 닫기 중 입력 중단")
+        if (AFKMenuSeen("m_title"))
+            return AFKMCTBlocked("남은 상호작용 메뉴가 M 에 닫히지 않음")
+        afkMCTLastErr := ""
+        AFKLog("MCT state confirmed: 남은 상호작용 메뉴를 M 으로 닫음")
+        return true
+    }
     if (AFKMenuSeen("mct_terrorbyte")) {
         ; 테러바이트 터치스크린 앞은 안내 상자 때문에 빈 HUD로 보이지 않는다. 서 있으니 M 메뉴가 열린다(1003 실측).
         ; CEO 안내는 저택 앉은 안내와 비슷하게 잡히므로 그보다 먼저 본다.
