@@ -98,6 +98,10 @@ EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
     ; 1004 03:20 실측: $60,000 에서 8초 동안 버튼이 보였는데 오차 40으로는 못 찾았다. 다른 화면은 이 자리에서 오차 226 이상이다.
     if (name = "bunker_buy")
         variation := Max(variation, 100)
+    ; 1인칭으로 든 휴대폰은 빛·기울기에 따라 제목 막대 색이 조금씩 달라진다(1004 14:21 실측: 열린 Job List 오차 정확히 40).
+    ; 홈의 두 제목은 서로 오차 154 이상 떨어져 70이면 구분된다.
+    if (name = "ph_joblist_sel" || name = "ph_vinewood_sel")
+        variation := Max(variation, 70)
     return TemplateSeen("Earn", name, area, &fx, &fy, variation)
 }
 ; timeoutMs 안에 name 이 보이면 true. 전체 멈춤·포커스 이탈이면 바로 false.
