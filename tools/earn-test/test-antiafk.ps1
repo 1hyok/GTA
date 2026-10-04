@@ -9,14 +9,17 @@ $functions = @('AntiAFKTick', 'AFKInputAllowed', 'AFKMCTPulse', 'AFKMenuSeen', '
     if (-not $body) { throw "$_ missing" }
     $body
 }
-# A_TimeIdlePhysical(훅이 본 물리 입력)은 idleMs, A_TimeIdle(주입 포함 전체 입력)은 AnyIdle() 로 바꿔 끼운다
-$production = ($functions -join "`n").Replace('A_TimeIdlePhysical', 'idleMs').Replace('A_TimeIdle', 'AnyIdle()')
+# A_TimeIdlePhysical(훅이 본 물리 입력)은 idleMs, A_TimeIdle(주입 포함 전체 입력)은 AnyIdle() 로 바꿔 끼운다.
+# A_TickCount 는 AFKWait 만 앞으로 미는 가짜 시계 FakeTick() 으로 바꾼다. 실제 시계를 쓰면 idleMs 를 고정한 채
+# 틱 사이에 2초 넘게 흐를 때(병렬 CI 부하) AFKRefocusGTA 가 새 유휴 구간으로 보고 실패 횟수를 비운다.
+$production = ($functions -join "`n").Replace('A_TimeIdlePhysical', 'idleMs').Replace('A_TimeIdle', 'AnyIdle()').Replace('A_TickCount', 'FakeTick()')
 $driver = @'
 #Requires AutoHotkey v2.0
 #SingleInstance Off
 #NoTrayIcon
 #Warn All, StdOut
 global checkCount := 0
+global fakeNow := 50000000
 Reset()
 afkOn := false
 AntiAFKTick()
@@ -46,7 +49,7 @@ idleMs := 0
 AntiAFKTick()
 Check(events.Length = 0, "physical user input")
 Reset()
-afkNextDue := A_TickCount + 100000
+afkNextDue := FakeTick() + 100000
 AntiAFKTick()
 Check(events.Length = 0, "not due")
 Reset()
@@ -56,15 +59,15 @@ Check(events.Length = 0, "game absent")
 Reset()
 focused := false
 AntiAFKTick()
-Check(events.Length = 0 && activations = 0 && !gAFKBusy && afkNextDue > A_TickCount && LogHas("skip: GTA 포커스 없음"), "no focus stealing while idle is short")
+Check(events.Length = 0 && activations = 0 && !gAFKBusy && afkNextDue > FakeTick() && LogHas("skip: GTA 포커스 없음"), "no focus stealing while idle is short")
 Reset()
 AntiAFKTick()
 Check(events.Length = 4 && events[1] = "{Backspace down}" && events[4] = "{Enter up}" && menuState = "mct_title"
-    && !gAFKBusy && afkNextDue > A_TickCount && releases = 1, "MCT page returns to original state and releases input lock")
+    && !gAFKBusy && afkNextDue > FakeTick() && releases = 1, "MCT page returns to original state and releases input lock")
 Reset()
 interrupt := true
 AntiAFKTick()
-Check(events.Length = 2 && events[2] = "{Backspace up}" && !gAFKBusy && afkNextDue > A_TickCount && releases = 1,
+Check(events.Length = 2 && events[2] = "{Backspace up}" && !gAFKBusy && afkNextDue > FakeTick() && releases = 1,
     "user interrupts menu key and held key is released without further navigation")
 Reset()
 config["Settings"]["EarnMCTOnly"] := 0
@@ -83,7 +86,7 @@ Reset()
 focused := false, idleMs := 301000
 config["Settings"]["AFKRefocusSettleMs"] := 650
 AntiAFKTick()
-Check(activations = 1 && waits.Length && waits[1] = 650 && events.Length = 4 && !gAFKBusy && afkNextDue > A_TickCount + 100000 && LogHas("refocus ok idle=301s"), "refocus after long physical idle then settle and input")
+Check(activations = 1 && waits.Length && waits[1] = 650 && events.Length = 4 && !gAFKBusy && afkNextDue > FakeTick() + 100000 && LogHas("refocus ok idle=301s"), "refocus after long physical idle then settle and input")
 Reset()
 focused := false, idleMs := 301000, minimized := true
 AntiAFKTick()
@@ -92,19 +95,19 @@ Reset()
 focused := false, idleMs := 900000
 config["Settings"]["AFKRefocusIdleSec"] := 0
 AntiAFKTick()
-Check(activations = 0 && events.Length = 0 && afkNextDue > A_TickCount && LogHas("전면화 꺼짐"), "zero refocus setting never activates")
+Check(activations = 0 && events.Length = 0 && afkNextDue > FakeTick() && LogHas("전면화 꺼짐"), "zero refocus setting never activates")
 Reset()
 focused := false, idleMs := 301000, activateWorks := false
 AntiAFKTick()
-firstGap := afkNextDue - A_TickCount
+firstGap := afkNextDue - FakeTick()
 afkNextDue := 0
 AntiAFKTick()
-secondGap := afkNextDue - A_TickCount
+secondGap := afkNextDue - FakeTick()
 afkNextDue := 0
 AntiAFKTick()
 afkNextDue := 0
 AntiAFKTick()
-fourthGap := afkNextDue - A_TickCount
+fourthGap := afkNextDue - FakeTick()
 Check(activations = 3 && events.Length = 0 && logs.Length = 2 && warnings.Length = 1
     && InStr(logs[1], "refocus 실패: 2초 안에") && LogHas("refocus blocked:") && !gAFKBusy
     && firstGap > 25000 && firstGap <= 30000 && secondGap > 55000 && secondGap <= 60000 && fourthGap > 115000 && fourthGap <= 120000,
@@ -115,15 +118,15 @@ AntiAFKTick()
 afkNextDue := 0
 idleMs := 310000   ; 그사이 사람이 만졌다가 다시 비워 유휴 시작 시각이 바뀜
 AntiAFKTick()
-Check(activations = 2 && logs.Length = 2 && afkRefocusFails = 1 && afkNextDue - A_TickCount <= 30000, "new idle stretch restarts backoff and logging")
+Check(activations = 2 && logs.Length = 2 && afkRefocusFails = 1 && afkNextDue - FakeTick() <= 30000, "new idle stretch restarts backoff and logging")
 Reset()
 focused := false, idleMs := 301000, stealBack := true
 AntiAFKTick()
-Check(activations = 1 && events.Length = 0 && afkRefocusFails = 1 && LogHas("다시 잃음") && afkNextDue - A_TickCount > 25000 && !gAFKBusy, "focus stolen back during settle")
+Check(activations = 1 && events.Length = 0 && afkRefocusFails = 1 && LogHas("다시 잃음") && afkNextDue - FakeTick() > 25000 && !gAFKBusy, "focus stolen back during settle")
 Reset()
 focused := false, idleMs := 301000, interrupt := true
 AntiAFKTick()
-Check(activations = 1 && events.Length = 0 && afkRefocusFails = 0 && afkNextDue - A_TickCount > 25000 && !gAFKBusy, "user returns during settle")
+Check(activations = 1 && events.Length = 0 && afkRefocusFails = 0 && afkNextDue - FakeTick() > 25000 && !gAFKBusy, "user returns during settle")
 Reset()
 focused := false, idleMs := 301000, activateWorks := false
 AntiAFKTick()
@@ -133,20 +136,20 @@ Check(events.Length = 4 && afkRefocusFails = 0 && LogHas("앞선 실패 1회 뒤
 Reset()
 focused := false, idleMs := 900000, anyIdleMs := 20000   ; 원격 데스크톱·에이전트가 20초 전에 다른 창에 입력
 AntiAFKTick()
-Check(activations = 0 && events.Length = 0 && afkNextDue > A_TickCount && LogHas("주입 포함 idle=20s"), "injected input from others blocks refocus")
+Check(activations = 0 && events.Length = 0 && afkNextDue > FakeTick() && LogHas("주입 포함 idle=20s"), "injected input from others blocks refocus")
 Reset()
 focused := false, idleMs := 301000, activateWorks := false
 AntiAFKTick()
 ownIgnored := AFKOthersIdleMs() >= 300000   ; 실패한 WinActivate 가 누른 Alt 는 남의 입력이 아니다
-afkSelfFrom -= 3000, afkSelfTo -= 3000, anyInjectedAt := A_TickCount, afkNextDue := 0   ; 그 구간이 끝나고 3초 뒤 남이 입력
+afkSelfFrom -= 3000, afkSelfTo -= 3000, anyInjectedAt := FakeTick(), afkNextDue := 0   ; 그 구간이 끝나고 3초 뒤 남이 입력
 AntiAFKTick()
 Check(ownIgnored && activations = 1 && LogHas("skip: GTA 포커스 없음"), "own Alt ignored, later outside input counted")
 Reset()
-focused := false, idleMs := 2000, hookExtraMs := 600000, afkHookTick := A_TickCount - 2000   ; Main 재시작 직후, 그 전 10분 비움
+focused := false, idleMs := 2000, hookExtraMs := 600000, afkHookTick := FakeTick() - 2000   ; Main 재시작 직후, 그 전 10분 비움
 AntiAFKTick()
 Check(activations = 1 && events.Length = 4 && LogHas("refocus ok idle=602s"), "fresh hook uses whole-input idle")
 Reset()
-focused := false, idleMs := 2000, hookExtraMs := 600000, afkHookTick := A_TickCount - 2000, interruptAt := 2
+focused := false, idleMs := 2000, hookExtraMs := 600000, afkHookTick := FakeTick() - 2000, interruptAt := 2
 AntiAFKTick()
 Check(activations = 1 && events.Length = 2 && !gAFKBusy, "fresh hook still sees user return during input")
 Reset()
@@ -341,10 +344,11 @@ Reset() {
         "AFKRefocusIdleSec",300,"AFKRefocusSettleMs",800))
 }
 ; 전체 입력 유휴(GetLastInputInfo). 물리 입력도 세므로 훅이 본 물리 유휴(+훅 설치 전 유휴)보다 길 수 없고, 주입 입력마다 0 이 된다.
+FakeTick() => fakeNow
 AnyIdle() {
     global
     v := Min(idleMs + hookExtraMs, anyIdleMs)
-    return anyInjectedAt ? Min(v, A_TickCount - anyInjectedAt) : v
+    return anyInjectedAt ? Min(v, FakeTick() - anyInjectedAt) : v
 }
 LogHas(text) {
     for line in logs
@@ -370,7 +374,7 @@ Send(value) {
     if (!gAFKBusy)
         throw Error("input without ownership")
     events.Push(value)
-    anyInjectedAt := A_TickCount
+    anyInjectedAt := FakeTick()
     if InStr(value, "Alt")
         altSent := true
     ; 남은 전화·앱은 Backspace 로 한 단계씩 닫힌다.
@@ -425,8 +429,9 @@ PixelSearch(&x, &y, x1, y1, x2, y2, color, tolerance) {
 }
 FileExist(path) => guardAssetMissing ? "" : "A"
 AFKWait(ms) {
-    global idleMs, hookExtraMs, focused
+    global idleMs, hookExtraMs, focused, fakeNow
     waits.Push(ms)
+    fakeNow += ms
     if (interrupt || (interruptAt && waits.Length >= interruptAt))
         idleMs := 0, hookExtraMs := 0
     if (stealBack)
@@ -456,7 +461,7 @@ WinActivate(*) {
     if (activateWorks || (altRescue && altSent) || (toastRescue && notificationDone))
         focused := true
     else
-        anyInjectedAt := A_TickCount   ; AHK 의 WinActivate 는 실패하면 Alt 를 두 번 누른다
+        anyInjectedAt := FakeTick()   ; AHK 의 WinActivate 는 실패하면 Alt 를 두 번 누른다
 }
 WinWaitActive(*) => focused
 WinGetProcessName(*) => frontExe
@@ -470,7 +475,7 @@ AFKDismissNotification(*) {
     if (interruptNotification)
         idleMs := 0
     if (externalNotificationInput) {
-        afkSelfBefore := A_TickCount
+        afkSelfBefore := FakeTick()
         return "blocked:input-changed"
     }
     return notificationResult
