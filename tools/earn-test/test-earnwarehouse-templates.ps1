@@ -10,6 +10,7 @@ and delayed full samples were pixel-identical, so only one fixture is retained.
 [CmdletBinding()]
 param()
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'compare-png-pixels.ps1')
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $assets = Join-Path $root 'Images\Earn\1920x1080'
 $fixtures = Join-Path $PSScriptRoot 'test-earnwarehouse-template-fixtures'
@@ -81,9 +82,8 @@ $generatedDirectory = Join-Path ([IO.Path]::GetTempPath()) ('gta-warehouse-templ
 $generated = Join-Path $generatedDirectory 'warehouse_person_full_foot.png'
 try {
     & (Join-Path $PSScriptRoot 'build-warehouse-templates.ps1') -OutputDir $generatedDirectory | Out-Null
-    $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $generated).Hash
-    $expected = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $assets 'warehouse_person_full_foot.png')).Hash
-    if ($actual -ne $expected) { throw 'Builder does not reproduce the checked-in full-stock asset.' }
+    $diff = Compare-PngPixels (Join-Path $assets 'warehouse_person_full_foot.png') $generated
+    if ($diff) { throw "Builder does not reproduce the checked-in full-stock asset ($diff)." }
     $cases++
 } finally {
     if ([IO.File]::Exists($generated)) { [IO.File]::Delete($generated) }

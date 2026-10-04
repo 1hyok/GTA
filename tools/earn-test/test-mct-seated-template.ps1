@@ -12,6 +12,7 @@ $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $assetDirectory = Join-Path $root 'Images\Earn\1920x1080'
 $evidence = Join-Path $root 'docs\evidence\2026-09-27-mct'
 $cases = 0
+. (Join-Path $PSScriptRoot 'compare-png-pixels.ps1')
 
 # Also runs the existing nightclub positive/negative regression. Its public
 # pixel matcher implements the same per-channel ImageSearch comparison.
@@ -76,11 +77,10 @@ $names = @('nc_dj_menu', 'nc_home', 'mct_seated_mansion')
 try {
     & (Join-Path $PSScriptRoot 'build-mct-templates.ps1') -OutputDir $generatedDirectory -Name $names
     foreach ($name in $names) {
-        $expected = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $assetDirectory ($name + '.png'))).Hash
-        $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $generatedDirectory ($name + '.png'))).Hash
-        if ($actual -ne $expected) { throw "Builder changes the checked-in stable mask: $name" }
+        $diff = Compare-PngPixels (Join-Path $assetDirectory ($name + '.png')) (Join-Path $generatedDirectory ($name + '.png'))
+        if ($diff) { throw "Builder changes the checked-in stable mask: $name ($diff)" }
         $cases++
-        Write-Output "PASS builder reproduces $name $actual"
+        Write-Output "PASS builder reproduces $name"
     }
 }
 finally {
