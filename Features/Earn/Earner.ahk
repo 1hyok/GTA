@@ -14,6 +14,7 @@ global gEarnNextDue := Map()   ; 작업이 스스로 정한 다음 실행 시각
 global gEarnSoftFails := Map()   ; 작업별 연속 "다시 하기" 횟수. EarnSoftFailMax 를 넘으면 그때 끈다
 global gEarnGuardArmed := false
 global gEarnGuardStartedTick := 0
+global gEarnUserAbort := false
 global gEarnInputGuard := EarnInputAllowed
 global gEarnGamePID := 0
 
@@ -90,7 +91,7 @@ EarnEnabledText() {
 }
 
 EarnTick() {
-    global gEarnOn, gEarnBusy, gEarnDue, gEarnDone, gEarnTasks, gEarnCurrent, gEarnFail, gEarnNextDue, gEarnSoftFails, gEarnRetryIn, gAbort, gEarnGamePID, config, afkOn
+    global gEarnOn, gEarnBusy, gEarnDue, gEarnDone, gEarnTasks, gEarnCurrent, gEarnFail, gEarnNextDue, gEarnSoftFails, gEarnRetryIn, gAbort, gEarnGamePID, gEarnUserAbort, config, afkOn
     if (!gEarnOn || gEarnBusy)
         return
     if (!gEarnGamePID || EarnGamePID() != gEarnGamePID) {
@@ -137,6 +138,7 @@ EarnTick() {
         return
     gEarnBusy := true
     gAbort := false
+    gEarnUserAbort := false
     gEarnCurrent := task.label
     outcome := {results: [], cleanupOK: true}
     fatalReason := ""
@@ -165,6 +167,29 @@ EarnTick() {
             gEarnCurrent := ""
             EarnInputLockRelease(inputLock)
         }
+    }
+    ; 사용자가 손을 댄 중단은 끄지 않고 3분 뒤 다시 한다. 다음 시도도 손을 뗀 뒤에만 시작하고,
+    ; MCT 작업은 시작할 때 위치를 다시 확인하므로 정리가 덜 됐어도 여기서 멈추지 않는다.
+    ; (1004 18:36 사용자가 잠깐 만져 자동화가 통째로 꺼졌다. 밤새 켜 두는 용도라 매번 F9 를 다시 눌러야 했다)
+    if (gEarnUserAbort) {
+        gAbort := false
+        finished := Map()
+        for result in outcome.results {
+            if (result.ok) {
+                EarnFinishScheduledTask(result)
+                finished[result.task.id] := true
+            }
+        }
+        for t in dueTasks {
+            if (finished.Has(t.id))
+                continue
+            if (gEarnNextDue.Has(t.id))
+                gEarnNextDue.Delete(t.id)
+            gEarnDue[t.id] := A_TickCount + 3 * 60000
+        }
+        EarnLog(task.label ": 사용자 입력 또는 GTA 포커스 이탈로 중단 → 3분 뒤 다시")
+        ShowTooltip("💰 사용자 입력으로 중단 → 3분 뒤 다시", 4000)
+        return
     }
     if (fatalReason != "" || !outcome.cleanupOK) {
         why := fatalReason != "" ? fatalReason : "MCT 정리 실패: " (gEarnFail = "" ? "종료 또는 CEO 해제 미확인" : gEarnFail)
@@ -307,7 +332,7 @@ EarnInputWatch() {
 }
 
 EarnInputAllowed() {
-    global gEarnGuardArmed, gEarnGuardStartedTick, gAbort, gEarnRetryIn, gEarnGamePID
+    global gEarnGuardArmed, gEarnGuardStartedTick, gAbort, gEarnRetryIn, gEarnGamePID, gEarnUserAbort
     if (!gEarnGuardArmed)
         return !gAbort
     if (!gAbort && (!gEarnGamePID || EarnGamePID() != gEarnGamePID)) {
@@ -317,7 +342,9 @@ EarnInputAllowed() {
         ReleaseHeldKeys()
     } else if (!gAbort && (A_TimeIdlePhysical < Max(1, A_TickCount - gEarnGuardStartedTick) || !IsGTAActive())) {
         ; 긴 OCR 호출 중 발생한 입력도 시작 이후 경과 시간과 비교해 감지한다.
+        ; 끄지 않는다. EarnTick 이 3분 뒤로 미룬다.
         gAbort := true
+        gEarnUserAbort := true
         gEarnRetryIn := 0
         EarnFail("사용자 입력 또는 GTA 포커스 이탈로 중단")
         ReleaseHeldKeys()
