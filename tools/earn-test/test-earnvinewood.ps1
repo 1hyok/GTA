@@ -21,7 +21,7 @@ $driver = @'
 #Warn All, StdOut
 global gMode, gState, gSelected, gBiz, gIdx, gReads, gClaims, gClaimAttempts, gKeys, gStandWaits, gMctCloses, gCEOCalls, gFailure, gScheduled, gTests := 0
 ; 입금 알림 감시(EarnSafeFeedWatch)는 스케줄러 전역을 쓴다. 이 시험은 파서만 부른다.
-global gEarnOn := false, gEarnBusy := false, gEarnDue := Map(), gEarnNextDue := Map(), config := Map()
+global gEarnRetryIn := 0, gEarnOn := false, gEarnBusy := false, gEarnDue := Map(), gEarnNextDue := Map(), config := Map()
 IsGTAActive() => false
 RunTests()
 FileAppend("PASS EarnVinewood cases=" gTests Chr(10), "*", "UTF-8")
@@ -98,6 +98,10 @@ RunTests() {
     Check(!EarnVinewoodClose() && gKeys.Length = 4, "stuck app closing is bounded at four Backspaces")
     Reset("normal", "phone_vinewood")
     Check(EarnVinewoodClose() && gState = "standing", "phone home is closed before reporting success")
+    Reset("normal", "pause_menu")
+    RetryIn(0)
+    Check(!EarnVinewoodOpen() && gKeys.Length = 0 && RetryIn() = 180000 && InStr(gFailure, "대기 위치"),
+        "away from MCT retries in three minutes without input")
     Reset("normal", "phone_job")
     Check(EarnVinewoodOpen() && gState = "main" && gKeys.Length = 2
         && gKeys[1] = "Right" && gKeys[2] = "Enter", "Job List home only moves right and opens the selected app")
@@ -263,6 +267,12 @@ EarnSeen(name, *) {
     return name = "mct_sit" ? gState = "standing" : name = "ph_joblist_sel" ? gState = "phone_job" : name = "ph_vinewood_sel" && gState = "phone_vinewood"
 }
 EarnWaitSeen(name, *) => EarnSeen(name)
+RetryIn(value := "") {
+    global gEarnRetryIn
+    if (value != "")
+        gEarnRetryIn := value
+    return gEarnRetryIn
+}
 EarnAtMCT() {
     global gState
     return gState = "mct"

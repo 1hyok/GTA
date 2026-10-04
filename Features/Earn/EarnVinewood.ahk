@@ -281,8 +281,13 @@ EarnVinewoodOpen() {
         && !EarnSeen("ph_vinewood_sel", [0.83,0.66,0.98,0.73])) {
         if (EarnAtMCT() && !EarnMCTClose())
             return false
-        if (!EarnSeen("mct_sit", [0,0,0.3,0.1]) && !EarnSeen("mct_terrorbyte"))
+        ; 아직 아무 입력도 안 보낸 단계다. MCT 작업처럼 끄지 않고 3분 뒤 다시 한다
+        ; (1004 21:56 사용자가 일시정지 메뉴를 연 채 손을 떼자 MCT 작업은 미뤄졌는데 금고만 자동화를 껐다).
+        if (!EarnSeen("mct_sit", [0,0,0.3,0.1]) && !EarnSeen("mct_terrorbyte")) {
+            global gEarnRetryIn
+            gEarnRetryIn := 3 * 60000
             return EarnFail("금고: MCT 앞 대기 위치를 확인하지 못함")
+        }
         if (!EarnCEO(false) || !EarnPress("Up") || !EarnSleep(700))
             return false
     }
