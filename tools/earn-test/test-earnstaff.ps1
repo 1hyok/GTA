@@ -31,7 +31,7 @@ global config, cargoNames, cargoStatuses, cargoRequests, cargoReads, activeCount
 global fixtureData := Map(), fixtureKey := ""
 global observedDeadlines := []
 global menuReads := 0, mainNames := []
-global hangarState := "ready", hangarRequests := 0
+global hangarState := "ready", hangarRequests := 0, hangarReads := 0
 OnError(TestUnhandledError)
 __FIXTURE_INIT__
 try {
@@ -217,7 +217,7 @@ RunMenuTests() {
 }
 
 RunCargoTests() {
-    global hangarState, hangarRequests
+    global hangarState, hangarRequests, hangarReads
     global mode, screenState, selected, statuses, requests, keys, config
     global cargoNames, cargoStatuses, cargoRequests, activeCount, opens
     ; mode, statuses, success, per-run cargo request count.
@@ -331,7 +331,7 @@ RunCargoTests() {
     Check(EarnVinewoodStaffTask() && Sum(cargoRequests) = 0, "grey Warehouse skips cargo staff without entering")
     for c in [["hangar_ready","ready",true,1,"busy"], ["hangar_busy","busy",true,0,"busy"],
         ["hangar_bad_price","ready",true,0,"ready"], ["hangar_unknown","odd",true,0,"odd"],
-        ["hangar_unconfirmed","ready",false,1,"ready"]] {
+        ["hangar_unconfirmed","ready",false,1,"ready"], ["hangar_flaky","ready",true,0,"ready"]] {
         Reset(c[1],["busy","busy"])
         hangarState := c[2]
         config["Settings"]["EarnBailAgents"] := 0, config["Settings"]["EarnCargoStaff"] := 0, config["Settings"]["EarnHangarStaff"] := 1
@@ -353,9 +353,9 @@ Reset(nextMode, initial) {
     global mode, screenState, selected, statuses, requests, keys, reads, failure
     global config, cargoNames, cargoStatuses, cargoRequests, cargoReads, activeCount, opens, postReads
     global observedDeadlines
-    global menuReads, mainNames, hangarState, hangarRequests
+    global menuReads, mainNames, hangarState, hangarRequests, hangarReads
     mode := nextMode, screenState := "staff", selected := "Hangar"
-    hangarState := "ready", hangarRequests := 0
+    hangarState := "ready", hangarRequests := 0, hangarReads := 0
     statuses := initial.Clone(), requests := [0,0], keys := [], reads := 0, failure := ""
     config := Map("Settings",Map("EarnBailAgents",1,"EarnCargoStaff",1))
     cargoNames := ["Discount Retail Unit","Railyard Warehouse","Foreclosed Garage","Darnell Bros Warehouse","West Vinewood Backlot"]
@@ -389,7 +389,7 @@ EarnReadScreen(area, whiteText := false, deadline := 0) {
 MockReadScreen(area, whiteText) {
     global mode, screenState, selected, statuses, reads, requests
     global cargoNames, cargoStatuses, cargoRequests, cargoReads, postReads
-    global menuReads, mainNames
+    global menuReads, mainNames, hangarReads
     if (screenState = "main") {
         if (area[4] = 263 || area[4] = 300)
             menuReads += 1
@@ -419,8 +419,9 @@ MockReadScreen(area, whiteText) {
             TextLine("Manage your Warehouse staff.",300)]
         ; 격납고 줄이 선택되면 같은 줄 오른쪽에 가격, 목록 아래에 상태 문구가 뜬다(1004 21:36 녹화).
         if (selected = "Hangar" && hangarState != "") {
+            hangarReads += 1
             if (hangarState = "ready")
-                rows.Push(TextLine(mode = "hangar_bad_price" ? "$250000" : "$25000",181,420,80))
+                rows.Push(TextLine(mode = "hangar_bad_price" || mode = "hangar_flaky" && hangarReads >= 2 ? "$250000" : "$25000",181,420,80))
             rows[5].text := hangarState = "ready" ? "Send your Hangar staff member out on a job."
                 : hangarState = "busy" ? "Your Hangar staff member is currently out on a job." : "Something else."
         }
@@ -569,7 +570,7 @@ EarnMenuRowSelected(row) {
     return row.text = selected || row.text = selected " $7500"
 }
 EarnPress(key) {
-    global mode, screenState, selected, statuses, requests, keys, hangarState, hangarRequests
+    global mode, screenState, selected, statuses, requests, keys, hangarState, hangarRequests, hangarReads
     global cargoNames, cargoStatuses, cargoRequests, activeCount
     global mainNames
     keys.Push(key)
