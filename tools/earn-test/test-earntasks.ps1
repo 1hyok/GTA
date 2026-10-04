@@ -948,76 +948,54 @@ EarnFail(reason) {
     $djFlowDriver = @'
 global config := Map("Settings",Map("EarnDJPopularityPct",95)), popularity := 90, allowRebook := true,
     gain := 10, confirmations := 0, djScene := "mct", djMode := "", homeReads := 0, backs := 0,
-    djClock := 0, lastPaymentAt := 0, pendingPopularity := 0, postRefreshes := 0
-; Real Home reader/opening and DJ loop. A stale MCT value (92) is never authoritative.
-cases := [[97,true,10,true,0,"mct",""],[90,true,10,true,1,"mct",""],
-    [90,false,10,false,0,"mct",""],[90,true,0,false,1,"mct",""],
-    [95,true,10,true,0,"mct",""],[94,true,10,true,1,"mct",""],
-    [0,true,10,true,10,"mct",""],[0,true,5,false,10,"mct",""],
-    [-1,true,10,false,0,"mct",""],[95,true,10,true,0,"home",""],
-    [90,true,10,false,0,"unknown",""],[90,true,10,false,0,"mct","missing_label"],
-    [90,true,10,false,0,"mct","open_failed"],[90,true,10,false,0,"mct","home_failed"],
-    [90,true,10,false,1,"mct","post_label_missing"],
-    [90,true,10,false,1,"mct","post_unreadable"],
-    [95,true,10,false,0,"mct","back_failed"],[90,true,10,false,0,"mct","abort"],
-    [91,true,10,true,1,"mct","post_cached"],
-    [91,true,10,true,1,"mct","post_delayed"],
-    [91,true,10,true,1,"mct","post_unreadable_delayed"],
-    [91,true,10,false,1,"mct","post_refresh_failed"],
-    [91,true,0,false,1,"mct","post_abort_wait"],
-    [91,true,0,false,1,"mct","post_unknown_wait"],
-    [91,true,10,true,1,"mct","post_at_deadline"],
-    [91,true,10,false,1,"mct","post_after_deadline"]]
+    gEarnDJCheckAbove := -1
+; Real Home reader/opening and DJ flow. A stale MCT value (92) is never authoritative.
+; One Home visit per run: a rebook goes Home → MCT once, and the next run checks that popularity rose.
+; [popularity, rebook allowed, gain, result, payments, start scene, mode, previous rebook popularity]
+cases := [[97,true,10,true,0,"mct","",-1],[90,true,10,true,1,"mct","",-1],
+    [90,false,10,false,0,"mct","",-1],[95,true,10,true,0,"mct","",-1],
+    [94,true,10,true,1,"mct","",-1],[0,true,10,true,1,"mct","",-1],
+    [-1,true,10,false,0,"mct","",-1],[95,true,10,true,0,"home","",-1],
+    [90,true,10,false,0,"unknown","",-1],[90,true,10,false,0,"mct","missing_label",-1],
+    [90,true,10,false,0,"mct","open_failed",-1],[90,true,10,false,0,"mct","home_failed",-1],
+    [90,true,10,false,1,"mct","post_label_missing",-1],
+    [95,true,10,false,0,"mct","back_failed",-1],[90,true,10,false,0,"mct","abort",-1],
+    ; 지난 재고용이 먹었는지는 다음 방문의 첫 Home 값으로 본다.
+    [100,true,10,true,0,"mct","",91],[91,true,10,false,0,"mct","",91],
+    [80,true,10,false,0,"mct","",91],[91,true,10,true,1,"mct","",80]]
 for c in cases {
     popularity := c[1], allowRebook := c[2], gain := c[3], confirmations := 0,
-        djScene := c[6], djMode := c[7], homeReads := 0, backs := 0,
-        djClock := 0, lastPaymentAt := 0, pendingPopularity := 0, postRefreshes := 0
+        djScene := c[6], djMode := c[7], homeReads := 0, backs := 0, gEarnDJCheckAbove := c[8]
     result := EarnDJSwapLoop(92)
-    if (result != c[4] || confirmations != c[5] || (result && (djScene != "mct" || backs != confirmations + 1)))
-        throw Error("DJ Home flow " A_Index ": result=" result " payments=" confirmations " scene=" djScene)
+    if (result != c[4] || confirmations != c[5] || (result && (djScene != "mct" || backs != 1)))
+        throw Error("DJ Home flow " A_Index ": result=" result " payments=" confirmations " scene=" djScene " backs=" backs)
     if (c[1] >= 95 && confirmations)
         throw Error("Stale MCT reading spent money while Home already reached target")
-    if (backs > confirmations + 1 || postRefreshes > confirmations)
-        throw Error("DJ retried Home refresh more than once per payment")
-    if ((djMode = "post_delayed" || djMode = "post_unreadable_delayed") && homeReads < 4)
-        throw Error("DJ did not poll its delayed result")
-    if ((djMode = "post_after_deadline" || (gain = 0 && djMode = "")) && djClock - lastPaymentAt != 16000)
-        throw Error("DJ missing update did not stop at its 15-second read deadline")
-    if (djMode = "post_abort_wait" && djClock - lastPaymentAt != 1500)
-        throw Error("DJ kept reading after physical-input abort")
-    if (djMode = "post_unknown_wait" && djClock - lastPaymentAt != 2000)
-        throw Error("DJ kept reading after Home context disappeared")
+    if (homeReads > 1)
+        throw Error("DJ read Home popularity more than once in one visit")
+    if (gEarnDJCheckAbove != (confirmations ? c[1] : -1))
+        throw Error("DJ flow " A_Index ": next-visit check=" gEarnDJCheckAbove)
 }
-FileAppend("PASS DJFlow cases=26`n", "*")
+FileAppend("PASS DJFlow cases=" cases.Length "`n", "*")
 ExitApp(0)
 EarnPopularityMCTPct() {
     throw Error("MCT popularity is diagnostic only and must not be read for DJ spending")
 }
 EarnBarFill(x1,x2,y,kind) {
-    global popularity, homeReads, djScene, djMode, confirmations, djClock, lastPaymentAt, pendingPopularity
+    global popularity, homeReads, djScene
     if (x1 != 1069 || x2 != 1584 || y != 173 || kind != "pop" || djScene != "home")
         throw Error("DJ read pixels outside the confirmed Home popularity bar")
     homeReads++
-    elapsed := djClock - lastPaymentAt
-    if (confirmations && ((djMode = "post_delayed" && elapsed >= 6500)
-        || (djMode = "post_unreadable_delayed" && elapsed >= 4500)
-        || (djMode = "post_at_deadline" && elapsed >= 16000)
-        || (djMode = "post_after_deadline" && elapsed >= 16500)))
-        popularity := pendingPopularity
-    if (djMode = "post_unreadable_delayed" && confirmations && elapsed < 4500)
-        return -1
-    return djMode = "post_unreadable" && confirmations ? -1 : popularity / 100
+    return popularity / 100
 }
-DJClockRead() => djClock
-EarnAborted() => djMode = "abort" || (djMode = "post_abort_wait" && confirmations && djClock - lastPaymentAt >= 1500)
+EarnAborted() => djMode = "abort"
 EarnUIReady(name,*) => !EarnAborted() && EarnSeen(name)
 EarnSeen(name,*) {
-    global allowRebook, djScene, djMode, confirmations, djClock, lastPaymentAt
+    global allowRebook, djScene, djMode, confirmations
     if (name = "mct_title")
         return djScene = "mct"
     if (name = "nc_popularity_home")
         return djScene = "home" && djMode != "missing_label" && !(djMode = "post_label_missing" && confirmations)
-            && !(djMode = "post_unknown_wait" && confirmations && djClock - lastPaymentAt >= 2000)
     if (name = "nc_home")
         return djScene = "club" || djScene = "home" || djScene = "dj"
     if (name = "nc_dj_menu")
@@ -1031,17 +1009,10 @@ EarnSeen(name,*) {
     return djScene = name
 }
 EarnUIClick(name,x,y,*) {
-    global popularity, gain, confirmations, djScene, djMode, djClock, lastPaymentAt, pendingPopularity, postRefreshes
+    global popularity, gain, confirmations, djScene, djMode
     if (!EarnUIReady(name))
         throw Error("DJ clicked an unconfirmed screen: " name " from " djScene)
     if (name = "mct_nightclub_card") {
-        if (confirmations) {
-            postRefreshes++
-            if (djMode = "post_refresh_failed")
-                return false
-            if (djMode = "post_cached")
-                popularity := pendingPopularity
-        }
         if (djMode = "open_failed")
             return false
         djScene := "club"
@@ -1055,10 +1026,7 @@ EarnUIClick(name,x,y,*) {
         djScene := name = "dj_rebook_10k" ? "dj_confirm_solomun" : "dj_confirm_tale"
     } else if (name = "dj_confirm_solomun" || name = "dj_confirm_tale") {
         confirmations += 1
-        pendingPopularity := Min(100,popularity+gain), lastPaymentAt := djClock
-        if (djMode != "post_cached" && djMode != "post_delayed" && djMode != "post_unreadable_delayed"
-            && djMode != "post_at_deadline" && djMode != "post_after_deadline")
-            popularity := pendingPopularity
+        popularity := Min(100,popularity+gain)
         djScene := "dj"
     } else {
         throw Error("Unexpected DJ click " name)
@@ -1067,11 +1035,7 @@ EarnUIClick(name,x,y,*) {
 }
 EarnWaitSeen(name,*) => EarnSeen(name)
 EarnWaitGone(name,*) => !EarnSeen(name)
-EarnSleep(ms) {
-    global djClock
-    djClock += ms
-    return !EarnAborted()
-}
+EarnSleep(ms) => !EarnAborted()
 EarnUIBackToMCT(guard,presses) {
     global djScene, backs, djMode
     if (guard != "nc_dj_menu" || presses != 1 || djScene != "home")
@@ -1087,9 +1051,7 @@ EarnLog(*) => true
     foreach ($fn in @('EarnDJNeedsRebook','EarnDJHomeOpen','EarnPopularityHomePct')) {
         $djFlowDriver += "`n" + (Get-EarnFunctionBody $sourceText $fn)
     }
-    # Preserve the actual wait body; only replace its monotonic clock to avoid real sleeps.
-    $djFlowDriver += "`n" + (Get-EarnFunctionBody $sourceText 'EarnDJWaitForIncrease').Replace('A_TickCount', 'DJClockRead()')
-    Invoke-EarnOfflineCheck 'DJFlow' 'EarnDJSwapLoop' $djFlowDriver 26
+    Invoke-EarnOfflineCheck 'DJFlow' 'EarnDJSwapLoop' $djFlowDriver 19
     # Real saved pixels, real bar sampler and real Home reader. No desktop APIs.
     Add-Type -AssemblyName System.Drawing
     Add-Type -ReferencedAssemblies System.Drawing @'
