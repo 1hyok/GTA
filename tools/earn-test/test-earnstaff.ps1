@@ -310,6 +310,13 @@ RunCargoTests() {
     screenState := "main", selected := "Claim Business Earnings"
     config["Settings"]["EarnHangarStaff"] := 1
     Check(EarnStaffRoot() = "idle" && keys.Length = 0, "grey Manage Staff Members root is idle without input")
+    Reset("busy_footer",["busy","busy"])
+    screenState := "main", selected := "Manage Staff Members"
+    Check(EarnStaffRoot() = "idle" && keys.Length = 0, "all-busy footer is idle without Enter")
+    Reset("busy_footer",["busy","busy"])
+    screenState := "main", selected := "Manage Staff Members"
+    config["Settings"]["EarnHangarStaff"] := 1
+    Check(EarnVinewoodStaffTask() && failure = "" && hangarRequests = 0 && Sum(requests) = 0, "all-busy footer skips every staff job")
     Reset("grey_staff_menu",["busy","busy"])
     screenState := "main", selected := "Claim Business Earnings"
     config["Settings"]["EarnHangarStaff"] := 1
@@ -397,7 +404,10 @@ MockReadScreen(area, whiteText) {
             rows[1].text := "UNKNOWN MENU"
         if (mode = "duplicate_menu_target")
             rows.Push(TextLine("Manage Staff Members",329))
-        rows.Push(TextLine("Send your staff members out on jobs.",414))
+        if (mode = "busy_footer")
+            rows.Push(TextLine("All of your staff members are currently",414), TextLine("busy.",440))
+        else
+            rows.Push(TextLine("Send your staff members out on jobs.",414))
         if (mode = "misplaced_menu_target")
             rows[7].y := 387
         if (mode = "menu_selection_before_enter" && menuReads >= 4)
