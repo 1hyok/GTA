@@ -23,6 +23,7 @@ EarnerOfflineFailure(failure, *) {
 }
 global gEarnOn, gEarnBusy, gEarnDue, gEarnDone, gEarnTasks, gEarnCurrent, gEarnFail, gEarnNextDue, gEarnSoftFails, gEarnRetryIn, gAbort, config, GTA_WIN, afkOn
 global calls, releaseCount, stopped, mode, windowExists, focused, otherBusy, activationCount, idleMs, gEarnGuardArmed, timers
+global feedTimer := 0
 global gEarnGamePID, fakePID, fakeTick, gEarnGuardStartedTick, lockAvailable, lockCalls, lockReleases, lockHeld, hooks, checkCount := 0
 global beginCount, endCount, beginCleanupCount, beginOK, endOK, beginThrows, endThrows, mctOpen, events, logs, taskModes, taskDurations, beginDelay, endDelay, endInput
 Reset()
@@ -186,6 +187,7 @@ Reset()
 start := A_TickCount
 SetEarner(true)
 Check(gEarnOn && gEarnGamePID = fakePID && hooks = 2 && timers[timers.Length] = 1000, "enable binds current game and one-second timer")
+Check(feedTimer = 4000, "enable starts the safe deposit feed watch")
 Check(gEarnDue["safe"] >= start && gEarnDue["safe"] <= A_TickCount
     && gEarnDue["warehouse"] >= start && gEarnDue["warehouse"] <= A_TickCount, "safe and warehouse first check immediately")
 Check(gEarnDue["bunker"] <= A_TickCount && gEarnDue["dj"] <= A_TickCount, "bunker and DJ fresh read immediately")
@@ -314,7 +316,11 @@ SetAntiAFK(*) {
     throw Error("unexpected AFK call")
 }
 SetTimer(fn, period) {
-    global timers, stopped
+    global timers, stopped, feedTimer
+    if (fn.Name = "EarnSafeFeedWatch") {
+        feedTimer := period
+        return
+    }
     timers.Push(period)
     if (fn.Name = "EarnTick" && period = 0)
         stopped++
@@ -348,6 +354,8 @@ InstallMouseHook(*) {
 }
 KeyLabelFor(*) => "F9"
 EarnVinewoodSafeTask() => RunTask("safe")
+; 입금 알림 감시는 화면을 읽으므로 스케줄러 시험에서는 타이머 대상 이름만 있으면 된다.
+EarnSafeFeedWatch() => 0
 EarnBunkerTask(manageSession := true) => RunTask("bunker",manageSession)
 EarnDJTask(manageSession := true) => RunTask("dj",manageSession)
 EarnWarehouseTask(manageSession := true) => RunTask("warehouse",manageSession)
@@ -412,7 +420,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 52 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 53 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout
