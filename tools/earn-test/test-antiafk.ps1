@@ -229,8 +229,8 @@ Check(events.Length = 4 && events[1] = "{Enter down}" && events[4] = "{Backspace
 Reset()
 menuState := "mct_sit"
 AntiAFKTick()
-Check(events.Length = 4 && events[1] = "{m down}" && events[3] = "{m down}" && menuState = "mct_sit",
-    "standing at MCT opens and closes interaction menu without movement")
+Check(events.Length = 4 && events[1] = "{z down}" && events[3] = "{z down}" && menuState = "mct_sit"
+    && LogHas("mct_sit → Z 두 번 → mct_sit"), "standing at MCT taps Z twice without menu or movement")
 Reset()
 menuState := "phone"
 AntiAFKTick()
