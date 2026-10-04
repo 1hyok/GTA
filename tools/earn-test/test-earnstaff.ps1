@@ -304,6 +304,11 @@ RunCargoTests() {
     Reset("normal",["ready","ready"])
     screenState := "unknown"
     Check(!EarnVinewoodStaffTask() && keys.Length = 0, "unknown menu sends no input")
+    Reset("grey_bail_root",["busy","busy"])
+    Check(EarnStaffRoot() && keys.Length = 0, "grey Bail Office list is still the staff list")
+    Reset("grey_bail_root",["ready","ready"])
+    cargoStatuses := ["busy","busy","full","busy","busy"]
+    Check(EarnVinewoodStaffTask() && Sum(requests) = 0, "grey Bail Office skips bail agents without entering")
     Reset("close_fail",["busy","busy"])
     cargoStatuses := ["busy","busy","full","busy","busy"]
     Check(!EarnVinewoodStaffTask(), "app-close failure prevents success")
@@ -374,9 +379,18 @@ MockReadScreen(area, whiteText) {
             selected := "Claim Business Earnings"
         return rows
     }
-    if (screenState = "staff")
-        return [TextLine("THE VINEWOOD CLUB APP",144),TextLine("Hangar",181),TextLine("Warehouse",218),TextLine("Bail Office",255),
+    if (screenState = "staff") {
+        rows := [TextLine("THE VINEWOOD CLUB APP",144),TextLine("Hangar",181),TextLine("Warehouse",218),TextLine("Bail Office",255),
             TextLine("Manage your Warehouse staff.",300)]
+        ; 요원이 모두 나가 회색인 Bail Office: 일반 판독은 "pail Office", 흰 글자 판독은 줄이 빠진다(1004 15:04 녹화 실측).
+        if (mode = "grey_bail_root") {
+            if (whiteText)
+                rows.RemoveAt(4)
+            else
+                rows[4].text := "pail Office"
+        }
+        return rows
+    }
     if (screenState = "cargo") {
         if (area[4] = 40)
             cargoReads += 1
