@@ -306,6 +306,15 @@ RunCargoTests() {
     Reset("normal",["ready","ready"])
     screenState := "unknown"
     Check(!EarnVinewoodStaffTask() && keys.Length = 0, "unknown menu sends no input")
+    Reset("grey_staff_menu",["busy","busy"])
+    screenState := "main", selected := "Claim Business Earnings"
+    config["Settings"]["EarnHangarStaff"] := 1
+    Check(EarnStaffRoot() = "idle" && keys.Length = 0, "grey Manage Staff Members root is idle without input")
+    Reset("grey_staff_menu",["busy","busy"])
+    screenState := "main", selected := "Claim Business Earnings"
+    config["Settings"]["EarnHangarStaff"] := 1
+    Check(EarnVinewoodStaffTask() && failure = "" && Sum(requests) = 0 && Sum(cargoRequests) = 0 && hangarRequests = 0
+        && EarnStaffTrack() = 300000, "grey Manage Staff Members skips every staff job")
     Reset("grey_bail_root",["busy","busy"])
     Check(EarnStaffRoot() && keys.Length = 0, "grey Bail Office list is still the staff list")
     Reset("grey_bail_root",["ready","ready"])
@@ -382,6 +391,8 @@ MockReadScreen(area, whiteText) {
             rows.Push(TextLine(name,144+37*index))
         if (mode = "truncated_menu_raw" && !whiteText || mode = "missing_menu_target")
             rows[7].text := "Manage Staff Mem"
+        if (mode = "grey_staff_menu")
+            rows[7].text := "Manage Staff Mempers"
         if (mode = "wrong_menu_heading" || mode = "menu_changes_before_enter" && menuReads >= 4)
             rows[1].text := "UNKNOWN MENU"
         if (mode = "duplicate_menu_target")
@@ -667,6 +678,10 @@ EarnAborted() {
 EarnSeen(name, *) {
     global screenState
     return name = "mct_sit" && screenState = "standing"
+}
+EarnWarehouseBrightLabel(row) {
+    global mode
+    return mode != "grey_staff_menu"
 }
 EarnVinewoodOpen() {
     global mode, opens
