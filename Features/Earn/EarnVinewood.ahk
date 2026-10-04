@@ -301,8 +301,14 @@ EarnVinewoodOpen() {
         if (!EarnPress("Right"))
             return false
     }
-    if (!EarnWaitSeen("ph_vinewood_sel", [0.83,0.66,0.98,0.73], 3000))
+    ; Right 뒤 선택이 안 보일 때가 있다(1005 06:30 실측, 바로 다음 회차는 정상). 앱에 들어가기 전이므로
+    ; 전화를 닫고 3분 뒤 다시 한다.
+    if (!EarnWaitSeen("ph_vinewood_sel", [0.83,0.66,0.98,0.73], 3000)) {
+        if (!EarnPress("Backspace"))
+            return false
+        gEarnRetryIn := 3 * 60000
         return EarnFail("금고: 전화 홈에서 Vinewood Club 앱 선택 미확인")
+    }
     if (!EarnPress("Enter") || !EarnSleep(700))
         return false
     return EarnFindText(EarnReadScreen([25,15,450,500]), "i)^THE VINEWOOD CLUB APP$")

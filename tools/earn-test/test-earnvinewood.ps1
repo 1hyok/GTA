@@ -105,6 +105,10 @@ RunTests() {
     Reset("normal", "phone_job")
     Check(EarnVinewoodOpen() && gState = "main" && gKeys.Length = 2
         && gKeys[1] = "Right" && gKeys[2] = "Enter", "Job List home only moves right and opens the selected app")
+    Reset("right_stuck", "phone_job")
+    RetryIn(0)
+    Check(!EarnVinewoodOpen() && gState = "standing" && gKeys.Length = 2 && gKeys[2] = "Backspace" && RetryIn() = 180000,
+        "unconfirmed Vinewood selection closes the phone and retries in three minutes")
     Reset("normal", "phone_vinewood")
     Check(EarnVinewoodOpen() && gState = "main" && gKeys.Length = 1
         && gKeys[1] = "Enter", "selected Vinewood home opens directly without changing phone selection")
@@ -224,7 +228,9 @@ EarnPress(key) {
             throw Error("Phone-opening Up is invalid when the phone is already open: " gState)
         gState := gMode = "wrong_phone" ? "wrong_phone" : "phone_job"
     } else if (key = "Right" && gState = "phone_job") {
-        gState := "phone_vinewood"
+        gState := gMode = "right_stuck" ? "phone_other" : "phone_vinewood"
+    } else if (key = "Backspace" && gState = "phone_other") {
+        gState := "standing"
     } else if (key = "Enter") {
         if (gState = "phone_vinewood") {
             gState := "main", gSelected := "Claim Business Earnings"
