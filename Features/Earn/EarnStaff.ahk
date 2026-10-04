@@ -177,9 +177,18 @@ EarnStaffCargoWarehouses() {
     Loop count {
         if (A_Index > 1)
             current := EarnStaffReadCargo()
-        if (!IsObject(current) || current.index != A_Index || current.count != count
-            || visited.Has(StrLower(current.name)))
-            return EarnFail("직원: 스페셜 패키지 창고 순서·목록 변경")
+        ; 판독이 한 번 흔들리는 일이 있다(1005 06:07 실측, 바로 다음 회차는 정상). 이 줄에서는 아직 Enter 전이라
+        ; 한 번 더 읽고, 그래도 어긋나면 남은 창고는 사지 않고 5분 뒤 다시 본다.
+        if (A_Index > 1 && !EarnStaffCargoInOrder(current, A_Index, count, visited)) {
+            if (!EarnSleep(500))
+                return false
+            current := EarnStaffReadCargo()
+        }
+        if (!EarnStaffCargoInOrder(current, A_Index, count, visited)) {
+            EarnLog("직원: 스페셜 패키지 " A_Index "번째 창고 판독 어긋남, 남은 창고는 건너뜀")
+            EarnStaffTrack("cargo all", "busy")
+            return true
+        }
         visited[StrLower(current.name)] := true
         if (current.state = "busy" || current.state = "full") {
             EarnLog("직원: " current.name (current.state = "busy" ? " 조달 중" : " 만재") ", 건너뜀")
@@ -188,8 +197,11 @@ EarnStaffCargoWarehouses() {
             if (current.state != "ready" || current.price != 7500)
                 return EarnFail("직원: " current.name " 준비 문구 또는 $7,500 미확인")
             fresh := EarnStaffReadCargo()
-            if (!EarnStaffSameWarehouse(fresh, current) || fresh.state != "ready" || fresh.price != 7500)
-                return EarnFail("직원: " current.name " 조달 직전 선택·가격·상태 변경")
+            if (!EarnStaffSameWarehouse(fresh, current) || fresh.state != "ready" || fresh.price != 7500) {
+                EarnLog("직원: " current.name " 조달 직전 재확인 어긋남, 남은 창고는 사지 않고 건너뜀")
+                EarnStaffTrack("cargo all", "busy")
+                return true
+            }
             deadline := A_TickCount + 60000
             if (!EarnPress("Enter") || !EarnSleep(700))
                 return false
@@ -294,6 +306,9 @@ EarnStaffReadHangar(deadline := 0) {
     }
     return "invalid"
 }
+
+EarnStaffCargoInOrder(current, index, count, visited) => IsObject(current) && current.index = index
+    && current.count = count && !visited.Has(StrLower(current.name))
 
 EarnStaffSameWarehouse(current, expected) {
     return IsObject(current) && IsObject(expected) && current.name = expected.name
