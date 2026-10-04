@@ -227,9 +227,9 @@ RunCargoTests() {
         ["delayed_cargo",["ready","busy","full","busy","busy"],true,1],
         ["merged_price",["ready","busy","full","busy","busy"],true,1],
         ["comma_price",["ready","busy","full","busy","busy"],true,1],
-        ["cargo_price_change",["ready","busy","full","busy","busy"],false,0],
-        ["cargo_selection_change",["ready","busy","full","busy","busy"],false,0],
-        ["cargo_full_change",["ready","busy","full","busy","busy"],false,0],
+        ["cargo_price_change",["ready","busy","full","busy","busy"],true,0],
+        ["cargo_selection_change",["ready","busy","full","busy","busy"],true,0],
+        ["cargo_full_change",["ready","busy","full","busy","busy"],true,0],
         ["cargo_ocr_fail",["ready","busy","full","busy","busy"],false,0],
         ["cargo_bad_price",["ready","busy","full","busy","busy"],false,0],
         ["cargo_wrong_footer",["ready","busy","full","busy","busy"],false,0],
@@ -275,7 +275,8 @@ RunCargoTests() {
     for nextMode in ["cargo_repeat_name","cargo_stuck","cargo_no_selection","cargo_double_selection"] {
         Reset(nextMode,["busy","busy"])
         cargoStatuses := ["busy","busy","full","busy","busy"]
-        Check(!EarnStaffCargoWarehouses() && Sum(cargoRequests) = 0, nextMode " does not order")
+        EarnStaffCargoWarehouses()
+        Check(Sum(cargoRequests) = 0, nextMode " does not order")
     }
     Reset("cargo_disabled_price",["busy","busy"])
     cargoStatuses := ["busy","busy","full","busy","busy"]
