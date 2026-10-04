@@ -2,8 +2,8 @@
 EarnVinewoodStaffTask() {
     global config
     s := config["Settings"]
-    bail := s["EarnBailAgents"], cargo := s["EarnCargoStaff"]
-    if (!bail && !cargo)
+    bail := s["EarnBailAgents"], cargo := s["EarnCargoStaff"], hangar := s.Get("EarnHangarStaff", 0)
+    if (!bail && !cargo && !hangar)
         return true
     EarnStaffTrack("reset")
     if (!EarnVinewoodOpen() || !EarnStaffRoot())
@@ -12,6 +12,10 @@ EarnVinewoodStaffTask() {
         return false
     if (cargo) {
         if (!EarnStaffRoot() || !EarnStaffCargoWarehouses())
+            return false
+    }
+    if (hangar) {
+        if (!EarnStaffRoot() || !EarnStaffHangar())
             return false
     }
     ms := EarnStaffTrack()
@@ -203,6 +207,65 @@ EarnStaffWaitBusy(kind, target, deadline) {
             return false
     }
     return false
+}
+
+; 격납고 직원(Rooster McCraw)은 $25,000 를 받고 게임 하루 안팎에 항공 화물 1~2상자를 랜덤으로 가져온다.
+; 직원 관리 목록 첫 줄 Hangar 에서 Enter 로 바로 보낸다. 같은 줄의 $25000 과 목록 아래 설명이 맞을 때만 보낸다
+; (1004 21:36 녹화: 선택 시 "Hangar $25000", 설명 "Send your Hangar staff member out on a job.").
+EarnStaffHangar() {
+    if (!EarnStaffSelectText(EarnStaffHangarPattern(), 3))
+        return EarnFail("직원: 격납고 줄 선택 실패")
+    state := EarnStaffReadHangar()
+    if (state = "busy" || state = "full" || state = "invalid") {
+        ; 작업 중·만재 문구는 아직 실측 전이다. 모르는 상태에서는 사지 않고 5분 뒤 다시 본다.
+        EarnLog("직원: 격납고 " (state = "busy" ? "조달 중" : state = "full" ? "만재" : "상태 미확인") ", 건너뜀")
+        EarnStaffTrack("hangar", state = "full" ? "full" : "busy")
+        return true
+    }
+    if (EarnStaffReadHangar() != "ready")
+        return EarnFail("직원: 격납고 조달 직전 선택·가격·상태 변경")
+    deadline := A_TickCount + 60000
+    if (!EarnPress("Enter") || !EarnSleep(700))
+        return false
+    ; 주문 처리 중에는 보내기 문구가 잠깐 남을 수 있다. 다시 누르지 않고 최대 60초(121번) 읽기만 한다.
+    Loop 121 {
+        if (A_TickCount >= deadline || EarnAborted())
+            break
+        state := EarnStaffReadHangar(deadline)
+        if (state = "busy" || state = "full") {
+            EarnLog("직원: 격납고 $25,000 조달 확인")
+            EarnStaffTrack("hangar", "sent")
+            return true
+        }
+        if (!EarnSleep(500))
+            return false
+    }
+    return EarnFail("직원: 격납고 조달 결과 미확인, 재요청 중단")
+}
+
+EarnStaffHangarPattern() => "i)^Hangar(?:\h+\$[0-9,]+)?$"
+
+; ready 는 선택된 Hangar 줄의 가격이 정확히 $25000 이고 설명이 보내기 문구일 때만이다.
+EarnStaffReadHangar(deadline := 0) {
+    for whiteText in [false, true] {
+        lines := EarnReadScreen([25,125,450,300], whiteText, deadline)
+        heading := EarnStaffUniqueRow(lines, "i)^THE VINEWOOD CLUB APP$")
+        row := EarnStaffUniqueRow(lines, EarnStaffHangarPattern())
+        if (!heading || !row || Abs(row.y-heading.y-37) > 8 || !EarnMenuRowSelected(row))
+            continue
+        price := -1
+        for line in lines
+            if (Abs(line.y-row.y) <= 10 && InStr(line.text, "$"))
+                price := EarnReadDollars(line.text)
+        detail := EarnStaffFooter(lines, {y:heading.y+37*3, h:22})
+        if (detail = "Send your Hangar staff member out on a job.")
+            return price = 25000 ? "ready" : "invalid"
+        if (RegExMatch(detail, "^Your Hangar staff member"))
+            return "busy"
+        if (RegExMatch(detail, "^There is no more room"))
+            return "full"
+    }
+    return "invalid"
 }
 
 EarnStaffSameWarehouse(current, expected) {
