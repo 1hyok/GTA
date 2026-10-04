@@ -316,7 +316,7 @@ EarnVinewoodOpen() {
 }
 
 EarnVinewoodClose() {
-    backCount := 0
+    backCount := 0, closedReads := 0
     Loop 8 {
         lines := EarnReadScreen([25,15,450,850])
         if (!IsObject(lines))
@@ -331,9 +331,16 @@ EarnVinewoodClose() {
         }
         if (EarnSeen("mct_sit", [0,0,0.3,0.1]) || EarnSeen("mct_terrorbyte"))
             return true
+        closedReads += 1
         ; 앱이 닫혀도 MCT 접근 안내가 약 1초 뒤 나타날 수 있다. 미확인 화면에는 입력하지 않는다.
         if (!EarnSleep(300))
             return false
+    }
+    ; 조달 직후에는 게임 알림이 왼쪽 위 안내 자리를 몇 초 덮는다(1005 08:40 실측: 격납고 조달 뒤 닫기 제한).
+    ; 마지막까지 앱·전화가 안 보였으면 닫힌 것이다. 위치는 다음 작업이 시작할 때 다시 확인한다.
+    if (closedReads >= 3) {
+        EarnLog("금고: 앱은 닫혔고 MCT 안내는 가려져 있음")
+        return true
     }
     return EarnFail("금고: 앱 메뉴 닫기 제한")
 }

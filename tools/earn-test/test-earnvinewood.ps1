@@ -52,7 +52,7 @@ RunTests() {
         ["post_unconfirmed", "main", Map("Nightclub",240000), false, "Nightclub", "earnings", 0],
         ["select_cancel", "main", Map(), false, "", "earnings", 0],
         ["no_selection", "main", Map(), false, "", "earnings", 0],
-        ["close_unknown", "main", Map(), false, "", "unknown", 0],
+        ["close_unknown", "main", Map(), true, "", "unknown", 0],
         ["prompt_delay", "main", Map(), true, "", "standing", 0],
         ["normal", "standing", Map("Nightclub",250000), true, "Nightclub", "standing", 0],
         ["normal", "mct", Map("Nightclub",250000), true, "Nightclub", "standing", 0],
