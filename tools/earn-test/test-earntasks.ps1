@@ -1707,7 +1707,7 @@ EarnDispatchTask() => true
     $ceoMenuDriver = @'
 global EARN_MENU_AREA := [0,0,0.3,0.5], menuScene := "closed", menuBoss := true,
     menuCursor := 2, menuMode := "", menuOrder := "", menuAbort := false,
-    retireRequests := 0, submenuUps := 0, menuTests := 0, menuFailure := "", arrowState := -1
+    retireRequests := 0, submenuUps := 0, menuTests := 0, menuFailure := "", arrowState := -1, menuSlept := false
 for c in [["main",true],["preferences",true],["boss",true],["securo",true],["unknown",false],["closed",false]] {
     menuScene := c[1]
     MenuCheck(EarnMenuIsOpen() = c[2], "known title " c[1])
@@ -1729,6 +1729,9 @@ for c in [["normal","closed",true,false,true,"MUUEUUUEMM",false,1,3],
     ["verify_missing","closed",true,false,false,"MUUEUUUEMM",false,1,3],
     ; 해제 직후 맨션 안: SecuroServ 도 Register as a Boss 도 메뉴에 없으면 이미 해제다.
     ["verify_missing","closed",false,false,true,"MM",false,0,0],
+    ; 열자마자 메뉴가 다시 그려져 두 줄 다 안 보이면 1.5초 뒤 다시 읽는다(1004 18:11).
+    ["relayout","closed",false,false,true,"MM",false,0,0],
+    ["relayout","closed",true,false,true,"MUUEUUUE",false,1,3],
     ; 해제 뒤 화살표가 흰색이면 메뉴를 다시 열지 않는다.
     ["arrow_white","closed",true,false,true,"MUUEUUUE",false,1,3],
     ; 이미 CEO(노랑)면 메뉴를 열지 않는다. 흰색은 MCT 아이콘이 덮은 것일 수 있어 해제 전에는 믿지 않고 메뉴로 본다.
@@ -1736,7 +1739,7 @@ for c in [["normal","closed",true,false,true,"MUUEUUUEMM",false,1,3],
     ["arrow_already_yellow","closed",true,true,true,"",true,0,0]] {
     arrowState := c[1] = "arrow_already_white" ? 0 : c[1] = "arrow_already_yellow" ? 1 : -1
     menuMode := c[1], menuScene := c[2], menuBoss := c[3], menuCursor := 2,
-        menuOrder := "", menuAbort := false, retireRequests := 0, submenuUps := 0, menuFailure := ""
+        menuOrder := "", menuAbort := false, retireRequests := 0, submenuUps := 0, menuFailure := "", menuSlept := false
     result := EarnCEO(c[4])
     MenuCheck(result = c[5] && menuOrder = c[6] && menuBoss = c[7]
         && retireRequests = c[8] && submenuUps = c[9],
@@ -1772,10 +1775,10 @@ TemplateSeen(folder,name,area := "",&fx := 0,&fy := 0,variation := 40) {
         case "m_pref_title": return menuScene = "preferences"
         case "m_sub_boss": return menuScene = "boss"
         case "m_sub_securo": return menuScene = "securo"
-        case "m_securo": return menuScene = "main" && menuBoss
-        case "m_securo_sel": return menuScene = "main" && menuBoss && menuCursor = 0
-        case "m_boss": return menuScene = "main" && !menuBoss && menuMode != "verify_missing"
-        case "m_boss_sel": return menuScene = "main" && !menuBoss && menuCursor = 0 && menuMode != "verify_missing"
+        case "m_securo": return menuScene = "main" && menuBoss && Drawn()
+        case "m_securo_sel": return menuScene = "main" && menuBoss && menuCursor = 0 && Drawn()
+        case "m_boss": return menuScene = "main" && !menuBoss && menuMode != "verify_missing" && Drawn()
+        case "m_boss_sel": return menuScene = "main" && !menuBoss && menuCursor = 0 && menuMode != "verify_missing" && Drawn()
         case "m_retire_sel": return menuScene = "securo" && menuCursor = 7 && menuMode != "missing_retire"
         case "m_ceo_sel": return menuScene = "boss" && menuCursor = 2
         default: return false
@@ -1810,10 +1813,16 @@ EarnPress(key) {
     return true
 }
 EarnHudVisible() => menuScene = "closed"
+; relayout: 메뉴를 연 직후 한 번 쉬기 전까지는 보스·SecuroServ 줄이 그려지지 않는다.
+Drawn() => menuMode != "relayout" || menuSlept
 ; arrow_white 는 해제 전 노랑, Retire 를 누른 뒤 흰색이다.
-EarnArrowCEOColor() => menuMode = "arrow_white" ? (retireRequests ? 0 : 1) : arrowState
+EarnArrowCEOColor() => menuMode = "arrow_white" || menuMode = "relayout" ? (retireRequests ? 0 : 1) : arrowState
 EarnWaitSeen(name,*) => EarnSeen(name)
-EarnSleep(*) => !menuAbort
+EarnSleep(*) {
+    global menuSlept
+    menuSlept := true
+    return !menuAbort
+}
 Sleep(*) => true
 EarnLog(*) => true
 EarnFail(reason) {
@@ -1825,7 +1834,7 @@ EarnFail(reason) {
     foreach ($fn in @('EarnSeen','EarnMenuIsOpen','EarnSelectRow','EarnMenuOpen','EarnMenuClose','EarnCEOIs')) {
         $ceoMenuDriver += "`n" + (Get-EarnFunctionBody $sourceText $fn)
     }
-    Invoke-EarnOfflineCheck 'CEOSubmenu' 'EarnCEO' $ceoMenuDriver 22
+    Invoke-EarnOfflineCheck 'CEOSubmenu' 'EarnCEO' $ceoMenuDriver 24
     $mctOpenDriver = @'
 global EARN_PROMPT_AREA := [0,0,0.3,0.1], openOptions := Map(), openScene := "", openOrder := "",
     openClockMs := 0, openAborted := false, promptWaits := 0, seatedAfterAt := -1, titleAfterAt := -1
