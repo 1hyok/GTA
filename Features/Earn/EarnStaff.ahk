@@ -136,7 +136,15 @@ EarnStaffBailAgents() {
 EarnStaffCargoWarehouses() {
     if (!EarnStaffSelectEnter("i)^Warehouse$", 3))
         return EarnFail("직원: 스페셜 패키지 창고 목록 진입 실패")
+    ; 창고 직원이 모두 조달 중이면 Warehouse 줄이 회색이고 Enter 가 무시된다(1004 21:37 녹화:
+    ; "Your Warehouse staff members are currently busy."). 보석 사무소처럼 목록이 그대로면 건너뛴다.
     current := EarnStaffReadCargo()
+    if (!IsObject(current) && EarnStaffMenuTarget("i)^Warehouse$")
+        && (EarnStaffMenuTarget("i)^Bail Office$") || EarnStaffMenuTarget("i)^Hangar$"))) {
+        EarnLog("직원: 창고 직원 모두 조달 중(Warehouse 비활성), 건너뜀")
+        EarnStaffTrack("cargo all", "busy")
+        return true
+    }
     if (!IsObject(current) || current.index != 1)
         return EarnFail("직원: 스페셜 패키지 첫 창고·목록 판독 실패")
     count := current.count, visited := Map()

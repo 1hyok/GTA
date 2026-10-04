@@ -309,6 +309,8 @@ RunCargoTests() {
     Reset("grey_bail_root",["ready","ready"])
     cargoStatuses := ["busy","busy","full","busy","busy"]
     Check(EarnVinewoodStaffTask() && Sum(requests) = 0, "grey Bail Office skips bail agents without entering")
+    Reset("grey_warehouse_root",["busy","busy"])
+    Check(EarnVinewoodStaffTask() && Sum(cargoRequests) = 0, "grey Warehouse skips cargo staff without entering")
     Reset("close_fail",["busy","busy"])
     cargoStatuses := ["busy","busy","full","busy","busy"]
     Check(!EarnVinewoodStaffTask(), "app-close failure prevents success")
@@ -584,7 +586,9 @@ EarnPress(key) {
         if (screenState = "main" && selected = "Manage Staff Members") {
             screenState := "staff", selected := "Hangar"
         } else if (screenState = "staff") {
-            if (selected = "Warehouse") {
+            if (selected = "Warehouse" && mode = "grey_warehouse_root") {
+                ; 창고 직원이 모두 조달 중이면 Enter 가 무시되고 목록이 그대로다.
+            } else if (selected = "Warehouse") {
                 screenState := "cargo", selected := cargoNames[1]
             } else if (selected = "Bail Office") {
                 screenState := "bail", selected := "Agent 1"
