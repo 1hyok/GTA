@@ -1765,6 +1765,8 @@ for c in [["normal","closed",true,false,true,"MUUEUUUEMM",false,1,3],
     ["missing_retire","closed",true,false,false,"MUUEUUUUUUUUUUUUM",true,0,12],
     ["reject_retire","closed",true,false,false,"MUUEUUUEM",true,1,3],
     ["verify_missing","closed",true,false,false,"MUUEUUUEMM",false,1,3],
+    ; 해제 직후 맨션 안: SecuroServ 도 Register as a Boss 도 메뉴에 없으면 이미 해제다.
+    ["verify_missing","closed",false,false,true,"MM",false,0,0],
     ; 해제 뒤 화살표가 흰색이면 메뉴를 다시 열지 않는다.
     ["arrow_white","closed",true,false,true,"MUUEUUUE",false,1,3],
     ; 이미 CEO(노랑)면 메뉴를 열지 않는다. 흰색은 MCT 아이콘이 덮은 것일 수 있어 해제 전에는 믿지 않고 메뉴로 본다.
@@ -1861,7 +1863,7 @@ EarnFail(reason) {
     foreach ($fn in @('EarnSeen','EarnMenuIsOpen','EarnSelectRow','EarnMenuOpen','EarnMenuClose','EarnCEOIs')) {
         $ceoMenuDriver += "`n" + (Get-EarnFunctionBody $sourceText $fn)
     }
-    Invoke-EarnOfflineCheck 'CEOSubmenu' 'EarnCEO' $ceoMenuDriver 21
+    Invoke-EarnOfflineCheck 'CEOSubmenu' 'EarnCEO' $ceoMenuDriver 22
     $mctOpenDriver = @'
 global EARN_PROMPT_AREA := [0,0,0.3,0.1], openOptions := Map(), openScene := "", openOrder := "",
     openClockMs := 0, openAborted := false, promptWaits := 0, seatedAfterAt := -1, titleAfterAt := -1
