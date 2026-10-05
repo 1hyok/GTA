@@ -26,6 +26,32 @@ EarnFail(reason) {
     return false
 }
 
+; 매크로를 다시 띄워도 남아야 하는 관측값(DJ 인기도 하락 시각·창고 생산 속도)을 %TEMP%\gta-earn-state.txt 에 key=value 로 둔다.
+; 1005 에 재시작이 잦아 메모리에만 둔 창고 속도가 매번 지워졌고, 창고를 하루 종일 10분마다 확인했다.
+EarnStateGet(key, default := "") {
+    try {
+        for line in StrSplit(FileRead(A_Temp "\gta-earn-state.txt", "UTF-8"), "`n", "`r")
+            if (InStr(line, key "=") = 1)
+                return SubStr(line, StrLen(key) + 2)
+    }
+    return default
+}
+
+EarnStateSet(key, value) {
+    path := A_Temp "\gta-earn-state.txt", text := "", out := ""
+    try text := FileRead(path, "UTF-8")
+    for line in StrSplit(text, "`n", "`r")
+        if (line != "" && InStr(line, key "=") != 1)
+            out .= line "`n"
+    try {
+        f := FileOpen(path, "w", "UTF-8-RAW")
+        f.Write(out key "=" value "`n")
+        f.Close()
+    }
+}
+
+EarnUnixNow() => DateDiff(A_NowUTC, "19700101000000", "Seconds")
+
 ; 작업이 화면에서 읽은 상태로 다음 확인까지의 시간을 정한다. 작업이 성공으로 끝날 때만 스케줄러가 이 값을 쓴다.
 EarnScheduleNext(id, ms) {
     global gEarnNextDue
