@@ -525,6 +525,10 @@ AFKMenuSeen(name) {
                 return true
         return false
     }
+    if (name = "mct_sit") {
+        fx := 0, fy := 0
+        return TemplateSeen("Earn", "mct_sit", area, &fx, &fy) && TemplateAt("Earn", "mct_sit_bg", fx, fy)
+    }
     ; 테러바이트 안내는 반투명 상자와 남은 커서 때문에 세 줄 중 하나만 맞아도 인정한다(EarnSeen 과 같은 기준).
     if (name = "mct_terrorbyte") {
         for part in ["mct_terrorbyte", "mct_terrorbyte_reg", "mct_terrorbyte_ceo"]
