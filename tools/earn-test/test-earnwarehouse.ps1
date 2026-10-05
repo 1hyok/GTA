@@ -360,9 +360,22 @@ EarnFail(reason) {
     return false
 }
 EarnScheduleNext(*) => true
+global whStore
+EarnStateGet(key, default := "") {
+    global whStore
+    return IsSet(whStore) && whStore.Has(key) ? whStore[key] : default
+}
+EarnStateSet(key, value) {
+    global whStore
+    if (!IsSet(whStore))
+        whStore := Map()
+    whStore[key] := value
+}
 RunScheduleTests() {
+    global whStore
     base := 10000000, m := 60000
     for cap in [50, 13] {
+        whStore := Map()
         EarnWarehouseTrack("reset")
         t := 0
         while (t <= 160) {
@@ -374,6 +387,16 @@ RunScheduleTests() {
         ms := EarnWarehouseTrack(, base + 160*m)
         Check(ms = (cap = 50 ? 240*m : 40*m), "schedule: measured 70 min/unit predicts fill (cap " cap ", got " ms ")")
     }
+    Check(whStore.Get("wh_rate_cargo", 0) = 70*m, "schedule: measured rate is saved for the next restart")
+    ; 재시작: 메모리는 비고 저장된 속도만 남는다. 직원 없는 cash 를 150분 기다리지 않는다.
+    EarnWarehouseTrack("reset")
+    EarnWarehouseTrack([{id: "cargo", count: 47, capacity: 50}, {id: "cash", count: 0, capacity: 20}], base)
+    Check(EarnWarehouseTrack(, base) = 140*m, "schedule: saved rate predicts fill right after restart, one unit early")
+    Check(EarnWarehouseTrack(, base + 161*m) = 0, "schedule: saved-rate good that never rose is treated as unstaffed")
+    EarnWarehouseTrack("reset")
+    EarnWarehouseTrack([{id: "cargo", count: 10, capacity: 50}, {id: "cash", count: 0, capacity: 20}], base)
+    Check(EarnWarehouseTrack(, base) = 240*m, "schedule: restart with saved rate caps the wait at four hours")
+    whStore := Map()
     EarnWarehouseTrack("reset")
     EarnWarehouseTrack([{id: "cargo", count: 49, capacity: 50}], base)
     EarnWarehouseTrack([{id: "cargo", count: 50, capacity: 50}], base + 10*m)
@@ -407,7 +430,7 @@ try {
     }
     $stdout = $process.StandardOutput.ReadToEnd().Trim()
     $stderr = $process.StandardError.ReadToEnd().Trim()
-    if ($process.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnWarehouse cases=141 (no game input)') {
+    if ($process.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnWarehouse cases=145 (no game input)') {
         throw "Warehouse flow failed (exit=$($process.ExitCode))`nstdout: $stdout`nstderr: $stderr"
     }
     Write-Output $stdout
