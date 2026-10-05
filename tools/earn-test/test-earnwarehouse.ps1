@@ -12,6 +12,10 @@ $production = Get-Content -LiteralPath (Join-Path $root 'Features\Earn\EarnWareh
 $pixelPattern = '(?ms)^EarnWarehouseBrightLabel\([^\r\n]*\) \{.*?^\}'
 if ([regex]::Matches($production, $pixelPattern).Count -ne 1) { throw 'Expected one production pixel sampler.' }
 $production = [regex]::Replace($production, $pixelPattern, '')
+$greyPattern = '(?ms)^EarnWarehouseGreyLabel\([^
+]*\) \{.*?^\}'
+if ([regex]::Matches($production, $greyPattern).Count -ne 1) { throw 'Expected one production grey sampler.' }
+$production = [regex]::Replace($production, $greyPattern, '')
 $dialogPattern = '(?ms)^EarnWarehouseDialogClick\([^
 ]*\) \{.*?^\}'
 if ([regex]::Matches($production, $dialogPattern).Count -ne 1) { throw 'Expected one production dialog click.' }
