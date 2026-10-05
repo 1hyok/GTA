@@ -96,8 +96,12 @@ EarnStaffRoot() {
         if (EarnStaffAllBusy())
             return "idle"
         if (EarnStaffUniqueRow(lines, "i)^Manage Staff Members$")) {
-            if (!EarnStaffSelectEnter("i)^Manage Staff Members$", 6))
+            if (!EarnStaffSelectEnter("i)^Manage Staff Members$", 6)) {
+                ; 회색 줄로 옮겨 Enter 가 무시되면 그때 하단에 모든 직원 작업 중 문구가 뜬다(1005 11:36 실측).
+                if (EarnStaffAllBusy())
+                    return "idle"
                 return EarnFail("직원: 직원 관리 목록 진입 실패")
+            }
             continue
         }
         if ((EarnStaffBailIdentity(lines, 1) || EarnStaffBailIdentity(lines, 2))
