@@ -461,11 +461,20 @@ AFKMCTPulse() {
     } else if (AFKMenuSeen("mct_sit")) {
         start := "mct_sit", middle := "m_title", openKey := "m", closeKey := "m"
     } else if (AFKFreeHud()) {
-        ; MCT 앞이 아닌 빈 HUD 는 사람이 플레이 중일 수 있어 아무것도 누르지 않는다.
-        ; 1004 23:26 헬기 의뢰인 호송 중 M 메뉴 → 추락·미션 실패. 키보드 훅이 입력을 놓쳐 조작 중에도 유휴로 봤다
-        ; (같은 날 23:01 플레이 중 idle=2668s). 「움직이는 게 안 되는데 메뉴 여는 게 되겠냐」 — 플레이 중 끼어드는 건 어느 키든 같다.
-        ; 이 자리에서 무입력일 때 메뉴를 여는 선택 설정(AFKHudIdleSec)은 꺼진 채 쓰이지 않아 1005 에 지웠다.
-        return false
+        ; MCT 앞이 아닌 빈 HUD 에서는 사람이 조작 중일 때 끼어들지 않는다. 1004 23:26 헬기 호송 중 M 메뉴 → 추락. 키보드 훅이
+        ; 입력을 놓쳐(같은 날 23:01 플레이 중 idle=2668s) 물리 유휴만으로는 조작 중을 못 가린다. 그래서 주입까지 세는 전체 입력
+        ; 유휴(AFKOthersIdleMs)도 AFKFreeHudIdleSec 을 넘을 때만, 메뉴를 열지 않는 Z(미니맵 확대) 두 번만 누른다.
+        ; 아무것도 안 누르던 때는 자리를 비우면 방치 킥을 당했다(1005 17:50~18:06·18:15 이후, 「입력 없을 때 누르는 건 뭔 상관」).
+        hudSec := config["Settings"].Get("AFKFreeHudIdleSec", 300)
+        if (hudSec <= 0 || AFKOthersIdleMs() < hudSec * 1000)
+            return false
+        if (!AFKMenuTap("z") || !AFKWait(1500) || !AFKMenuTap("z") || !AFKWait(900))
+            return AFKMCTBlocked("빈 화면 Z 입력 중단")
+        if (!AFKFreeHud())
+            return AFKMCTBlocked("빈 화면 Z 뒤 HUD 미확인")
+        afkMCTLastErr := ""
+        AFKLog("빈 화면: Z 두 번")
+        return true
     } else if (AFKPhoneOrAppOpen()) {
         ; 수익 작업이 실패해 전화·Vinewood 앱이 남으면 메뉴 왕복을 못 해 무입력이 쌓였다(1003 17:28·17:39 실측).
         ; Backspace 는 전화에서 뒤로이고 종료창을 띄우지 않는다. 닫힐 때까지 최대 6번 누르며, 그 입력이 곧 무입력 방지다.
