@@ -7,9 +7,9 @@
 | 작업 | 기본 설정 | 실행 조건 |
 |---|---|---|
 | 벙커 | `EarnBunkerIntervalSec=6720`, 대기 중 최대 5분마다 관측, 예상 경계 3분 전 재관측 | 보급 20%와 $60,000 확인. 다른 배수 설정은 해당 소모 경계와 가격 확인 |
-| DJ | `EarnDJIntervalMin=5`, `EarnDJPopularityPct=95` | 새로 연 Nightclub Home의 인기도 95% 미만에서 기존 DJ 재고용 |
+| DJ | `EarnDJIntervalMin=5`(하락 시각을 알기 전까지만), 이후 하락 경계 + 48분 + 3분, `EarnDJPopularityPct=95` | 새로 연 Nightclub Home의 인기도 95% 미만에서 기존 DJ 재고용 |
 | 금고 | `EarnSafeIntervalMin=5`, `EarnSafeFirstMin=0` | Vinewood 앱에서 Nightclub 금고 $250,000 확인 |
-| 창고 직원 | `EarnWarehouseIntervalMin=10` | 만재 품목의 배정 직원과 생산 가능한 미배정 목적지가 함께 존재 |
+| 창고 직원 | `EarnWarehouseIntervalMin=10`(속도를 모를 때만), 이후 가장 먼저 만재될 예상 시각(최대 4시간) | 만재 품목의 배정 직원과 생산 가능한 미배정 목적지가 함께 존재 |
 | 앱 직원 | `EarnBailAgents=1`, `EarnCargoStaff=1`, `EarnStaffIntervalMin=5` | 대상 선택과 준비 문구 확인. 스페셜 패키지는 창고당 $7,500도 확인 |
 
 스케줄러의 1초 확인은 작업 실행 가능 여부를 보는 간격이다. 표의 관측 간격마다 돈을 쓰거나 직원을 움직이는 것은 아니다. 모든 작업은 직렬로 실행하며 현재 화면을 판독하지 못하면 지출·수거·재배정을 진행하지 않는다. 벙커·DJ·창고 직원은 MCT 작업이다. 시작 시점에 차례가 된 MCT 작업들을 MCT를 한 번 열어 벙커 → DJ → 창고 순으로 처리하고 한 번만 닫는다. 어느 하나가 실패하면 남은 것은 다음 회차로 미루고 정리부터 한다. 진행 중 새로 차례가 된 작업은 그 묶음에 넣지 않는다. 금고 회수와 앱 직원 파견은 MCT를 닫은 뒤 Vinewood 앱에서 따로 한다. 벙커 주문 뒤에는 약 10분 배송 대기와 화면의 배송 중 안내를 구분해 처리한다.
