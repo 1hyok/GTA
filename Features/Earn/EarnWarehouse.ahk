@@ -333,13 +333,16 @@ EarnWarehouseTrack(goods := "", now := 0) {
     if (IsObject(goods)) {
         for row in goods {
             if (!seen.Has(row.id)) {
-                seen[row.id] := {count: row.count, cap: row.capacity, obs: now, first: now, rose: 0, roseCount: 0, rate: 0}
+                rate := EarnWarehouseSavedRate(row.id)
+                seen[row.id] := {count: row.count, cap: row.capacity, obs: now, first: now, rose: 0, roseCount: 0, rate: rate, saved: rate > 0}
                 continue
             }
             g := seen[row.id]
             if (row.count > g.count) {
-                if (g.rose)
+                if (g.rose) {
                     g.rate := (g.obs - g.rose) / (row.count - g.roseCount)
+                    EarnStateSet("wh_rate_" row.id, Round(g.rate))
+                }
                 g.rose := g.obs, g.roseCount := row.count
             } else if (row.count < g.count) {
                 g.rose := 0
@@ -348,24 +351,33 @@ EarnWarehouseTrack(goods := "", now := 0) {
         }
         return 0
     }
-    next := 0
+    next := 0, learned := false
+    for id, g in seen
+        learned := learned || g.saved
     for id, g in seen {
         if (g.count >= g.cap)
             continue
+        ; 지난 실행에서 저장한 속도를 불러왔으면 속도를 모르고 안 늘어난 품목은 직원이 없는 품목이다. 150분을 기다리지 않는다.
         if (!g.rate) {
-            if (g.rose || now - g.first < 150 * 60000)
+            if (g.rose || (!learned && now - g.first < 150 * 60000))
                 return 0
             continue
         }
         ; 두 번의 생산 주기 넘게 안 늘었으면 직원이 빠진 품목으로 본다.
-        if (!g.rose || now - g.rose > 2 * g.rate + 20 * 60000)
+        if (now - (g.rose ? g.rose : g.first) > 2 * g.rate + 20 * 60000)
             continue
-        full := g.rose + (g.cap - g.roseCount) * g.rate
+        ; 재시작 뒤 아직 안 늘었으면 마지막 한 개가 방금 전에 찼다고 보고 한 개 몫 일찍 잡는다.
+        full := g.rose ? g.rose + (g.cap - g.roseCount) * g.rate : g.first + (g.cap - g.count - 1) * g.rate
         next := next ? Min(next, full) : full
     }
     if (!next || next - now < 15 * 60000)
         return 0
     return Min(next - now, 240 * 60000)
+}
+
+EarnWarehouseSavedRate(id) {
+    rate := EarnStateGet("wh_rate_" id, 0)
+    return IsNumber(rate) && rate > 0 ? rate + 0 : 0
 }
 
 EarnWarehouseSchedule() {
