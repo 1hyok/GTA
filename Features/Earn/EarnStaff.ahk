@@ -224,6 +224,7 @@ EarnStaffCargoWarehouses() {
 ; 주문 처리 중에는 준비 문구가 남을 수 있다. 한 번만 요청하고 최대 60초 관측한다.
 EarnStaffWaitBusy(kind, target, deadline) {
     deadline := Min(deadline, A_TickCount + 60000)
+    glitches := 0
     Loop 121 {
         if (A_TickCount >= deadline || EarnAborted())
             return false
@@ -233,8 +234,14 @@ EarnStaffWaitBusy(kind, target, deadline) {
                 return false
         } else {
             current := EarnStaffReadCargo(target, deadline)
+            ; 판독이 한 번 흔들려 아무것도 못 읽은 것은 선택이 바뀐 증거가 아니다. 다시 읽기만 한다(Enter 는 다시 안 누른다).
+            ; 1005 22:14:42 West Vinewood Backlot 을 이렇게 포기했는데, 녹화로는 1초 뒤 "currently out on a job" 이 떴다.
+            ; 다른 창고가 읽히면 그대로 멈추고, 못 읽는 일이 6번 이어지면 화면을 잃은 것으로 본다.
+            if (!IsObject(current) && ++glitches < 6 && EarnSleep(Max(0, Min(500, deadline-A_TickCount))))
+                continue
             if (!EarnStaffSameWarehouse(current, target))
                 return false
+            glitches := 0
             state := current.state
         }
         if (A_TickCount >= deadline || EarnAborted())
