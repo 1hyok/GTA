@@ -114,13 +114,15 @@ EarnTick() {
     }
     if (!IsObject(task))
         return
-    ; 시작 시점에 실행할 차례인 MCT 작업만 묶는다. 진행 중 새로 due가 된 작업은 다음 회차다.
+    ; 시작 시점에 실행할 차례이거나 EarnMCTBatchAheadSec(기본 120초) 안에 차례가 될 MCT 작업을 묶는다. 진행 중 새로 due가 된 작업은 다음 회차다.
+    ; 1005 14:10·14:20 에 DJ 가 묶음을 정한 순간보다 몇 초 늦게 due 가 되어, 창고만 하고 나온 뒤 1분 안에 나이트클럽에 다시 들어갔다.
     mctSession := EarnIsMCTTask(task.id)
     dueTasks := [task]
     if (mctSession) {
         dueTasks := []
+        ahead := config["Settings"].Get("EarnMCTBatchAheadSec", 120) * 1000
         for t in gEarnTasks {
-            if (t.on && EarnIsMCTTask(t.id) && gEarnDue[t.id] <= now)
+            if (t.on && EarnIsMCTTask(t.id) && gEarnDue[t.id] <= now + ahead)
                 dueTasks.Push(t)
         }
     }
