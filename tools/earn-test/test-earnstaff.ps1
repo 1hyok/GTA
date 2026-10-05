@@ -325,10 +325,15 @@ RunCargoTests() {
     config["Settings"]["EarnHangarStaff"] := 1
     Check(EarnVinewoodStaffTask() && failure = "" && Sum(requests) = 0 && Sum(cargoRequests) = 0 && hangarRequests = 0
         && EarnStaffTrack() = 300000, "grey Manage Staff Members skips every staff job")
+    ; 1005 19:24·20:01 녹화 프레임을 실제 판독기로 읽은 회색 줄
+    for text in ["Manage Staff Mem ers", "Manage SfaffMem>ers", "Manage Staff _Members", "Manage StaffMembers", "Manage S!affMembers"] {
+        Reset("grey_staff_split",["busy","busy"])
+        global greyText := text
+        screenState := "main", selected := "Claim Business Earnings"
+        Check(EarnStaffRoot() = "idle" && keys.Length = 0, "grey read " text " is idle without input")
+    }
     Reset("grey_staff_split",["busy","busy"])
-    screenState := "main", selected := "Claim Business Earnings"
-    Check(EarnStaffRoot() = "idle" && keys.Length = 0, "grey Manage Staff Mem ers split read root is idle without input")
-    Reset("grey_staff_split",["busy","busy"])
+    greyText := "Manage S!affMembers"
     screenState := "main", selected := "Claim Business Earnings"
     config["Settings"]["EarnHangarStaff"] := 1
     Check(EarnVinewoodStaffTask() && failure = "" && Sum(requests) = 0 && Sum(cargoRequests) = 0 && hangarRequests = 0
@@ -400,7 +405,7 @@ EarnReadScreen(area, whiteText := false, deadline := 0) {
 MockReadScreen(area, whiteText) {
     global mode, screenState, selected, statuses, reads, requests
     global cargoNames, cargoStatuses, cargoRequests, cargoReads, postReads
-    global menuReads, mainNames, hangarReads
+    global menuReads, mainNames, hangarReads, greyText
     if (screenState = "main") {
         if (area[4] = 263 || area[4] = 300)
             menuReads += 1
@@ -412,7 +417,7 @@ MockReadScreen(area, whiteText) {
         if (mode = "grey_staff_menu")
             rows[7].text := "Manage Staff Mempers"
         if (mode = "grey_staff_split")
-            rows[7].text := "Manage Staff Mem ers"
+            rows[7].text := greyText
         if (mode = "wrong_menu_heading" || mode = "menu_changes_before_enter" && menuReads >= 4)
             rows[1].text := "UNKNOWN MENU"
         if (mode = "duplicate_menu_target")
