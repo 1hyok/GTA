@@ -100,6 +100,14 @@ gEarnDue["bunker"] := A_TickCount - 1
 EarnTick()
 Check(calls.Length = 3 && gEarnDone["bunker"] = 2, "next cycle")
 Reset()
+gEarnDue["dj"] := A_TickCount + 60000
+EarnTick()
+Check(calls.Length = 2 && calls[2] = "dj" && releaseCount = 1 && gEarnDone["dj"] = 1, "MCT task due within batch window joins the session")
+Reset()
+gEarnDue["dj"] := A_TickCount + 121000
+EarnTick()
+Check(calls.Length = 1 && calls[1] = "bunker" && gEarnDone["dj"] = 0, "MCT task beyond batch window waits")
+Reset()
 mode := "override"
 EarnTick()
 Check(gEarnDue["bunker"] > A_TickCount + 299000 && !gEarnNextDue.Has("bunker"), "task override consumed")
@@ -425,7 +433,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 54 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 56 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout
