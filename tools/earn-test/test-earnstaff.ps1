@@ -239,6 +239,7 @@ RunCargoTests() {
         ,["transient_cargo_footer",["ready","busy","full","busy","busy"],true,1]
         ,["unknown_cargo_footer",["ready","busy","full","busy","busy"],false,1]
         ,["lost_cargo_identity",["ready","busy","full","busy","busy"],false,1]
+        ,["cargo_read_glitch",["ready","busy","full","busy","busy"],true,1]
     ]
     for c in cases {
         Reset(c[1], ["busy","busy"])
@@ -456,6 +457,9 @@ MockReadScreen(area, whiteText) {
         if (area[4] = 40)
             cargoReads += 1
         if (mode = "cargo_ocr_fail")
+            return false
+        ; 조달 Enter 뒤 제목 판독이 세 번 흔들린다(1005 22:14:42).
+        if (mode = "cargo_read_glitch" && cargoRequests[1] && area[4] = 40 && ++postReads <= 3)
             return false
         if (mode = "delayed_cargo" && cargoRequests[1] && area[4] = 40 && ++postReads >= 80)
             cargoStatuses[1] := "busy"
