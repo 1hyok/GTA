@@ -142,6 +142,9 @@ EarnTick() {
     gAbort := false
     gEarnUserAbort := false
     gEarnCurrent := task.label
+    ; 이 작업이 보내는 키를 방치 판정(AFKOthersIdleMs)이 남의 입력으로 세지 않게 한다. 안 그러면 몇 분마다 도는 MCT 작업 때문에
+    ; 방치 5분에 닿지 못해 CPU 부스트·프레임 제한이 한 번도 안 걸렸다(1005 13:10~16:30, 핫스팟 95°C. 제한 때는 62~67°C).
+    try %"AFKSelfInput"%(true)
     outcome := {results: [], cleanupOK: true}
     fatalReason := ""
     try {
@@ -165,6 +168,7 @@ EarnTick() {
             EarnInputGuardStop()
             ReleaseHeldKeys()
         } finally {
+            try %"AFKSelfInput"%(false)
             gEarnBusy := false
             gEarnCurrent := ""
             EarnInputLockRelease(inputLock)
