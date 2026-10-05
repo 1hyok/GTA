@@ -112,7 +112,8 @@ EarnStaffRoot() {
         }
         ; 직원이 모두 일하러 나가면 첫 메뉴의 Manage Staff Members 줄이 회색이 되고 판독이 "Manage Staff Mempers" 로 깨진다
         ; (1005 01:59 캡처: 흰 줄 밝기 240, 회색 줄 155). 밝은 글자가 아니면 들어갈 수 없는 메뉴이므로 건너뛴다.
-        dim := EarnStaffUniqueRow(lines, "i)^Manage\h+Sta\S*\h+Mem\S*$")
+        ; "Manage Staff Mem ers" 처럼 마지막 낱말이 둘로 갈려 읽히기도 한다(1005 19:24 녹화 4장 중 3장). 이때 꺼지지 않게 한 조각 더 받는다.
+        dim := EarnStaffUniqueRow(lines, "i)^Manage\h+Sta\S*\h+Mem\S*(?:\h+\S+)?$")
         if (dim && !EarnWarehouseBrightLabel(dim))
             return "idle"
         return EarnFail("직원: 직원 관리 메뉴 위치 미확인")
