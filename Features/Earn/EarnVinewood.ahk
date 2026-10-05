@@ -236,7 +236,9 @@ EarnVinewoodSafeAmountOf(lines, name) {
     if (!IsObject(lines) || name = "")
         return -1
     claimed := "i)^Claim \$[0-9,]+ from\s*\S+\s*\Q" name "\E safe\.$"
-    empty := "i)^Your \Q" name "\E safe is empty\.$"
+    ; 빈 금고 문구는 마침표가 빠져 읽힐 때가 있다(1006 06:51 녹화: 수거 성공 뒤 "Your Bail Office safe is empty" 만 26초 내내 읽혀
+    ; 자동화가 꺼졌다). 문구가 통째로 맞아야 하고 뒤에 다른 글자는 없어야 하므로 마침표만 없어도 된다.
+    empty := "i)^Your \Q" name "\E safe is empty\.?$"
     amount := -1, matches := 0
     for i, line in lines {
         texts := [line.text]
