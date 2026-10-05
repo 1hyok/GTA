@@ -213,7 +213,8 @@ EarnStaffCargoWarehouses() {
         if (A_Index < count && (!EarnPress("Down") || !EarnSleep(200)))
             return false
     }
-    return true
+    ; 끝까지 돌아도 마지막 만재 창고가 선택된 화면은 다음 EarnStaffRoot 판독이 자주 흔들린다(1005 11:01 실측).
+    return EarnStaffCargoLeave()
 }
 
 ; 주문 처리 중에는 준비 문구가 남을 수 있다. 한 번만 요청하고 최대 60초 관측한다.
@@ -308,7 +309,7 @@ EarnStaffReadHangar(deadline := 0) {
 }
 
 ; 판독이 흔들려 창고 목록을 건너뛸 때는 그 목록 안에 있다는 것만은 확실하다. 다음 EarnStaffRoot 가
-; 같은 줄을 다시 못 읽어 멈추지 않게(1005 08:59 실측) Backspace 한 번으로 직원 관리 목록에 돌아간다.
+; 같은 줄을 다시 못 읽어 멈추지 않게(1005 08:59 실측) Backspace 한 번으로 직원 관리 목록에 돌아간다. 정상으로 끝까지 돈 뒤에도 같다.
 EarnStaffCargoLeave() => EarnPress("Backspace") && EarnSleep(700)
 
 EarnStaffCargoInOrder(current, index, count, visited) => IsObject(current) && current.index = index
