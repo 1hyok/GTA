@@ -171,6 +171,8 @@ RunTests() {
     for item in [[10000,100000,5000,856],[0,100000,30000,136],[35720,100000,2000,1528],[80000,250000,20000,376]]
         Check(EarnVinewoodSafeNextMs(item[1], item[2], item[3]) = item[4]*60000, "next check $" item[1] " cap " item[2] " daily " item[3])
     Check(EarnVinewoodNightclubAmount(Frame("Your Nightclub safe is empty.")) = 0, "explicit nightclub empty detail")
+    Check(EarnVinewoodNightclubAmount(Frame("Your Nightclub safe is empty")) = 0, "empty detail read without its period (1006 06:51)")
+    Check(EarnVinewoodNightclubAmount(Frame("Your Nightclub safe is empty now")) = -1, "empty detail with trailing words is rejected")
     for text in ["Claim $250000 from your Arcade safe.", "Your Arcade safe is empty.", "Nightclub $250000", "Claim $25O000 from your Nightclub safe.", "Claim $250,00 from your Nightclub safe.", "Claim $250 000 from your Nightclub safe.", "Claim $250000 from your Nightclub safe. Confirm?", "Claim $250000 from Nightclub safe.", "Claim $250000 from your Arcade Nightclub safe"]
         Check(EarnVinewoodNightclubAmount(Frame(text)) = -1, "reject detail: " text)
     Check(EarnVinewoodNightclubAmount(false) = -1, "OCR failure is not an empty safe")
