@@ -253,10 +253,23 @@ AntiAFKTick()
 Check(events.Length = 4 && menuState = "mct_seated" && LogHas("시작 화면 복귀 미확인") && !LogHas("MCT 메뉴 왕복 확인"),
     "missing final screen does not report verified activity")
 Reset()
-config["Settings"]["AFKHudIdleSec"] := 600
 menuState := "ground", hudVisible := true, hudOriginX := -2560, hudOriginY := 100, idleMs := 3600000
 AntiAFKTick()
-Check(events.Length = 0 && menuState = "ground", "plain gameplay HUD never receives input, even after an hour idle")
+Check(events.Length = 4 && events[1] = "{z down}" && events[3] = "{z down}" && menuState = "ground" && releases = 1
+    && LogHas("빈 화면: Z 두 번"), "plain HUD gets only two Z presses after long idle")
+Reset()
+menuState := "ground", hudVisible := true, idleMs := 120000
+AntiAFKTick()
+Check(events.Length = 0 && releases = 1, "plain HUD below free-HUD idle gets no input")
+Reset()
+menuState := "ground", hudVisible := true, idleMs := 3600000, anyIdleMs := 60000
+AntiAFKTick()
+Check(events.Length = 0, "plain HUD with recent injected input (missed by hook) gets no input")
+Reset()
+menuState := "ground", hudVisible := true, idleMs := 3600000
+config["Settings"]["AFKFreeHudIdleSec"] := 0
+AntiAFKTick()
+Check(events.Length = 0, "zero free-HUD idle setting disables plain HUD input")
 Reset()
 menuState := "ground"
 AntiAFKTick()
