@@ -36,6 +36,7 @@ A_MenuMaskKey := "vkE8"
 #Include Features\Earn\EarnWarehouseRead.ahk
 #Include Features\Earn\EarnWarehouse.ahk
 #Include Features\Earn\Earner.ahk
+#Include Features\CpuBoost.ahk
 #Include Features\StopAll.ahk
 #Include Features\Help.ahk
 #Include Features\Overlay.ahk
