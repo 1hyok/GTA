@@ -112,8 +112,7 @@ EarnStaffRoot() {
         }
         ; 직원이 모두 일하러 나가면 첫 메뉴의 Manage Staff Members 줄이 회색이 되고 판독이 "Manage Staff Mempers" 로 깨진다
         ; (1005 01:59 캡처: 흰 줄 밝기 240, 회색 줄 155). 밝은 글자가 아니면 들어갈 수 없는 메뉴이므로 건너뛴다.
-        ; "Manage Staff Mem ers" 처럼 마지막 낱말이 둘로 갈려 읽히기도 한다(1005 19:24 녹화 4장 중 3장). 이때 꺼지지 않게 한 조각 더 받는다.
-        dim := EarnStaffUniqueRow(lines, "i)^Manage\h+Sta\S*\h+Mem\S*(?:\h+\S+)?$")
+        dim := EarnStaffDimManageRow(lines)
         if (dim && !EarnWarehouseBrightLabel(dim))
             return "idle"
         return EarnFail("직원: 직원 관리 메뉴 위치 미확인")
@@ -481,6 +480,26 @@ EarnStaffBailState(lines, agent) {
     if (detail = "Your Bail Office staff member is currently out on a job.")
         return "busy"
     return "invalid"
+}
+
+; 회색 Manage Staff Members 줄은 판독이 매번 다르게 깨진다. "Mem ers"(1005 19:24), "SfaffMem>ers"·"Staff _Members"·
+; "StaffMembers"·"S!affMembers"(같은 날 20:01 한 화면을 2초 간격으로 읽은 결과). 모양을 맞히는 대신 제목에서 여섯째 줄
+; 자리(±12px)에 있고 글자만 남기면 "manag" 로 시작하는 줄 하나를 그 줄로 본다. 회색인지는 호출한 쪽이 밝기로 가린다.
+EarnStaffDimManageRow(lines) {
+    heading := EarnStaffUniqueRow(lines, "i)^THE VINEWOOD CLUB APP$")
+    if (!heading)
+        return false
+    found := false
+    for row in lines {
+        if (!row.HasOwnProp("y") || Abs(row.y - (heading.y + 37 * 6)) > 12)
+            continue
+        if (!RegExMatch(RegExReplace(row.text, "[^A-Za-z]"), "i)^manag"))
+            continue
+        if (found)
+            return false
+        found := row
+    }
+    return found
 }
 
 ; 같은 이름의 행이 둘 이상이면 선택/금액 문맥을 특정할 수 없다.
