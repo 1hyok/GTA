@@ -145,6 +145,13 @@ afkSelfFrom -= 3000, afkSelfTo -= 3000, anyInjectedAt := FakeTick(), afkNextDue 
 AntiAFKTick()
 Check(ownIgnored && activations = 1 && LogHas("skip: GTA 포커스 없음"), "own Alt ignored, later outside input counted")
 Reset()
+idleMs := 600000, anyIdleMs := 600000
+AFKSelfInput(true), anyInjectedAt := FakeTick(), fakeNow += 1000, AFKSelfInput(false)   ; 수익 작업이 키를 넣고 끝남
+fakeNow += 3000, AFKSelfInput(true)                                                    ; 3초 뒤 AFK 가 새 구간을 엶
+Check(AFKOthersIdleMs() >= 600000, "previous own interval stays hidden when the next one starts")
+AFKSelfInput(false), fakeNow += 3000, anyInjectedAt := FakeTick(), fakeNow += 1000, AFKSelfInput(true)
+Check(AFKOthersIdleMs() < 2000, "outside input between own intervals is still counted")
+Reset()
 focused := false, idleMs := 2000, hookExtraMs := 600000, afkHookTick := FakeTick() - 2000   ; Main 재시작 직후, 그 전 10분 비움
 AntiAFKTick()
 Check(activations = 1 && events.Length = 4 && LogHas("refocus ok idle=602s"), "fresh hook uses whole-input idle")

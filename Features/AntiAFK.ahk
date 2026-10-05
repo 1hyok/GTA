@@ -359,10 +359,13 @@ AFKPhysicalIdleMs() {
 
 ; 이 매크로 밖의 마지막 입력부터 지난 ms. 물리 입력에 더해 원격 데스크톱·에이전트·다른 프로그램이 주입한 입력도 센다
 ; (A_TimeIdle 은 GetLastInputInfo 값이다). 마지막 입력이 이 매크로가 입력하던 구간(끝난 뒤 500ms 까지) 안이면 그 구간 직전 값으로 센다.
+; 구간 시작이 아니라 그 직전 남의 입력(afkSelfBefore) 이후를 가린다. 수익 작업이 끝나고 몇 초 뒤 AFK 가 새 구간을 열면
+; 수익 작업의 마지막 키가 새 구간 시작보다 앞이라 남의 입력으로 잡혀, 44분 방치 중 30fps 제한이 3초 만에 풀렸다(1006 00:39·00:52).
+; 두 구간 사이의 남의 입력은 새 구간을 열 때 afkSelfBefore 에 들어가므로 계속 센다.
 AFKOthersIdleMs() {
     global afkSelfFrom, afkSelfTo, afkSelfBefore
     last := A_TickCount - A_TimeIdle
-    if (afkSelfFrom && last >= afkSelfFrom && (!afkSelfTo || last <= afkSelfTo + 500))
+    if (afkSelfFrom && last > afkSelfBefore && (!afkSelfTo || last <= afkSelfTo + 500))
         last := afkSelfBefore
     return A_TickCount - last
 }
