@@ -18,7 +18,8 @@ CpuBoostTick() {
     sec := config["Settings"].Get("CpuBoostIdleSec", 300)
     if (sec <= 0 && gCpuBoostState = "")
         return
-    gCpuBoostLastActive := CpuBoostLastActive(gCpuBoostLastActive, A_TickCount, Min(AFKPhysicalIdleMs(), AFKOthersIdleMs()))
+    phys := AFKPhysicalIdleMs(), others := AFKOthersIdleMs()
+    gCpuBoostLastActive := CpuBoostLastActive(gCpuBoostLastActive, A_TickCount, Min(phys, others))
     want := CpuBoostWanted(gEarnOn, A_TickCount - gCpuBoostLastActive, sec) ? "on" : "off"
     if (want = gCpuBoostState)
         return
@@ -26,7 +27,9 @@ CpuBoostTick() {
     fps := want = "on" ? 0 : config["Settings"].Get("IdleFpsLimit", 30)
     CpuBoostWriteFps(fps)
     gCpuBoostState := want
-    EarnLog("CPU 부스트 " (want = "on" ? "켬, 프레임 제한 없음" : "끔, 프레임 " fps " 제한(방치 중)"))
+    ; 해제가 매크로 자기 입력 때문인지 가리려고 그 순간의 두 유휴를 남긴다(1005 22:04:16 해제가 AFK Z 2초 뒤였다).
+    EarnLog("CPU 부스트 " (want = "on" ? "켬, 프레임 제한 없음" : "끔, 프레임 " fps " 제한(방치 중)")
+        " (물리 유휴 " Round(phys / 1000) "초, 주입 포함 " Round(others / 1000) "초)")
 }
 
 ; 켬은 Windows 균형 조정 기본값(최대 상태 100%, 부스트 모드 AC 공격적 2·DC 사용 1), 끔은 99%·부스트 사용 안 함 0.
