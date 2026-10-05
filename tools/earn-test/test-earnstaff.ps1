@@ -275,8 +275,10 @@ RunCargoTests() {
     for nextMode in ["cargo_repeat_name","cargo_stuck","cargo_no_selection","cargo_double_selection"] {
         Reset(nextMode,["busy","busy"])
         cargoStatuses := ["busy","busy","full","busy","busy"]
-        EarnStaffCargoWarehouses()
+        skipped := EarnStaffCargoWarehouses()
         Check(Sum(cargoRequests) = 0, nextMode " does not order")
+        if (skipped)
+            Check(screenState = "staff", nextMode " soft skip leaves the warehouse list")
     }
     Reset("cargo_disabled_price",["busy","busy"])
     cargoStatuses := ["busy","busy","full","busy","busy"]
