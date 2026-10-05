@@ -340,6 +340,12 @@ RunCargoTests() {
     greyText := "anageSta", greyMissing := 2   ; 처음 두 번은 회색 줄이 아예 안 읽힘
     screenState := "main", selected := "Claim Business Earnings"
     Check(EarnStaffRoot() = "idle" && keys.Length = 0, "grey row missing from two reads is reread without input")
+    Reset("grey_staff_unread",["busy","busy"])   ; 1006 03:05: 회색 줄이 한 번도 안 읽힘
+    screenState := "main", selected := "Claim Business Earnings"
+    Check(EarnStaffRoot() = "idle" && keys.Length = 0, "never-read grey row is recognised by its grey pixels")
+    Reset("missing_menu_target",["ready","ready"])
+    screenState := "main", selected := "Claim Business Earnings"
+    Check(!EarnStaffRoot() && keys.Length = 0, "unread row without grey pixels still fails without input")
     Reset("grey_staff_split",["busy","busy"])
     greyText := "Manage S!affMembers"
     screenState := "main", selected := "Claim Business Earnings"
@@ -427,7 +433,7 @@ MockReadScreen(area, whiteText) {
             rows[7].text := "Manage Staff Mempers"
         if (mode = "grey_staff_split")
             rows[7].text := greyText
-        if (mode = "grey_staff_split" && greyMissing > 0 && greyMissing--)
+        if (mode = "grey_staff_split" && greyMissing > 0 && greyMissing-- || mode = "grey_staff_unread")
             rows.RemoveAt(7)
         if (mode = "wrong_menu_heading" || mode = "menu_changes_before_enter" && menuReads >= 4)
             rows[1].text := "UNKNOWN MENU"
@@ -725,6 +731,10 @@ EarnSeen(name, *) {
 EarnWarehouseBrightLabel(row) {
     global mode
     return mode != "grey_staff_menu" && mode != "grey_staff_split"
+}
+EarnWarehouseGreyLabel(row) {
+    global mode
+    return mode = "grey_staff_unread" && row.y = 144 + 37 * 6
 }
 EarnVinewoodOpen() {
     global mode, opens
