@@ -187,7 +187,7 @@ EarnStaffCargoWarehouses() {
         if (!EarnStaffCargoInOrder(current, A_Index, count, visited)) {
             EarnLog("직원: 스페셜 패키지 " A_Index "번째 창고 판독 어긋남, 남은 창고는 건너뜀")
             EarnStaffTrack("cargo all", "busy")
-            return true
+            return EarnStaffCargoLeave()
         }
         visited[StrLower(current.name)] := true
         if (current.state = "busy" || current.state = "full") {
@@ -200,7 +200,7 @@ EarnStaffCargoWarehouses() {
             if (!EarnStaffSameWarehouse(fresh, current) || fresh.state != "ready" || fresh.price != 7500) {
                 EarnLog("직원: " current.name " 조달 직전 재확인 어긋남, 남은 창고는 사지 않고 건너뜀")
                 EarnStaffTrack("cargo all", "busy")
-                return true
+                return EarnStaffCargoLeave()
             }
             deadline := A_TickCount + 60000
             if (!EarnPress("Enter") || !EarnSleep(700))
@@ -306,6 +306,10 @@ EarnStaffReadHangar(deadline := 0) {
     }
     return "invalid"
 }
+
+; 판독이 흔들려 창고 목록을 건너뛸 때는 그 목록 안에 있다는 것만은 확실하다. 다음 EarnStaffRoot 가
+; 같은 줄을 다시 못 읽어 멈추지 않게(1005 08:59 실측) Backspace 한 번으로 직원 관리 목록에 돌아간다.
+EarnStaffCargoLeave() => EarnPress("Backspace") && EarnSleep(700)
 
 EarnStaffCargoInOrder(current, index, count, visited) => IsObject(current) && current.index = index
     && current.count = count && !visited.Has(StrLower(current.name))
