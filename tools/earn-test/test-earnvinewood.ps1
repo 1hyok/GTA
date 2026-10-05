@@ -13,6 +13,10 @@ foreach ($functionName in @('EarnFindText', 'EarnReadDollars', 'EarnSelectText',
     if ($match.Count -ne 1) { throw "Expected exactly one screen helper: $functionName" }
     $production += "`n" + $match[0].Value
 }
+# 빈 화면 시작의 물리 유휴는 시험 값으로 바꾼다(A_TimeIdlePhysical 은 이 프로세스의 실제 값이다).
+$idleNeedle = 'A_TimeIdlePhysical < idleMs'
+if (([regex]::Matches($production, [regex]::Escape($idleNeedle))).Count -ne 1) { throw "Expected one free-HUD idle check" }
+$production = $production.Replace($idleNeedle, 'gPhysIdle < idleMs')
 if (-not (Test-Path -LiteralPath $AhkPath -PathType Leaf)) { throw "AutoHotkey executable not found: $AhkPath" }
 $driver = @'
 #Requires AutoHotkey v2.0
@@ -21,7 +25,8 @@ $driver = @'
 #Warn All, StdOut
 global gMode, gState, gSelected, gBiz, gIdx, gReads, gClaims, gClaimAttempts, gKeys, gStandWaits, gMctCloses, gCEOCalls, gFailure, gScheduled, gTests := 0
 ; 입금 알림 감시(EarnSafeFeedWatch)는 스케줄러 전역을 쓴다. 이 시험은 파서만 부른다.
-global gEarnRetryIn := 0, gEarnOn := false, gEarnBusy := false, gEarnDue := Map(), gEarnNextDue := Map(), config := Map()
+global gEarnRetryIn := 0, gEarnOn := false, gEarnBusy := false, gEarnDue := Map(), gEarnNextDue := Map()
+global config := Map("Settings", Map("EarnUserIdleSec", 45)), gPhysIdle := 600000, gOthersIdle := 600000
 IsGTAActive() => false
 RunTests()
 FileAppend("PASS EarnVinewood cases=" gTests Chr(10), "*", "UTF-8")
@@ -32,7 +37,7 @@ DefaultBiz() => [["Nightclub",150000], ["Arcade",10000], ["Agency",80000], ["Sal
     ["Bail Office",12800], ["Garment Factory",35720], ["Hands On Car Wash",0]]
 
 RunTests() {
-    global gClaims, gClaimAttempts, gKeys, gState, gMctCloses, gCEOCalls, gScheduled, gBiz, gIdx, gSelected
+    global gClaims, gClaimAttempts, gKeys, gState, gMctCloses, gCEOCalls, gScheduled, gBiz, gIdx, gSelected, gPhysIdle, gOthersIdle
     ; mode, starting screen, amounts to override, success, claimed names, final screen, scheduled minutes (0 = not checked)
     cases := [
         ["normal", "main", Map(), true, "", "standing", 88],
@@ -61,6 +66,7 @@ RunTests() {
         ["open_unreadable", "standing", Map(), false, "", "standing", 0],
         ["open_unreadable", "phone_job", Map(), false, "", "phone_job", 0],
         ["normal", "unknown", Map(), false, "", "unknown", 0],
+        ["normal", "hud", Map("Nightclub",250000), true, "Nightclub", "standing", 0],
         ["wrong_phone", "standing", Map(), false, "", "wrong_phone", 0]
     ]
     for c in cases {
@@ -76,6 +82,8 @@ RunTests() {
         Check(gClaimAttempts <= gClaims.Length + 1, label " never replays collection")
         for key in gKeys
             Check(key != "Esc", label " never sends Esc")
+        if (c[2] = "hud")
+            Check(gMctCloses = 0 && gCEOCalls = 0, "free HUD start leaves CEO/MC state alone")
         if (c[2] = "mct")
             Check(gMctCloses = 1 && gCEOCalls = 1, "MCT start closes terminal before phone")
         if (c[2] = "phone_job" || c[2] = "phone_vinewood") {
@@ -102,6 +110,17 @@ RunTests() {
     RetryIn(0)
     Check(!EarnVinewoodOpen() && gKeys.Length = 0 && RetryIn() = 180000 && InStr(gFailure, "대기 위치"),
         "away from MCT retries in three minutes without input")
+    for idle in [[1000, 600000, "physical"], [600000, 1000, "remote"]] {
+        Reset("normal", "hud")
+        RetryIn(0)
+        gPhysIdle := idle[1], gOthersIdle := idle[2]
+        Check(!EarnVinewoodOpen() && gKeys.Length = 0 && RetryIn() = 180000,
+            "free HUD waits while recent " idle[3] " input exists")
+    }
+    Reset("hud_menu", "hud")
+    Check(!EarnVinewoodOpen() && gKeys.Length = 0, "free HUD with an open menu sends no keys")
+    Reset("normal", "hud")
+    Check(EarnVinewoodOpen() && gState = "main" && gKeys[1] = "Up" && gCEOCalls = 0, "free HUD opens the phone without CEO setup")
     Reset("normal", "phone_job")
     Check(EarnVinewoodOpen() && gState = "main" && gKeys.Length = 2
         && gKeys[1] = "Right" && gKeys[2] = "Enter", "Job List home only moves right and opens the selected app")
@@ -158,7 +177,7 @@ RunTests() {
 }
 
 Reset(mode, state, amounts := "") {
-    global gMode, gState, gSelected, gBiz, gIdx, gReads, gClaims, gClaimAttempts, gKeys, gStandWaits, gMctCloses, gCEOCalls, gFailure, gScheduled
+    global gMode, gState, gSelected, gBiz, gIdx, gReads, gClaims, gClaimAttempts, gKeys, gStandWaits, gMctCloses, gCEOCalls, gFailure, gScheduled, gPhysIdle, gOthersIdle
     gMode := mode, gState := state = "earnings_mid" ? "earnings" : state, gBiz := DefaultBiz(), gIdx := state = "earnings_mid" ? 4 : 1
     if (mode = "unknown_business")
         gBiz.InsertAt(3, ["Weed Shop", 50000])
@@ -168,7 +187,7 @@ Reset(mode, state, amounts := "") {
                 if (biz[1] = name)
                     biz[2] := amount
     gSelected := gState = "earnings" ? gBiz[gIdx][1] : "Claim Business Earnings"
-    gReads := Map(), gClaims := [], gClaimAttempts := 0, gKeys := [], gStandWaits := 0, gMctCloses := 0, gCEOCalls := 0, gFailure := "", gScheduled := 0
+    gReads := Map(), gClaims := [], gClaimAttempts := 0, gKeys := [], gStandWaits := 0, gMctCloses := 0, gCEOCalls := 0, gFailure := "", gScheduled := 0, gPhysIdle := 600000, gOthersIdle := 600000
 }
 
 EarnReadScreen(*) {
@@ -224,7 +243,7 @@ EarnPress(key) {
         if (gState = "earnings")
             gIdx := Mod(gIdx, gBiz.Length) + 1, gSelected := gBiz[gIdx][1]
     } else if (key = "Up") {
-        if (gState != "standing")
+        if (gState != "standing" && gState != "hud")
             throw Error("Phone-opening Up is invalid when the phone is already open: " gState)
         gState := gMode = "wrong_phone" ? "wrong_phone" : "phone_job"
     } else if (key = "Right" && gState = "phone_job") {
@@ -269,10 +288,20 @@ EarnSleep(ms) {
     return true
 }
 EarnSeen(name, *) {
-    global gState
+    global gState, gMode
+    if (name = "m_title")
+        return gMode = "hud_menu"
     return name = "mct_sit" ? gState = "standing" : name = "ph_joblist_sel" ? gState = "phone_job" : name = "ph_vinewood_sel" && gState = "phone_vinewood"
 }
 EarnWaitSeen(name, *) => EarnSeen(name)
+EarnHudVisible() {
+    global gState
+    return gState = "hud"
+}
+AFKOthersIdleMs() {
+    global gOthersIdle
+    return gOthersIdle
+}
 RetryIn(value := "") {
     global gEarnRetryIn
     if (value != "")
