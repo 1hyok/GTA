@@ -271,6 +271,24 @@ EarnVinewoodAmountDebug(lines) {
     return out = "" ? "(해당 줄 없음)" : out
 }
 
+; 메뉴·전화·앱이 없는 맨 게임 화면(왼쪽 아래 체력 막대가 보임)이고, 사람 입력이 물리·원격 모두 EarnUserIdleSec 넘게 없을 때.
+; 물리 입력 훅이 조작을 놓친 적이 있어(1004 23:01 플레이 중 idle=2668s) 원격 입력까지 세는 쪽도 함께 본다.
+EarnVinewoodFreeHud() {
+    global config
+    idleMs := config["Settings"]["EarnUserIdleSec"] * 1000
+    others := A_TimeIdle
+    try others := %"AFKOthersIdleMs"%()
+    if (A_TimeIdlePhysical < idleMs || others < idleMs || !EarnHudVisible())
+        return false
+    for name in ["afk_phone_frame", "ph_joblist_sel", "ph_vinewood_sel"]
+        if (EarnSeen(name, [0.83,0.58,0.98,0.73]))
+            return false
+    for name in ["afk_vinewood_title", "m_title", "m_pref_title", "mct_title"]
+        if (EarnSeen(name, name = "mct_title" ? [0.3,0,0.7,0.1] : [0,0,0.27,0.55]))
+            return false
+    return true
+}
+
 EarnVinewoodOpen() {
     lines := EarnReadScreen([25,15,450,500])
     if (!IsObject(lines))
@@ -281,14 +299,19 @@ EarnVinewoodOpen() {
         && !EarnSeen("ph_vinewood_sel", [0.83,0.66,0.98,0.73])) {
         if (EarnAtMCT() && !EarnMCTClose())
             return false
-        ; 아직 아무 입력도 안 보낸 단계다. MCT 작업처럼 끄지 않고 3분 뒤 다시 한다
-        ; (1004 21:56 사용자가 일시정지 메뉴를 연 채 손을 떼자 MCT 작업은 미뤄졌는데 금고만 자동화를 껐다).
-        if (!EarnSeen("mct_sit", [0,0,0.3,0.1]) && !EarnSeen("mct_terrorbyte")) {
+        atMCT := EarnSeen("mct_sit", [0,0,0.3,0.1]) || EarnSeen("mct_terrorbyte")
+        ; MCT 앞이 아니어도 메뉴·전화 없는 맨 HUD 에서 손을 뗀 지 오래면 전화로 앱을 연다(1005 사용자 요청).
+        ; 그때 CEO·MC 상태는 사용자가 정한 것이라 건드리지 않는다.
+        if (!atMCT && !EarnVinewoodFreeHud()) {
+            ; 아직 아무 입력도 안 보낸 단계다. MCT 작업처럼 끄지 않고 3분 뒤 다시 한다
+            ; (1004 21:56 사용자가 일시정지 메뉴를 연 채 손을 떼자 MCT 작업은 미뤄졌는데 금고만 자동화를 껐다).
             global gEarnRetryIn
             gEarnRetryIn := 3 * 60000
             return EarnFail("금고: MCT 앞 대기 위치를 확인하지 못함")
         }
-        if (!EarnCEO(false) || !EarnPress("Up") || !EarnSleep(700))
+        if (!atMCT)
+            EarnLog("금고: MCT 앞이 아니라 빈 화면에서 전화로 앱을 연다")
+        if ((atMCT && !EarnCEO(false)) || !EarnPress("Up") || !EarnSleep(700))
             return false
     }
     ; 휴대폰이 다 올라오기까지 1초 넘게 걸릴 때가 있다(1004 14:20 녹화). 홈의 선택 제목이 보일 때까지 기다린다.
