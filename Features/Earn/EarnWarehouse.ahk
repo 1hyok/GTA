@@ -219,6 +219,42 @@ EarnWarehouseBrightLabel(row) {
     } finally DllCall("SetThreadDpiAwarenessContext", "ptr", previous, "ptr")
 }
 
+; 판독이 글자를 하나도 못 내는 회색 글자 줄용. 흰 글자 픽셀(최소 채널 210 이상)이 없고, 무채색 회색(최소 채널 110~209,
+; 채널 차 30 이하) 픽셀이 8% 넘으면 회색 글자가 있다고 본다. 1006 03:04 녹화: 회색 Manage Staff Members 자리는 21프레임 내내
+; 판독 0줄이었고 흰 0·회색 22%, 바로 위 흰 글자 줄은 흰 12%였다.
+EarnWarehouseGreyLabel(row) {
+    if (EarnAborted())
+        return false
+    previous := DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
+    try {
+        hwnd := IsGTAActive()
+        if (!hwnd)
+            return false
+        WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
+        if (cw != 1920 || ch != 1080)
+            return false
+        CoordMode("Pixel", "Screen")
+        white := 0, grey := 0, total := 0
+        y := Ceil(row.y-row.h/2)
+        while (y < row.y+row.h/2) {
+            x := Ceil(row.x-row.w/2)
+            while (x < row.x+row.w/2) {
+                color := PixelGetColor(cx+x, cy+y)
+                r := (color>>16)&255, g := (color>>8)&255, b := color&255
+                lo := Min(r, g, b), hi := Max(r, g, b)
+                white += lo >= 210
+                grey += lo >= 110 && lo < 210 && hi - lo <= 30
+                total += 1
+                x += 2
+            }
+            y += 2
+        }
+        return total && white = 0 && grey/total >= 0.08
+    } catch {
+        return false
+    } finally DllCall("SetThreadDpiAwarenessContext", "ptr", previous, "ptr")
+}
+
 EarnWarehouseMove(move, goods) {
     source := false, target := false
     for row in goods {

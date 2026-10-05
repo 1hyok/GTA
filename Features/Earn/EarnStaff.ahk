@@ -119,6 +119,11 @@ EarnStaffRoot() {
         ; 회색 줄이 아예 안 읽히는 프레임도 있다(1006 02:24 녹화: 26초 중 3프레임). 입력 없이 다시 읽는다.
         if (++unread < 3 && EarnSleep(600))
             continue
+        ; 다시 읽어도 안 읽히면 첫 메뉴(Claim Business Earnings 가 보임)의 여섯째 줄 자리 밝기로 회색 글자인지 본다(1006 03:05).
+        heading := EarnStaffUniqueRow(lines, "i)^THE VINEWOOD CLUB APP$")
+        if (heading && EarnStaffUniqueRow(lines, "i)^Claim Business Earnings$")
+            && EarnWarehouseGreyLabel({x: 185, y: heading.y + 37 * 6, w: 290, h: 20}))
+            return "idle"
         return EarnFail("직원: 직원 관리 메뉴 위치 미확인")
     }
     return EarnFail("직원: 직원 관리 메뉴 복귀 제한")
