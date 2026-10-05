@@ -32,6 +32,7 @@ global fixtureData := Map(), fixtureKey := ""
 global observedDeadlines := []
 global menuReads := 0, mainNames := []
 global hangarState := "ready", hangarRequests := 0, hangarReads := 0
+global greyText := "", greyMissing := 0
 OnError(TestUnhandledError)
 __FIXTURE_INIT__
 try {
@@ -327,12 +328,18 @@ RunCargoTests() {
     Check(EarnVinewoodStaffTask() && failure = "" && Sum(requests) = 0 && Sum(cargoRequests) = 0 && hangarRequests = 0
         && EarnStaffTrack() = 300000, "grey Manage Staff Members skips every staff job")
     ; 1005 19:24·20:01 녹화 프레임을 실제 판독기로 읽은 회색 줄
-    for text in ["Manage Staff Mem ers", "Manage SfaffMem>ers", "Manage Staff _Members", "Manage StaffMembers", "Manage S!affMembers"] {
+    for text in ["Manage Staff Mem ers", "Manage SfaffMem>ers", "Manage Staff _Members", "Manage StaffMembers", "Manage S!affMembers",
+        "anageSta", "anag+t"] {   ; 1006 02:24 녹화: 첫 글자 M 이 빠짐
         Reset("grey_staff_split",["busy","busy"])
-        global greyText := text
+        greyText := text
         screenState := "main", selected := "Claim Business Earnings"
         Check(EarnStaffRoot() = "idle" && keys.Length = 0, "grey read " text " is idle without input")
     }
+    Reset("grey_staff_split",["busy","busy"])
+    global greyText, greyMissing
+    greyText := "anageSta", greyMissing := 2   ; 처음 두 번은 회색 줄이 아예 안 읽힘
+    screenState := "main", selected := "Claim Business Earnings"
+    Check(EarnStaffRoot() = "idle" && keys.Length = 0, "grey row missing from two reads is reread without input")
     Reset("grey_staff_split",["busy","busy"])
     greyText := "Manage S!affMembers"
     screenState := "main", selected := "Claim Business Earnings"
@@ -370,7 +377,8 @@ Reset(nextMode, initial) {
     global mode, screenState, selected, statuses, requests, keys, reads, failure
     global config, cargoNames, cargoStatuses, cargoRequests, cargoReads, activeCount, opens, postReads
     global observedDeadlines
-    global menuReads, mainNames, hangarState, hangarRequests, hangarReads
+    global menuReads, mainNames, hangarState, hangarRequests, hangarReads, greyMissing
+    greyMissing := 0
     mode := nextMode, screenState := "staff", selected := "Hangar"
     hangarState := "ready", hangarRequests := 0, hangarReads := 0
     statuses := initial.Clone(), requests := [0,0], keys := [], reads := 0, failure := ""
@@ -406,7 +414,7 @@ EarnReadScreen(area, whiteText := false, deadline := 0) {
 MockReadScreen(area, whiteText) {
     global mode, screenState, selected, statuses, reads, requests
     global cargoNames, cargoStatuses, cargoRequests, cargoReads, postReads
-    global menuReads, mainNames, hangarReads, greyText
+    global menuReads, mainNames, hangarReads, greyText, greyMissing
     if (screenState = "main") {
         if (area[4] = 263 || area[4] = 300)
             menuReads += 1
@@ -419,6 +427,8 @@ MockReadScreen(area, whiteText) {
             rows[7].text := "Manage Staff Mempers"
         if (mode = "grey_staff_split")
             rows[7].text := greyText
+        if (mode = "grey_staff_split" && greyMissing > 0 && greyMissing--)
+            rows.RemoveAt(7)
         if (mode = "wrong_menu_heading" || mode = "menu_changes_before_enter" && menuReads >= 4)
             rows[1].text := "UNKNOWN MENU"
         if (mode = "duplicate_menu_target")
