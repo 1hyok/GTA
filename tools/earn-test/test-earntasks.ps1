@@ -1047,6 +1047,7 @@ EarnUIBackToMCT(guard,presses) {
 }
 EarnFail(*) => false
 EarnLog(*) => true
+EarnDJSchedule(*) => true
 '@
     foreach ($fn in @('EarnDJNeedsRebook','EarnDJHomeOpen','EarnPopularityHomePct')) {
         $djFlowDriver += "`n" + (Get-EarnFunctionBody $sourceText $fn)

@@ -624,6 +624,7 @@ EarnDJSwapLoop(previousMCTReading := "") {
     }
     if (!EarnDJNeedsRebook(pop, config["Settings"]["EarnDJPopularityPct"])) {
         EarnLog("DJ: 목표 인기도 도달로 교체 안 함")
+        EarnDJSchedule(pop, false)
         return EarnUIBackToMCT("nc_dj_menu", 1)
     }
     if (!EarnUIClick("nc_dj_menu", 495, 759)
@@ -649,6 +650,7 @@ EarnDJSwapLoop(previousMCTReading := "") {
         || !EarnWaitSeen(resident, area, 5000))
         return EarnFail("DJ: 교체 결과 미확인")
     gEarnDJCheckAbove := pop
+    EarnDJSchedule(pop, true)
     if (!EarnUIClick("nc_home", 495, 596)
         || !EarnWaitSeen("nc_popularity_home", [0.38,0.14,0.54,0.19], 5000))
         return false
@@ -680,6 +682,50 @@ EarnPopularityHomePct() {
 
 EarnUIReady(name, area := "") {
     return !EarnAborted() && EarnSeen(name, area)
+}
+
+; 인기도는 게임 하루(48분)마다 한 단계씩 떨어진다(1005 실측: 02:53~12:30 하락 간격 46~50분, 100→95→91 하루 한 번).
+; 세션 밖에 있던 동안은 그만큼 밀린다(1005 14:45 방치 킥 뒤 하락이 격자에서 벗어남). 그래서 고정 시계가 아니라 본 하락으로 경계를 잡는다.
+; 재고용했으면 +10%p 오른 값을 지난 값으로 남겨, 다음 하루의 하락(100→95)을 하락으로 알아본다.
+EarnDJSchedule(pop, rebooked) {
+    now := EarnUnixNow()
+    prevPop := EarnStateGet("dj_pop", -1), prevAt := EarnStateGet("dj_at", 0), boundary := EarnStateGet("dj_boundary", 0)
+    sec := EarnDJNextSec(IsNumber(prevPop) ? prevPop + 0 : -1, IsNumber(prevAt) ? prevAt + 0 : 0,
+        IsNumber(boundary) ? boundary + 0 : 0, pop, now, &boundary)
+    EarnStateSet("dj_pop", rebooked ? Min(100, pop + 10) : pop)
+    EarnStateSet("dj_at", now)
+    EarnStateSet("dj_boundary", boundary)
+    if (sec > 0) {
+        EarnLog("DJ: 다음 인기도 하락 확인까지 " Round(sec / 60) "분")
+        EarnScheduleNext("dj", sec * 1000)
+    }
+}
+
+; 다음 DJ 확인까지 초. 0 이면 기본 간격(EarnDJIntervalMin)으로 하락을 찾는다. 시각은 모두 유닉스 초.
+; 하락을 본 확인의 직전 확인이 10분 안이면 그 시각을 경계로 잡는다(실제 하락은 그 뒤라 일찍 보는 쪽으로만 어긋난다).
+; 간격이 길면 알던 경계에서 하루씩 넘긴 예측이 그 사이에 있을 때만 그 예측을 경계로 쓴다.
+; 경계 + 하루 + 3분에 보고, 아직 안 떨어졌으면 2분마다 보며 경계를 좁힌다. 15분 넘게 안 떨어지면 경계를 버린다.
+EarnDJNextSec(prevPop, prevAt, boundary, pop, now, &newBoundary, daySec := 2880, marginSec := 180, pollSec := 120, staleSec := 900) {
+    newBoundary := boundary
+    if (prevPop >= 0 && pop < prevPop) {
+        if (prevAt && now - prevAt <= 600) {
+            newBoundary := prevAt
+        } else if (boundary && now - boundary >= daySec) {
+            projected := boundary + (now - boundary) // daySec * daySec
+            newBoundary := projected > prevAt ? projected : 0
+        } else {
+            newBoundary := 0
+        }
+    }
+    if (!newBoundary)
+        return 0
+    due := newBoundary + daySec + marginSec
+    if (now < due)
+        return due - now
+    if (now - due <= staleSec)
+        return pollSec
+    newBoundary := 0
+    return 0
 }
 
 EarnDJNeedsRebook(pop, target := 95) {
