@@ -73,7 +73,8 @@ EarnStaffListSeen(lines) => EarnStaffUniqueRow(lines, "i)^Warehouse$")
 
 ; 확인한 앱 메뉴만 거슬러 올라간다. 알 수 없는 화면에는 Backspace를 보내지 않는다.
 EarnStaffRoot() {
-    Loop 4 {
+    unread := 0
+    Loop 6 {
         lines := EarnReadScreen([25,125,450,263])
         if (!EarnStaffUniqueRow(lines, "i)^THE VINEWOOD CLUB APP$"))
             return EarnFail("직원: Vinewood 앱 제목 미확인")
@@ -115,6 +116,9 @@ EarnStaffRoot() {
         dim := EarnStaffDimManageRow(lines)
         if (dim && !EarnWarehouseBrightLabel(dim))
             return "idle"
+        ; 회색 줄이 아예 안 읽히는 프레임도 있다(1006 02:24 녹화: 26초 중 3프레임). 입력 없이 다시 읽는다.
+        if (++unread < 3 && EarnSleep(600))
+            continue
         return EarnFail("직원: 직원 관리 메뉴 위치 미확인")
     }
     return EarnFail("직원: 직원 관리 메뉴 복귀 제한")
@@ -492,6 +496,7 @@ EarnStaffBailState(lines, agent) {
 ; 회색 Manage Staff Members 줄은 판독이 매번 다르게 깨진다. "Mem ers"(1005 19:24), "SfaffMem>ers"·"Staff _Members"·
 ; "StaffMembers"·"S!affMembers"(같은 날 20:01 한 화면을 2초 간격으로 읽은 결과). 모양을 맞히는 대신 제목에서 여섯째 줄
 ; 자리(±12px)에 있고 글자만 남기면 "manag" 로 시작하는 줄 하나를 그 줄로 본다. 회색인지는 호출한 쪽이 밝기로 가린다.
+; 첫 글자 M 이 빠진 "anageSta"·"anag+t" 도 있다(1006 02:24 녹화). 그래서 M 은 없어도 된다.
 EarnStaffDimManageRow(lines) {
     heading := EarnStaffUniqueRow(lines, "i)^THE VINEWOOD CLUB APP$")
     if (!heading)
@@ -500,7 +505,7 @@ EarnStaffDimManageRow(lines) {
     for row in lines {
         if (!row.HasOwnProp("y") || Abs(row.y - (heading.y + 37 * 6)) > 12)
             continue
-        if (!RegExMatch(RegExReplace(row.text, "[^A-Za-z]"), "i)^manag"))
+        if (!RegExMatch(RegExReplace(row.text, "[^A-Za-z]"), "i)^m?anag"))
             continue
         if (found)
             return false
