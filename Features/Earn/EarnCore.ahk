@@ -944,15 +944,17 @@ EarnMCTClose() {
 ; 게임 인물(Lester 등)의 전화가 오면 휴대폰이 오른쪽 아래를 가려 접근 안내를 못 찾는다(1004 17:41 실측:
 ; 일어선 직후 Lester 전화로 네 방향을 다 돌고 꺼짐). 전화가 보이면 Backspace 로 끊는다(거절·통화 종료 모두).
 ; 기다리면 통화 길이만큼 버리고, 끊어도 잃는 것은 그 소개 통화뿐이다. AFK 방지도 남은 전화를 같은 키로 닫는다.
+; 연결된 통화는 휴대폰이 아래로 내려가 위 테두리 템플릿에 안 맞는다(1006 19:26 녹화: 차이 74~79). 그때는 오른쪽 아래
+; 빨간 끊기 아이콘(phone_call_end, 같은 녹화에서 차이 0~8, 다른 화면 138 이상)으로 본다. 못 보면 네 방향을 걸어 다니다 꺼졌다.
 EarnWaitCallEnd() {
-    area := [0.83, 0.58, 0.98, 0.72]
-    if (!EarnSeen("afk_phone_frame", area))
+    area := [0.83, 0.58, 0.98, 0.72], endArea := [0.9, 0.92, 0.99, 0.98]
+    if (!EarnSeen("afk_phone_frame", area) && !EarnSeen("phone_call_end", endArea))
         return true
     EarnLog("MCT: 게임 전화가 와 Backspace 로 끊음")
     Loop 3 {
         if (!EarnPress("Backspace"))
             return false
-        if (EarnWaitGone("afk_phone_frame", area, 3000))
+        if (EarnWaitGone("afk_phone_frame", area, 3000) && EarnWaitGone("phone_call_end", endArea, 3000))
             return EarnSleep(1000)
     }
     return EarnFail("MCT: 게임 전화가 Backspace 3번에도 닫히지 않음")
