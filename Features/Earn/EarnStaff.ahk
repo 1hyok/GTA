@@ -342,11 +342,14 @@ EarnStaffReadHangar(deadline := 0) {
         detail := EarnStaffFooter(lines, {y:heading.y+37*3, h:22})
         ; 설명 문구는 한두 글자씩 깨져 읽힌다(1006 녹화: "Send yo r Hangar staff member out on a", "end your Hangar
         ; staff member outon a", "Send you Hangar staff membei oUton a"). 정확히 같아야 했던 탓에 그날 60번 모두 상태 미확인으로
-        ; 건너뛰었다. 글자만 남겨 편집 거리로 비교한다. 보내기·작업 중·만재 세 문구는 서로 크게 달라 섞이지 않는다.
+        ; 건너뛰었다. 뒷부분은 통째로 빠지기도 해서("Fend yo r Hangar staff member out" / "jog.", 같은 날 22:17) "Hangar staff"
+        ; 앞부분만 본다. 보내기는 "Send your", 작업 중은 "Your" 로 시작해 편집 거리 4 이상 떨어져 있다.
         letters := StrLower(RegExReplace(detail, "[^A-Za-z]"))
-        if (letters != "" && EarnStaffEditDistance(letters, "sendyourhangarstaffmemberoutonajob") <= 3)
+        at := InStr(letters, "hangarstaff")
+        lead := at > 1 ? SubStr(letters, 1, at - 1) : ""
+        if (lead != "" && EarnStaffEditDistance(lead, "sendyour") <= 2)
             return price = 25000 ? "ready" : "invalid"
-        if (EarnStaffEditDistance(SubStr(letters, 1, 21), "yourhangarstaffmember") <= 2)
+        if (lead != "" && EarnStaffEditDistance(lead, "your") <= 2)
             return "busy"
         if (InStr(letters, "nomoreroom"))
             return "full"

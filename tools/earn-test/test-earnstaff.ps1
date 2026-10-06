@@ -475,9 +475,9 @@ MockReadScreen(area, whiteText) {
             rows[5].text := hangarState = "ready" ? "Send your Hangar staff member out on a job."
                 : hangarState = "busy" ? "Your Hangar staff member is currently out on a job." : "Something else."
             if (mode = "hangar_garbled" && hangarState = "ready")
-                rows[5].text := "Send yo r Hangar staff membei oUton a job."
+                rows[5].text := "Fend yo r Hangar staff member out"   ; 1006 22:17 녹화: "on a job." 이 빠짐
             if (mode = "hangar_garbled_busy" && hangarState = "busy")
-                rows[5].text := "Your Hangar staff membei is currentl out on a job."
+                rows[5].text := "Elour Hangar staff membei is currentl out on a job."
         }
         ; 1006 20:35 녹화: 밝은 배경 앞에서 고르지 않은 줄 판독이 깨진다.
         if (mode = "garbled_list" || mode = "garbled_list2") {
