@@ -32,7 +32,7 @@ global fixtureData := Map(), fixtureKey := ""
 global observedDeadlines := []
 global menuReads := 0, mainNames := []
 global hangarState := "ready", hangarRequests := 0, hangarReads := 0
-global greyText := "", greyMissing := 0
+global greyText := "", greyMissing := 0, flickerReads := 0
 OnError(TestUnhandledError)
 __FIXTURE_INIT__
 try {
@@ -383,6 +383,10 @@ RunCargoTests() {
         result := EarnVinewoodStaffTask()
         Check(result = c[3] && hangarRequests = c[4] && hangarState = c[5], c[1] " hangar result=" result " requests=" hangarRequests)
     }
+    ; 1007 04:00: 키를 누른 직후 판독에서 앱 제목이 빠진다(일반·흰 글자 판독 한 번씩).
+    Reset("heading_flicker",["busy","busy"])
+    hangarState := "ready", screenState := "staff", selected := "Warehouse"
+    Check(EarnStaffSelectText(EarnStaffHangarPattern(), 3) && selected = "Hangar", "app title dropped once after a key press is reread")
     Reset("close_fail",["busy","busy"])
     cargoStatuses := ["busy","busy","full","busy","busy"]
     Check(!EarnVinewoodStaffTask(), "app-close failure prevents success")
@@ -398,8 +402,8 @@ Reset(nextMode, initial) {
     global mode, screenState, selected, statuses, requests, keys, reads, failure
     global config, cargoNames, cargoStatuses, cargoRequests, cargoReads, activeCount, opens, postReads
     global observedDeadlines
-    global menuReads, mainNames, hangarState, hangarRequests, hangarReads, greyMissing
-    greyMissing := 0
+    global menuReads, mainNames, hangarState, hangarRequests, hangarReads, greyMissing, flickerReads
+    greyMissing := 0, flickerReads := 0
     mode := nextMode, screenState := "staff", selected := "Hangar"
     hangarState := "ready", hangarRequests := 0, hangarReads := 0
     statuses := initial.Clone(), requests := [0,0], keys := [], reads := 0, failure := ""
@@ -435,7 +439,7 @@ EarnReadScreen(area, whiteText := false, deadline := 0) {
 MockReadScreen(area, whiteText) {
     global mode, screenState, selected, statuses, reads, requests
     global cargoNames, cargoStatuses, cargoRequests, cargoReads, postReads
-    global menuReads, mainNames, hangarReads, greyText, greyMissing
+    global menuReads, mainNames, hangarReads, greyText, greyMissing, flickerReads
     if (screenState = "main") {
         if (area[4] = 263 || area[4] = 300)
             menuReads += 1
@@ -465,7 +469,7 @@ MockReadScreen(area, whiteText) {
         return rows
     }
     if (screenState = "staff") {
-        rows := [TextLine("THE VINEWOOD CLUB APP",144),TextLine("Hangar",181),TextLine("Warehouse",218),TextLine("Bail Office",255),
+        rows := [TextLine(flickerReads > 0 && flickerReads-- ? "THE VINEWOOD" : "THE VINEWOOD CLUB APP",144),TextLine("Hangar",181),TextLine("Warehouse",218),TextLine("Bail Office",255),
             TextLine("Manage your Warehouse staff.",300)]
         ; 격납고 줄이 선택되면 같은 줄 오른쪽에 가격, 목록 아래에 상태 문구가 뜬다(1004 21:36 녹화).
         if (selected = "Hangar" && hangarState != "") {
@@ -644,6 +648,9 @@ EarnPress(key) {
     global cargoNames, cargoStatuses, cargoRequests, activeCount
     global mainNames
     keys.Push(key)
+    global flickerReads
+    if (mode = "heading_flicker" && (key = "Up" || key = "Down"))
+        flickerReads := 2
     if (key = "Up") {
         ; 목록은 위 끝에서 아래 끝으로 돈다. Down 의 역방향이다.
         if (mode = "cancel_select")

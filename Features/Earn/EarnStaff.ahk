@@ -656,7 +656,13 @@ EarnStaffMenuTarget(pattern, &validMenu := false, &menuLines := "", &menuHeading
 
 EarnStaffSelectText(pattern, maxPress) {
     Loop maxPress+1 {
-        row := EarnStaffMenuTarget(pattern, &validMenu, &lines, &heading)
+        ; 키를 누른 직후 판독에서 앱 제목이 한 번 빠지면 메뉴가 아닌 것으로 보고 곧바로 꺼졌다(1007 04:00:49 「격납고 줄 선택 실패」,
+        ; 녹화 1초 간격 프레임에는 제목이 다 보였다). 입력 없이 두 번 더 읽는다.
+        Loop 3 {
+            row := EarnStaffMenuTarget(pattern, &validMenu, &lines, &heading)
+            if (validMenu || A_Index = 3 || !EarnSleep(400))
+                break
+        }
         if (!validMenu)
             return false
         if (row && EarnMenuRowSelected(row))
