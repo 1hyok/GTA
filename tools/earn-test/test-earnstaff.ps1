@@ -357,6 +357,9 @@ RunCargoTests() {
     Reset("grey_bail_root",["ready","ready"])
     cargoStatuses := ["busy","busy","full","busy","busy"]
     Check(EarnVinewoodStaffTask() && Sum(requests) = 0, "grey Bail Office skips bail agents without entering")
+    Reset("garbled_list",["ready","ready"])
+    config["Settings"]["EarnCargoStaff"] := 0
+    Check(EarnVinewoodStaffTask() && failure = "" && Sum(requests) = 2, "garbled Warehouse/Bail Office reads still reach both agents (1006 20:35)")
     Reset("bail_busy_selected",["busy","busy"])
     cargoStatuses := ["busy","busy","full","busy","busy"]
     Check(EarnVinewoodStaffTask() && failure = "" && Sum(requests) = 0, "busy footer under a selected Bail Office skips agents (1006 20:04)")
@@ -462,6 +465,13 @@ MockReadScreen(area, whiteText) {
                 rows.Push(TextLine(mode = "hangar_bad_price" || mode = "hangar_flaky" && hangarReads >= 2 ? "$250000" : "$25000",181,420,80))
             rows[5].text := hangarState = "ready" ? "Send your Hangar staff member out on a job."
                 : hangarState = "busy" ? "Your Hangar staff member is currently out on a job." : "Something else."
+        }
+        ; 1006 20:35 녹화: 밝은 배경 앞에서 고르지 않은 줄 판독이 깨진다.
+        if (mode = "garbled_list") {
+            if (selected != "Warehouse")
+                rows[3].text := "Warehou e"
+            if (selected != "Bail Office")
+                rows[4].text := "Bail Offic"
         }
         ; 1006 20:04 녹화: 요원이 모두 나간 Bail Office 를 고르면 위 Warehouse 가 깨지고 아래에 바쁨 문구가 뜬다.
         if (mode = "bail_busy_selected" && selected = "Bail Office") {
