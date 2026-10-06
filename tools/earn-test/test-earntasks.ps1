@@ -1941,7 +1941,9 @@ cases := [
     ["abort-standing",Map("abortAt","standing"),false,0,2,0,0],
     ; 일어선 직후 게임 전화가 오면 Backspace 로 끊고 안내를 찾는다(1004 17:41).
     ["game-call",Map("call",true),true,0,2,0,1],
-    ["game-call-stuck",Map("call",true,"callStuck",true),false,0,2,0,0]]
+    ["game-call-stuck",Map("call",true,"callStuck",true),false,0,2,0,0],
+    ; 연결된 통화는 테두리 템플릿 대신 빨간 끊기 아이콘으로만 보인다(1006 19:26).
+    ["game-call-connected",Map("call",true,"connected",true),true,0,2,0,1]]
 for scenario in cases {
     closeCase := scenario[2], scene := closeCase.Get("scene","mct_seated")
     aborted := closeCase.Get("abortAt","") = "start", backspaces := 0, clicks := [], promptReads := 0, turns := 0, turnUnits := 0, turnList := [],
@@ -1974,7 +1976,7 @@ for scenario in cases {
         throw Error("Close allowed CEO menu entry before the stand animation finished")
     if (scenario[1] = "transient-stand-prompt" && closeClockMs - stoodAt != 3500)
         throw Error("A transient approach prompt must not bypass the stand animation wait")
-    if (callWaits != (scenario[1] = "game-call" ? 1 : scenario[1] = "game-call-stuck" ? 3 : 0))
+    if (callWaits != (scenario[1] = "game-call" || scenario[1] = "game-call-connected" ? 1 : scenario[1] = "game-call-stuck" ? 3 : 0))
         throw Error("A game phone call must be hung up with Backspace, at most three times")
     if (scenario[1] = "abort-standing" && (closeClockMs - stoodAt != 700
         || abortInputs != backspaces + clicks.Length + turns))
@@ -1990,7 +1992,9 @@ EarnSeen(name,*) {
             scene := "mct_seated", seatedAt := closeClockMs
     }
     if (name = "afk_phone_frame")
-        return callActive
+        return callActive && !closeCase.Get("connected",false)
+    if (name = "phone_call_end")
+        return callActive && closeCase.Get("connected",false)
     return scene = name
 }
 EarnAborted() => aborted
@@ -2037,7 +2041,7 @@ CloseClock() => closeClockMs
 FixtureCEOEntryReady() => !aborted && stoodAt >= 0 && closeClockMs - stoodAt >= 3500
 EarnWaitGone(name,area,timeoutMs) {
     global closeCase, aborted, stoodAt, scene, callActive, callWaits
-    if (name = "afk_phone_frame") {
+    if (name = "afk_phone_frame" || name = "phone_call_end") {
         if (timeoutMs != 3000)
             throw Error("A hung-up call must disappear within 3 seconds")
         return !aborted && !callActive
@@ -2088,7 +2092,7 @@ EarnLog(*) => true
     $closeWaitBody = (Get-EarnFunctionBody $sourceText 'EarnWaitSeen').Replace('EarnWaitSeen(', 'FixtureWaitSeen(').Replace('A_TickCount', 'CloseClock()')
     $mctCloseDriver += "`n" + $closeWaitBody + "`n" + (Get-EarnFunctionBody $sourceText 'EarnSleep').Replace('A_TickCount', 'CloseClock()')
     $mctCloseDriver += "`n" + (Get-EarnFunctionBody $sourceText 'EarnWaitCallEnd')
-    Invoke-EarnOfflineCheck 'MCTClose' 'EarnMCTClose' $mctCloseDriver 23
+    Invoke-EarnOfflineCheck 'MCTClose' 'EarnMCTClose' $mctCloseDriver 24
     $turnGuardDriver = @'
 global turnCase := [], moves := 0, movedX := 0, movedY := 0
 ; Relative mouse calls are intercepted. Run the actual turn loop and input guards.
