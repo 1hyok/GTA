@@ -68,8 +68,27 @@ EarnStaffAllBusy() {
     return IsObject(footer) && EarnStaffUniqueRow(footer, "i)^All of your staff members are currently")
 }
 
+; 직원이 모두 나간 회색 줄을 고르면 목록 아래에 "Your <사업장> staff member(s) are currently busy." 가 뜬다.
+; 이때 바로 위 줄 판독이 깨진다(1006 20:04 녹화: Bail Office 를 고르자 Warehouse 가 "Wareho se"). 줄 이름 대신 이 문구로 본다.
+; 판독은 글자가 빠진다("Your Bai Office staff member"). 글자만 남겨 "your" 로 시작하고 "<word>staffmember" 가 든 줄을 찾는다.
+EarnStaffSectionBusy(word) {
+    for white in [false, true] {
+        lines := EarnReadScreen([25,280,450,80], white)
+        if (!IsObject(lines))
+            continue
+        for row in lines {
+            text := StrLower(RegExReplace(row.text, "[^A-Za-z]"))
+            if (SubStr(text, 1, 4) = "your" && InStr(text, word "staffmember"))
+                return true
+        }
+    }
+    return false
+}
+
+; 셋 중 두 줄이면 직원 목록이다. 바쁜 Bail Office 를 고르면 Warehouse 판독이 깨진다(1006 20:04 "Wareho se").
 EarnStaffListSeen(lines) => EarnStaffUniqueRow(lines, "i)^Warehouse$")
     && (EarnStaffUniqueRow(lines, "i)^Bail Office$") || EarnStaffUniqueRow(lines, "i)^Hangar$"))
+    || EarnStaffUniqueRow(lines, "i)^Hangar$") && EarnStaffUniqueRow(lines, "i)^Bail Office$")
 
 ; 확인한 앱 메뉴만 거슬러 올라간다. 알 수 없는 화면에는 Backspace를 보내지 않는다.
 EarnStaffRoot() {
@@ -141,8 +160,8 @@ EarnStaffBailAgents() {
         return EarnFail("직원: 보석 사무소 목록 진입 실패")
     ; 두 요원이 모두 작업 중이면 Bail Office 줄이 회색이고 Enter 가 무시된다(1003 17:39 실측).
     ; 그대로 Agent 1 을 찾으면 Down 이 다른 줄로 넘어가므로, 목록이 그대로면 건너뛴다.
-    if (!EarnStaffMenuTarget("i)^Agent 1$") && EarnStaffMenuTarget("i)^Warehouse$")
-        && EarnStaffMenuTarget("i)^Bail Office$")) {
+    if (!EarnStaffMenuTarget("i)^Agent 1$") && (EarnStaffSectionBusy("office")
+        || EarnStaffMenuTarget("i)^Warehouse$") && EarnStaffMenuTarget("i)^Bail Office$"))) {
         EarnLog("직원: 보석 사무소 비활성(요원 모두 작업 중), 건너뜀")
         EarnStaffTrack("bail 1", "busy"), EarnStaffTrack("bail 2", "busy")
         return true
@@ -178,8 +197,8 @@ EarnStaffCargoWarehouses() {
     ; 창고 직원이 모두 조달 중이면 Warehouse 줄이 회색이고 Enter 가 무시된다(1004 21:37 녹화:
     ; "Your Warehouse staff members are currently busy."). 보석 사무소처럼 목록이 그대로면 건너뛴다.
     current := EarnStaffReadCargo()
-    if (!IsObject(current) && EarnStaffMenuTarget("i)^Warehouse$")
-        && (EarnStaffMenuTarget("i)^Bail Office$") || EarnStaffMenuTarget("i)^Hangar$"))) {
+    if (!IsObject(current) && (EarnStaffSectionBusy("ehouse") || EarnStaffMenuTarget("i)^Warehouse$")
+        && (EarnStaffMenuTarget("i)^Bail Office$") || EarnStaffMenuTarget("i)^Hangar$")))) {
         EarnLog("직원: 창고 직원 모두 조달 중(Warehouse 비활성), 건너뜀")
         EarnStaffTrack("cargo all", "busy")
         return true

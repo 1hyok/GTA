@@ -357,6 +357,9 @@ RunCargoTests() {
     Reset("grey_bail_root",["ready","ready"])
     cargoStatuses := ["busy","busy","full","busy","busy"]
     Check(EarnVinewoodStaffTask() && Sum(requests) = 0, "grey Bail Office skips bail agents without entering")
+    Reset("bail_busy_selected",["busy","busy"])
+    cargoStatuses := ["busy","busy","full","busy","busy"]
+    Check(EarnVinewoodStaffTask() && failure = "" && Sum(requests) = 0, "busy footer under a selected Bail Office skips agents (1006 20:04)")
     Reset("grey_warehouse_root",["busy","busy"])
     Check(EarnVinewoodStaffTask() && Sum(cargoRequests) = 0, "grey Warehouse skips cargo staff without entering")
     for c in [["hangar_ready","ready",true,1,"busy"], ["hangar_busy","busy",true,0,"busy"],
@@ -460,6 +463,12 @@ MockReadScreen(area, whiteText) {
             rows[5].text := hangarState = "ready" ? "Send your Hangar staff member out on a job."
                 : hangarState = "busy" ? "Your Hangar staff member is currently out on a job." : "Something else."
         }
+        ; 1006 20:04 녹화: 요원이 모두 나간 Bail Office 를 고르면 위 Warehouse 가 깨지고 아래에 바쁨 문구가 뜬다.
+        if (mode = "bail_busy_selected" && selected = "Bail Office") {
+            rows[3].text := "Wareho se"
+            rows[5].text := "Your Bai Office staff member are"
+            rows.Push(TextLine("currentl busy.",328))
+        }
         ; 요원이 모두 나가 회색인 Bail Office: 일반 판독은 "pail Office", 흰 글자 판독은 줄이 빠진다(1004 15:04 녹화 실측).
         if (mode = "grey_bail_root") {
             if (whiteText)
@@ -505,7 +514,7 @@ MockReadScreen(area, whiteText) {
                     return false
             }
         }
-        if (whiteText && area[4] != 229 && area[4] != 263 && area[4] != 300)
+        if (whiteText && area[4] != 229 && area[4] != 263 && area[4] != 300 && area[4] != 80)
             throw Error("Cargo footer must use white-text OCR with all possible footer positions")
         if (!whiteText && area[4] = 229)
             return false
@@ -669,6 +678,8 @@ EarnPress(key) {
                 ; 창고 직원이 모두 조달 중이면 Enter 가 무시되고 목록이 그대로다.
             } else if (selected = "Warehouse") {
                 screenState := "cargo", selected := cargoNames[1]
+            } else if (selected = "Bail Office" && mode = "bail_busy_selected") {
+                ; 요원이 모두 나가 있으면 Enter 가 무시된다.
             } else if (selected = "Bail Office") {
                 screenState := "bail", selected := "Agent 1"
             } else if (selected = "Hangar") {
