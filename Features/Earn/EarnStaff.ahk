@@ -85,13 +85,13 @@ EarnStaffSectionBusy(word) {
     return false
 }
 
-; 직원 목록 줄 이름은 뒤 배경이 밝으면(MCT 앞이 아닌 빈 화면에서 연 앱) 글자가 빠지거나 바뀐다(1006 20:35 녹화:
-; "Warehou e"·"Bail Offic", 같은 날 "Wareho se"·"Warehoåse"). 그래서 Warehouse 는 "Wareho…e", Bail Office 는 끝 글자가
-; 빠져도 받는다. 회색 줄의 "pail Office" 는 여전히 다른 줄이다.
+; 직원 목록 줄 이름은 뒤 배경이 밝으면(MCT 앞이 아닌 빈 화면에서 연 앱) 글자가 빠지거나 바뀐다(1006 녹화: 20:35
+; "Warehou e"·"Bail Offic", 21:30 "Warehous"·"ail Office", 그 밖에 "Wareho se"·"Warehoåse"). 모양을 하나씩 더하는 대신
+; "~이름" 패턴으로 편집 거리 비교한다(EarnStaffTextMatch). 회색 Bail Office 는 흰 글자 판독에서 줄이 빠지는 것으로 먼저 거른다.
 ; 셋 중 두 줄이면 직원 목록이다. 바쁜 Bail Office 를 고르면 Warehouse 판독이 깨진다(1006 20:04 "Wareho se").
-EarnStaffListSeen(lines) => EarnStaffUniqueRow(lines, "i)^Wareho.{0,3}e$")
-    && (EarnStaffUniqueRow(lines, "i)^Bail ?Offi?c?e?$") || EarnStaffUniqueRow(lines, "i)^Hangar$"))
-    || EarnStaffUniqueRow(lines, "i)^Hangar$") && EarnStaffUniqueRow(lines, "i)^Bail ?Offi?c?e?$")
+EarnStaffListSeen(lines) => EarnStaffUniqueRow(lines, "~Warehouse")
+    && (EarnStaffUniqueRow(lines, "~Bail Office") || EarnStaffUniqueRow(lines, "~Hangar"))
+    || EarnStaffUniqueRow(lines, "~Hangar") && EarnStaffUniqueRow(lines, "~Bail Office")
 
 ; 확인한 앱 메뉴만 거슬러 올라간다. 알 수 없는 화면에는 Backspace를 보내지 않는다.
 EarnStaffRoot() {
@@ -154,17 +154,17 @@ EarnStaffRoot() {
 EarnStaffBailAgents() {
     ; 회색 Bail Office 는 흰 글자 판독에서 줄째 빠진다(1004 15:04 실측). 그 줄을 고르려 들면 진입 실패로 멈추므로 먼저 거른다.
     white := EarnReadScreen([25,125,450,263], true)
-    if (IsObject(white) && EarnStaffUniqueRow(white, "i)^Wareho.{0,3}e$") && !EarnStaffUniqueRow(white, "i)^Bail ?Offi?c?e?$")) {
+    if (IsObject(white) && EarnStaffUniqueRow(white, "~Warehouse") && !EarnStaffUniqueRow(white, "~Bail Office")) {
         EarnLog("직원: 보석 사무소 회색(요원 모두 작업 중), 건너뜀")
         EarnStaffTrack("bail 1", "busy"), EarnStaffTrack("bail 2", "busy")
         return true
     }
-    if (!EarnStaffSelectEnter("i)^Bail ?Offi?c?e?$", 3))
+    if (!EarnStaffSelectEnter("~Bail Office", 3))
         return EarnFail("직원: 보석 사무소 목록 진입 실패")
     ; 두 요원이 모두 작업 중이면 Bail Office 줄이 회색이고 Enter 가 무시된다(1003 17:39 실측).
     ; 그대로 Agent 1 을 찾으면 Down 이 다른 줄로 넘어가므로, 목록이 그대로면 건너뛴다.
     if (!EarnStaffMenuTarget("i)^Agent 1$") && (EarnStaffSectionBusy("office")
-        || EarnStaffMenuTarget("i)^Wareho.{0,3}e$") && EarnStaffMenuTarget("i)^Bail ?Offi?c?e?$"))) {
+        || EarnStaffMenuTarget("~Warehouse") && EarnStaffMenuTarget("~Bail Office"))) {
         EarnLog("직원: 보석 사무소 비활성(요원 모두 작업 중), 건너뜀")
         EarnStaffTrack("bail 1", "busy"), EarnStaffTrack("bail 2", "busy")
         return true
@@ -195,13 +195,13 @@ EarnStaffBailAgents() {
 }
 
 EarnStaffCargoWarehouses() {
-    if (!EarnStaffSelectEnter("i)^Wareho.{0,3}e$", 3))
+    if (!EarnStaffSelectEnter("~Warehouse", 3))
         return EarnFail("직원: 스페셜 패키지 창고 목록 진입 실패")
     ; 창고 직원이 모두 조달 중이면 Warehouse 줄이 회색이고 Enter 가 무시된다(1004 21:37 녹화:
     ; "Your Warehouse staff members are currently busy."). 보석 사무소처럼 목록이 그대로면 건너뛴다.
     current := EarnStaffReadCargo()
-    if (!IsObject(current) && (EarnStaffSectionBusy("ehouse") || EarnStaffMenuTarget("i)^Wareho.{0,3}e$")
-        && (EarnStaffMenuTarget("i)^Bail ?Offi?c?e?$") || EarnStaffMenuTarget("i)^Hangar$")))) {
+    if (!IsObject(current) && (EarnStaffSectionBusy("ehouse") || EarnStaffMenuTarget("~Warehouse")
+        && (EarnStaffMenuTarget("~Bail Office") || EarnStaffMenuTarget("~Hangar")))) {
         EarnLog("직원: 창고 직원 모두 조달 중(Warehouse 비활성), 건너뜀")
         EarnStaffTrack("cargo all", "busy")
         return true
@@ -542,6 +542,29 @@ EarnStaffDimManageRow(lines) {
 }
 
 ; 같은 이름의 행이 둘 이상이면 선택/금액 문맥을 특정할 수 없다.
+; "~이름" 은 글자만 남겨 소문자로 비교해 편집 거리가 8글자 이상이면 2, 그보다 짧으면 1 이내일 때 맞다. 그 밖은 정규식이다.
+EarnStaffTextMatch(text, pattern) {
+    if (SubStr(pattern, 1, 1) != "~")
+        return RegExMatch(text, pattern)
+    want := StrLower(RegExReplace(SubStr(pattern, 2), "[^A-Za-z]"))
+    got := StrLower(RegExReplace(text, "[^A-Za-z]"))
+    return got != "" && EarnStaffEditDistance(got, want) <= (StrLen(want) >= 8 ? 2 : 1)
+}
+
+EarnStaffEditDistance(a, b) {
+    prev := []
+    Loop StrLen(b) + 1
+        prev.Push(A_Index - 1)
+    Loop Parse a {
+        i := A_Index, ch := A_LoopField
+        cur := [i]
+        Loop StrLen(b)
+            cur.Push(Min(prev[A_Index + 1] + 1, cur[A_Index] + 1, prev[A_Index] + (SubStr(b, A_Index, 1) == ch ? 0 : 1)))
+        prev := cur
+    }
+    return prev[StrLen(b) + 1]
+}
+
 EarnStaffUniqueRow(lines, pattern) {
     if (!(lines is Array))
         return false
@@ -549,7 +572,7 @@ EarnStaffUniqueRow(lines, pattern) {
     for row in lines {
         if (!IsObject(row) || !row.HasOwnProp("text"))
             return false
-        if (RegExMatch(row.text, pattern)) {
+        if (EarnStaffTextMatch(row.text, pattern)) {
             if (found)
                 return false
             found := row
@@ -606,7 +629,7 @@ EarnStaffMenuTarget(pattern, &validMenu := false, &menuLines := "", &menuHeading
         menuLines := lines, menuHeading := heading
         found := false
         for row in lines {
-            if (!RegExMatch(row.text, pattern))
+            if (!EarnStaffTextMatch(row.text, pattern))
                 continue
             if (found)
                 return false
