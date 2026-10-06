@@ -360,6 +360,13 @@ RunCargoTests() {
     Reset("garbled_list",["ready","ready"])
     config["Settings"]["EarnCargoStaff"] := 0
     Check(EarnVinewoodStaffTask() && failure = "" && Sum(requests) = 2, "garbled Warehouse/Bail Office reads still reach both agents (1006 20:35)")
+    Reset("garbled_list2",["ready","ready"])   ; 1006 21:30 녹화
+    config["Settings"]["EarnCargoStaff"] := 0
+    Check(EarnVinewoodStaffTask() && failure = "" && Sum(requests) = 2, "Warehous/ail Office reads still reach both agents (1006 21:30)")
+    for item in [["Warehous","~Warehouse",1],["Wareho se","~Warehouse",1],["Warehoåse","~Warehouse",1],["ail Office","~Bail Office",1],
+        ["Bail Offi","~Bail Office",1],["Hangar","~Hangar",1],["Hangr","~Hangar",1],["Hang","~Hangar",0],["Bail Office","~Warehouse",0],
+        ["Manage Staff Members","~Warehouse",0],["","~Hangar",0]]
+        Check(!!EarnStaffTextMatch(item[1], item[2]) = item[3], "fuzzy " item[1] " vs " item[2])
     Reset("bail_busy_selected",["busy","busy"])
     cargoStatuses := ["busy","busy","full","busy","busy"]
     Check(EarnVinewoodStaffTask() && failure = "" && Sum(requests) = 0, "busy footer under a selected Bail Office skips agents (1006 20:04)")
@@ -467,11 +474,11 @@ MockReadScreen(area, whiteText) {
                 : hangarState = "busy" ? "Your Hangar staff member is currently out on a job." : "Something else."
         }
         ; 1006 20:35 녹화: 밝은 배경 앞에서 고르지 않은 줄 판독이 깨진다.
-        if (mode = "garbled_list") {
+        if (mode = "garbled_list" || mode = "garbled_list2") {
             if (selected != "Warehouse")
-                rows[3].text := "Warehou e"
+                rows[3].text := mode = "garbled_list" ? "Warehou e" : "Warehous"
             if (selected != "Bail Office")
-                rows[4].text := "Bail Offic"
+                rows[4].text := mode = "garbled_list" ? "Bail Offic" : "ail Office"
         }
         ; 1006 20:04 녹화: 요원이 모두 나간 Bail Office 를 고르면 위 Warehouse 가 깨지고 아래에 바쁨 문구가 뜬다.
         if (mode = "bail_busy_selected" && selected = "Bail Office") {
