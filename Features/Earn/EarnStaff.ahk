@@ -85,10 +85,13 @@ EarnStaffSectionBusy(word) {
     return false
 }
 
+; 직원 목록 줄 이름은 뒤 배경이 밝으면(MCT 앞이 아닌 빈 화면에서 연 앱) 글자가 빠지거나 바뀐다(1006 20:35 녹화:
+; "Warehou e"·"Bail Offic", 같은 날 "Wareho se"·"Warehoåse"). 그래서 Warehouse 는 "Wareho…e", Bail Office 는 끝 글자가
+; 빠져도 받는다. 회색 줄의 "pail Office" 는 여전히 다른 줄이다.
 ; 셋 중 두 줄이면 직원 목록이다. 바쁜 Bail Office 를 고르면 Warehouse 판독이 깨진다(1006 20:04 "Wareho se").
-EarnStaffListSeen(lines) => EarnStaffUniqueRow(lines, "i)^Warehouse$")
-    && (EarnStaffUniqueRow(lines, "i)^Bail Office$") || EarnStaffUniqueRow(lines, "i)^Hangar$"))
-    || EarnStaffUniqueRow(lines, "i)^Hangar$") && EarnStaffUniqueRow(lines, "i)^Bail Office$")
+EarnStaffListSeen(lines) => EarnStaffUniqueRow(lines, "i)^Wareho.{0,3}e$")
+    && (EarnStaffUniqueRow(lines, "i)^Bail ?Offi?c?e?$") || EarnStaffUniqueRow(lines, "i)^Hangar$"))
+    || EarnStaffUniqueRow(lines, "i)^Hangar$") && EarnStaffUniqueRow(lines, "i)^Bail ?Offi?c?e?$")
 
 ; 확인한 앱 메뉴만 거슬러 올라간다. 알 수 없는 화면에는 Backspace를 보내지 않는다.
 EarnStaffRoot() {
@@ -151,17 +154,17 @@ EarnStaffRoot() {
 EarnStaffBailAgents() {
     ; 회색 Bail Office 는 흰 글자 판독에서 줄째 빠진다(1004 15:04 실측). 그 줄을 고르려 들면 진입 실패로 멈추므로 먼저 거른다.
     white := EarnReadScreen([25,125,450,263], true)
-    if (IsObject(white) && EarnStaffUniqueRow(white, "i)^Warehouse$") && !EarnStaffUniqueRow(white, "i)^Bail Office$")) {
+    if (IsObject(white) && EarnStaffUniqueRow(white, "i)^Wareho.{0,3}e$") && !EarnStaffUniqueRow(white, "i)^Bail ?Offi?c?e?$")) {
         EarnLog("직원: 보석 사무소 회색(요원 모두 작업 중), 건너뜀")
         EarnStaffTrack("bail 1", "busy"), EarnStaffTrack("bail 2", "busy")
         return true
     }
-    if (!EarnStaffSelectEnter("i)^Bail Office$", 3))
+    if (!EarnStaffSelectEnter("i)^Bail ?Offi?c?e?$", 3))
         return EarnFail("직원: 보석 사무소 목록 진입 실패")
     ; 두 요원이 모두 작업 중이면 Bail Office 줄이 회색이고 Enter 가 무시된다(1003 17:39 실측).
     ; 그대로 Agent 1 을 찾으면 Down 이 다른 줄로 넘어가므로, 목록이 그대로면 건너뛴다.
     if (!EarnStaffMenuTarget("i)^Agent 1$") && (EarnStaffSectionBusy("office")
-        || EarnStaffMenuTarget("i)^Warehouse$") && EarnStaffMenuTarget("i)^Bail Office$"))) {
+        || EarnStaffMenuTarget("i)^Wareho.{0,3}e$") && EarnStaffMenuTarget("i)^Bail ?Offi?c?e?$"))) {
         EarnLog("직원: 보석 사무소 비활성(요원 모두 작업 중), 건너뜀")
         EarnStaffTrack("bail 1", "busy"), EarnStaffTrack("bail 2", "busy")
         return true
@@ -192,13 +195,13 @@ EarnStaffBailAgents() {
 }
 
 EarnStaffCargoWarehouses() {
-    if (!EarnStaffSelectEnter("i)^Warehouse$", 3))
+    if (!EarnStaffSelectEnter("i)^Wareho.{0,3}e$", 3))
         return EarnFail("직원: 스페셜 패키지 창고 목록 진입 실패")
     ; 창고 직원이 모두 조달 중이면 Warehouse 줄이 회색이고 Enter 가 무시된다(1004 21:37 녹화:
     ; "Your Warehouse staff members are currently busy."). 보석 사무소처럼 목록이 그대로면 건너뛴다.
     current := EarnStaffReadCargo()
-    if (!IsObject(current) && (EarnStaffSectionBusy("ehouse") || EarnStaffMenuTarget("i)^Warehouse$")
-        && (EarnStaffMenuTarget("i)^Bail Office$") || EarnStaffMenuTarget("i)^Hangar$")))) {
+    if (!IsObject(current) && (EarnStaffSectionBusy("ehouse") || EarnStaffMenuTarget("i)^Wareho.{0,3}e$")
+        && (EarnStaffMenuTarget("i)^Bail ?Offi?c?e?$") || EarnStaffMenuTarget("i)^Hangar$")))) {
         EarnLog("직원: 창고 직원 모두 조달 중(Warehouse 비활성), 건너뜀")
         EarnStaffTrack("cargo all", "busy")
         return true
