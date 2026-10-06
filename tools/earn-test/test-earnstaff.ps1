@@ -374,7 +374,9 @@ RunCargoTests() {
     Check(EarnVinewoodStaffTask() && Sum(cargoRequests) = 0, "grey Warehouse skips cargo staff without entering")
     for c in [["hangar_ready","ready",true,1,"busy"], ["hangar_busy","busy",true,0,"busy"],
         ["hangar_bad_price","ready",true,0,"ready"], ["hangar_unknown","odd",true,0,"odd"],
-        ["hangar_unconfirmed","ready",false,1,"ready"], ["hangar_flaky","ready",true,0,"ready"]] {
+        ["hangar_unconfirmed","ready",false,1,"ready"], ["hangar_flaky","ready",true,0,"ready"],
+        ; 1006 녹화: 설명 문구가 한두 글자 깨져도 보내고, 깨진 작업 중 문구에는 사지 않는다.
+        ["hangar_garbled","ready",true,1,"busy"], ["hangar_garbled_busy","busy",true,0,"busy"]] {
         Reset(c[1],["busy","busy"])
         hangarState := c[2]
         config["Settings"]["EarnBailAgents"] := 0, config["Settings"]["EarnCargoStaff"] := 0, config["Settings"]["EarnHangarStaff"] := 1
@@ -472,6 +474,10 @@ MockReadScreen(area, whiteText) {
                 rows.Push(TextLine(mode = "hangar_bad_price" || mode = "hangar_flaky" && hangarReads >= 2 ? "$250000" : "$25000",181,420,80))
             rows[5].text := hangarState = "ready" ? "Send your Hangar staff member out on a job."
                 : hangarState = "busy" ? "Your Hangar staff member is currently out on a job." : "Something else."
+            if (mode = "hangar_garbled" && hangarState = "ready")
+                rows[5].text := "Send yo r Hangar staff membei oUton a job."
+            if (mode = "hangar_garbled_busy" && hangarState = "busy")
+                rows[5].text := "Your Hangar staff membei is currentl out on a job."
         }
         ; 1006 20:35 녹화: 밝은 배경 앞에서 고르지 않은 줄 판독이 깨진다.
         if (mode = "garbled_list" || mode = "garbled_list2") {
