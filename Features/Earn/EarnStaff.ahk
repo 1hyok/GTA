@@ -340,11 +340,15 @@ EarnStaffReadHangar(deadline := 0) {
             if (Abs(line.y-row.y) <= 10 && InStr(line.text, "$"))
                 price := EarnReadDollars(line.text)
         detail := EarnStaffFooter(lines, {y:heading.y+37*3, h:22})
-        if (detail = "Send your Hangar staff member out on a job.")
+        ; 설명 문구는 한두 글자씩 깨져 읽힌다(1006 녹화: "Send yo r Hangar staff member out on a", "end your Hangar
+        ; staff member outon a", "Send you Hangar staff membei oUton a"). 정확히 같아야 했던 탓에 그날 60번 모두 상태 미확인으로
+        ; 건너뛰었다. 글자만 남겨 편집 거리로 비교한다. 보내기·작업 중·만재 세 문구는 서로 크게 달라 섞이지 않는다.
+        letters := StrLower(RegExReplace(detail, "[^A-Za-z]"))
+        if (letters != "" && EarnStaffEditDistance(letters, "sendyourhangarstaffmemberoutonajob") <= 3)
             return price = 25000 ? "ready" : "invalid"
-        if (RegExMatch(detail, "^Your Hangar staff member"))
+        if (EarnStaffEditDistance(SubStr(letters, 1, 21), "yourhangarstaffmember") <= 2)
             return "busy"
-        if (RegExMatch(detail, "^There is no more room"))
+        if (InStr(letters, "nomoreroom"))
             return "full"
     }
     return "invalid"
