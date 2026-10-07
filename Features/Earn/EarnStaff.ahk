@@ -342,12 +342,32 @@ EarnStaffHangar() {
 
 EarnStaffHangarPattern() => "i)^Hangar(?:\h+\$[0-9,]+)?$"
 
+; 파견 뒤 회색 Hangar 이름이 일반/흰 글자 OCR에서 모두 사라진다(1008 실측).
+; 직원 목록의 나머지 두 행과 첫 행 선택, 전체 작업 중 문구를 함께 확인한다. 결제 판정에는 쓰지 않는다.
+EarnStaffHangarBusyFrame(lines) {
+    heading := EarnStaffUniqueRow(lines, "i)^THE VINEWOOD CLUB APP$")
+    warehouse := EarnStaffUniqueRow(lines, "~Warehouse")
+    bail := EarnStaffUniqueRow(lines, "~Bail Office")
+    if (!heading || !warehouse || !bail || Abs(warehouse.y-heading.y-74) > 8
+        || Abs(bail.y-heading.y-111) > 8 || !EarnMenuRowSelected({y:heading.y+37})
+        || EarnMenuRowSelected(warehouse) || EarnMenuRowSelected(bail))
+        return false
+    for row in lines
+        if (Abs(row.y-heading.y-37) <= 10 && InStr(row.text, "$"))
+            return false
+    detail := EarnStaffFooter(lines, {y:heading.y+111,h:22})
+    text := StrLower(RegExReplace(detail, "[^A-Za-z]"))
+    return EarnStaffEditDistance(text, "yourhangarstaffmemberiscurrentlyoutonajob") <= 2
+}
+
 ; ready 는 선택된 Hangar 줄의 가격이 정확히 $25000 이고 설명이 보내기 문구일 때만이다.
 EarnStaffReadHangar(deadline := 0) {
     for whiteText in [false, true] {
         lines := EarnReadScreen([25,125,450,300], whiteText, deadline)
         heading := EarnStaffUniqueRow(lines, "i)^THE VINEWOOD CLUB APP$")
         row := EarnStaffUniqueRow(lines, EarnStaffHangarPattern())
+        if (!row && EarnStaffHangarBusyFrame(lines))
+            return "busy"
         if (!heading || !row || Abs(row.y-heading.y-37) > 8 || !EarnMenuRowSelected(row))
             continue
         price := -1
@@ -723,6 +743,8 @@ EarnStaffSelectText(pattern, maxPress) {
         agent := pattern = "i)^Agent [1Il]$" ? 1 : pattern = "i)^Agent 2$" ? 2 : 0
         if (!row && agent && EarnStaffBailBusyFrame(lines, agent))
             return {y:heading.y+37*agent}
+        if (!row && pattern = EarnStaffHangarPattern() && EarnStaffHangarBusyFrame(lines))
+            return {y:heading.y+37}
         stepLines := lines
         if (row && EarnStaffListSeen(lines)) {
             ; 확인된 직원 목록은 Hangar·Warehouse·Bail Office 3줄이다. 회색 행 OCR 누락을 목록 끝으로
