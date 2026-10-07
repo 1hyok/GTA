@@ -408,13 +408,34 @@ RunCargoTests() {
         ["hangar_bad_price","ready",true,0,"ready"], ["hangar_unknown","odd",true,0,"odd"],
         ["hangar_unconfirmed","ready",false,1,"ready"], ["hangar_flaky","ready",true,0,"ready"],
         ; 1006 녹화: 설명 문구가 한두 글자 깨져도 보내고, 깨진 작업 중 문구에는 사지 않는다.
-        ["hangar_garbled","ready",true,1,"busy"], ["hangar_garbled_busy","busy",true,0,"busy"]] {
+        ["hangar_garbled","ready",true,1,"busy"], ["hangar_garbled_busy","busy",true,0,"busy"],
+        ["hangar_missing_busy","ready",true,1,"busy"], ["hangar_missing_busy","busy",true,0,"busy"]] {
         Reset(c[1],["busy","busy"])
         hangarState := c[2]
         config["Settings"]["EarnBailAgents"] := 0, config["Settings"]["EarnCargoStaff"] := 0, config["Settings"]["EarnHangarStaff"] := 1
         result := EarnVinewoodStaffTask()
         Check(result = c[3] && hangarRequests = c[4] && hangarState = c[5], c[1] " hangar result=" result " requests=" hangarRequests)
     }
+    Reset("normal",["busy","busy"])
+    selected := "Hangar"
+    ; 1008 실측 OCR: 첫 행은 없고 제목과 다른 두 행, 두 줄 작업 중 설명만 읽힌다.
+    busyFrame := [TextLine("THE VINEWOOD CLUB APP",144),TextLine("Warehouse",217),TextLine("Bail Office",255),
+        TextLine("Your Hangar staff member is currently out",301),TextLine("on a job.",328)]
+    Check(EarnStaffHangarBusyFrame(busyFrame), "recorded missing Hangar label is busy")
+    selected := "Warehouse"
+    Check(!EarnStaffHangarBusyFrame(busyFrame), "busy footer cannot substitute for Hangar selection")
+    selected := "Hangar"
+    for badDetail in ["Send your Hangar staff member out on a job.", "Your Warehouse staff member is currently out on a job.",
+        "Your Hangar staff member is not out on a job.", "Your Hangar staff member"] {
+        badFrame := [busyFrame[1],busyFrame[2],busyFrame[3],TextLine(badDetail,301)]
+        Check(!EarnStaffHangarBusyFrame(badFrame), "missing row rejects non-busy detail " badDetail)
+    }
+    badFrame := busyFrame.Clone(), badFrame.RemoveAt(1)
+    Check(!EarnStaffHangarBusyFrame(badFrame), "missing row requires app title")
+    badFrame := busyFrame.Clone(), badFrame.Push(TextLine("$25000",181))
+    Check(!EarnStaffHangarBusyFrame(badFrame), "missing row with remaining price is ambiguous")
+    badFrame := busyFrame.Clone(), badFrame[2] := TextLine("Warehouse",230)
+    Check(!EarnStaffHangarBusyFrame(badFrame), "missing row requires known staff list geometry")
     ; 1007 04:00: 키를 누른 직후 판독에서 앱 제목이 빠진다(일반·흰 글자 판독 한 번씩).
     Reset("heading_flicker",["busy","busy"])
     hangarState := "ready", screenState := "staff", selected := "Warehouse"
@@ -523,6 +544,8 @@ MockReadScreen(area, whiteText) {
                 rows[5].text := "Fend yo r Hangar staff member out"   ; 1006 22:17 녹화: "on a job." 이 빠짐
             if (mode = "hangar_garbled_busy" && hangarState = "busy")
                 rows[5].text := "Elour Hangar staff membei is currentl out on a job."
+            if (mode = "hangar_missing_busy" && hangarState = "busy")
+                rows[2].text := ""
         }
         ; 1006 20:35 녹화: 밝은 배경 앞에서 고르지 않은 줄 판독이 깨진다.
         if (mode = "garbled_list" || mode = "garbled_list2") {
