@@ -66,10 +66,14 @@ jobs:
       - name: Run selected syntax and offline regression checks
         id: checks
         run: |
-          $checkArgs = @('-AhkPath', $env:AHK_PATH, '-PythonPath', (Get-Command python).Source, '-OutputDirectory', (Join-Path $env:RUNNER_TEMP 'gta-ci-results'))
+          $checkArgs = @{
+            AhkPath = $env:AHK_PATH
+            PythonPath = (Get-Command python).Source
+            OutputDirectory = (Join-Path $env:RUNNER_TEMP 'gta-ci-results')
+          }
           $changedFilesPath = Join-Path $env:RUNNER_TEMP 'changed-files.txt'
           if ('${{ steps.changes.outputs.full }}' -eq 'false' -and (Test-Path -LiteralPath $changedFilesPath)) {
-            $checkArgs += @('-ChangedFilesPath', $changedFilesPath)
+            $checkArgs.ChangedFilesPath = $changedFilesPath
             "Changed paths consumed: $(@(Get-Content -LiteralPath $changedFilesPath -Encoding UTF8).Count)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
           } else {
             Write-Output 'Changed paths unavailable or full run requested; using the full suite.'
