@@ -737,6 +737,11 @@ EarnStaffSelectText(pattern, maxPress) {
         }
         if (!validMenu)
             return false
+        ; 회색 직원 관리 행이 사라져도 전체 작업 중 설명을 발견한 자리에서 멈춘다.
+        ; 다음 행으로 이동하면 설명도 사라져 Root의 작업 중 재확인이 실패한다(1008 실측).
+        if (!row && pattern = "i)^Manage Staff Members$"
+            && EarnStaffUniqueRow(lines, "i)^All of your staff members are currently"))
+            return false
         if (row && EarnMenuRowSelected(row))
             return row
         ; 파견 후 글자가 사라진 선택 행은 작업 중 문구로만 유지한다. 이 결과로 결제하지 않는다.
