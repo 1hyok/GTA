@@ -7,19 +7,21 @@ $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 # Reuse the per-channel, magenta-transparent ImageSearch comparator.
 & (Join-Path $PSScriptRoot 'test-nightclub-templates.ps1') | Out-Null
 $template = [Drawing.Bitmap]::FromFile((Join-Path $root 'Images\Earn\1920x1080\phone_call_end.png'))
+$liveTemplate = [Drawing.Bitmap]::FromFile((Join-Path $root 'Images\Earn\1920x1080\phone_call_end_live.png'))
 $scenarios = @()
 try {
-    foreach ($sample in @(@('live-call-end', $true), @('recorded-call-end', $true), @('no-phone', $false))) {
+    foreach ($sample in @(@('live-call-end', $true), @('recorded-call-end', $true), @('live-call-end-2122', $true), @('no-phone', $false))) {
         $source = [Drawing.Bitmap]::FromFile((Join-Path $PSScriptRoot "phone-call-fixtures\$($sample[0]).png"))
         try {
             $x = 0; $y = 0
             $area = New-Object Drawing.Rectangle 0, 0, $source.Width, $source.Height
             $minimum = [EarnNightclubTemplateTest]::MinimumVariation($source, $template, $area, [ref]$x, [ref]$y)
-            Write-Output "$($sample[0]): minimum=$minimum at $x,$y"
-            $scenarios += '["' + $sample[0] + '",' + $minimum + ',' + ([int]$sample[1]) + ']'
+            $liveMinimum = [EarnNightclubTemplateTest]::MinimumVariation($source, $liveTemplate, $area, [ref]$x, [ref]$y)
+            Write-Output "$($sample[0]): minimum=$minimum liveMinimum=$liveMinimum"
+            $scenarios += '["' + $sample[0] + '",' + $minimum + ',' + ([int]$sample[1]) + ',' + $liveMinimum + ']'
         } finally { $source.Dispose() }
     }
-} finally { $template.Dispose() }
+} finally { $template.Dispose(); $liveTemplate.Dispose() }
 $core = Get-Content -LiteralPath (Join-Path $root 'Features\Earn\EarnCore.ahk') -Raw -Encoding UTF8
 $body = [regex]::Match($core, '(?ms)^EarnSeen\([^\r\n]*\) \{.*?^\}').Value
 if (-not $body) { throw 'EarnSeen function not found' }
@@ -29,9 +31,11 @@ $driver = @'
 #NoTrayIcon
 #Warn All, StdOut
 global requiredVariation := 0
+global liveRequiredVariation := 0
 OnError((err,*) => (FileAppend("FAIL " err.Message "`n", "**"), ExitApp(1)))
 for sample in FIXTURE_CASES {
     requiredVariation := sample[2]
+    liveRequiredVariation := sample[4]
     if (EarnSeen("phone_call_end", [0.9,0.92,0.99,0.98]) != sample[3])
         throw Error(sample[1] " call detection mismatch, required variation=" requiredVariation)
 }
@@ -40,7 +44,7 @@ if (EarnSeen("afk_phone_frame", [0.83,0.58,0.98,0.72]))
     throw Error("Unrelated phone-frame tolerance must remain unchanged")
 FileAppend("PASS phone-call fixtures and unrelated tolerance`n", "*")
 ExitApp(0)
-TemplateSeen(folder,name,area,&x,&y,variation) => requiredVariation <= variation
+TemplateSeen(folder,name,area,&x,&y,variation) => (name = "phone_call_end_live" ? liveRequiredVariation : requiredVariation) <= variation
 TemplateAt(*) => false
 '@
 $driver = $driver.Replace('FIXTURE_CASES', '[' + ($scenarios -join ',') + ']')

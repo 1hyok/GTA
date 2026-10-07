@@ -134,8 +134,12 @@ EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
         variation := Max(variation, 70)
     ; 통화 종료 아이콘은 녹화에서 오차 12여도 실제 데스크톱에서는 55였다(1007 실측).
     ; 이 아이콘만 60으로 허용한다. 전화 없는 같은 영역은 오차 178로 구분된다.
-    if (name = "phone_call_end")
-        variation := Max(variation, 60)
+    if (name = "phone_call_end") {
+        ; 21:22 실제 화면의 28x12 아이콘은 기존 26x11 템플릿과 형태도 달랐다.
+        ; 전체 허용치를 더 올리지 않고 별도 실측 변형을 기본 오차로 확인한다.
+        return TemplateSeen("Earn", name, area, &fx, &fy, Max(variation, 60))
+            || TemplateSeen("Earn", "phone_call_end_live", area, &fx, &fy, variation)
+    }
     return TemplateSeen("Earn", name, area, &fx, &fy, variation)
 }
 ; timeoutMs 안에 name 이 보이면 true. 전체 멈춤·포커스 이탈이면 바로 false.
