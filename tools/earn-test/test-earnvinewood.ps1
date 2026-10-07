@@ -41,6 +41,9 @@ RunTests() {
     ; mode, starting screen, amounts to override, success, claimed names, final screen, scheduled minutes (0 = not checked)
     cases := [
         ["normal", "main", Map(), true, "", "standing", 88],
+        ["empty_row_missing", "main", Map(), true, "", "standing", 88],
+        ["empty_row_missing", "main", Map("Nightclub",0), true, "", "standing", 136],
+        ["empty_row_missing", "main", Map("Nightclub",250000), true, "Nightclub", "standing", 136],
         ["normal", "main", Map("Nightclub",250000), true, "Nightclub", "standing", 136],
         ["normal", "main", Map("Nightclub",205000,"Arcade",96000,"Agency",235000,"Garment Factory",99000), true,
             "Nightclub,Arcade,Agency,Garment Factory", "standing", 136],
@@ -192,6 +195,26 @@ RunTests() {
     for text in ["Claim $250000 from your Arcade safe.", "Your Arcade safe is empty.", "Nightclub $250000", "Claim $25O000 from your Nightclub safe.", "Claim $250,00 from your Nightclub safe.", "Claim $250 000 from your Nightclub safe.", "Claim $250000 from your Nightclub safe. Confirm?", "Claim $250000 from Nightclub safe.", "Claim $250000 from your Arcade Nightclub safe"]
         Check(EarnVinewoodNightclubAmount(Frame(text)) = -1, "reject detail: " text)
     Check(EarnVinewoodNightclubAmount(false) = -1, "OCR failure is not an empty safe")
+    gSelected := ""
+    for name in ["Nightclub", "Hands On Car Wash"] {
+        empty := [FakeLine("THE VINEWOOD CLUB APP"), FakeLine("Your " name " safe is empty.")]
+        Check(EarnVinewoodSelectedSafe(empty) = name, "missing gray label uses exact empty footer: " name)
+        Check(EarnVinewoodSafeAmountOf(empty, name) = 0, "footer fallback is empty only")
+    }
+    for details in [["Claim $250000 from your Nightclub safe."],
+        ["Your Nightclub safe is empty.", "Your Arcade safe is empty."],
+        ["Your Nightclub safe is empty.", "Your Nightclub safe is empty."],
+        ["Your Nightclub safe is empty.", "Claim $100 from your Arcade safe."],
+        ["Your Unknown Shop safe is empty."], ["Your Nightclub safe is empty now"]] {
+        missingRows := [FakeLine("THE VINEWOOD CLUB APP")]
+        for detail in details
+            missingRows.Push(FakeLine(detail))
+        Check(EarnVinewoodSelectedSafe(missingRows) = "", "ambiguous or nonempty footer cannot identify missing row")
+    }
+    Check(EarnVinewoodSelectedSafe([FakeLine("Your Nightclub safe is empty.")]) = "", "empty footer requires app title")
+    gSelected := "Arcade"
+    Check(EarnVinewoodSelectedSafe(Frame("Your Nightclub safe is empty.")) = "Arcade",
+        "visible selected row takes precedence over another safe footer")
 }
 
 Reset(mode, state, amounts := "") {
@@ -226,6 +249,10 @@ EarnReadScreen(*) {
     lines := [FakeLine("THE VINEWOOD CLUB APP")]
     for row in gBiz
         lines.Push(FakeLine(row[1]))
+    if (gMode = "empty_row_missing" && amount = 0) {
+        gSelected := ""
+        lines := [FakeLine("THE VINEWOOD CLUB APP")]
+    }
     if (gMode = "unreadable_agency" && name = "Agency") {
         lines.Push(FakeLine("Claim $8O000 from your Agency safe."))
         return lines

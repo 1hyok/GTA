@@ -226,7 +226,27 @@ EarnVinewoodSelectedSafe(lines) {
                 return known
         return text
     }
-    return ""
+    ; 빈 금고의 회색 선택 행은 OCR에서 빠질 수 있다(1007 세차장 실측).
+    ; 정확히 하나의 빈 금고 설명만 있을 때 이름을 복원한다. Claim 문구로 수거 대상을 추측하지 않는다.
+    emptyCount := 0
+    for line in lines {
+        if (RegExMatch(line.text, "i)^Claim\b"))
+            return ""
+        emptyCount += RegExMatch(line.text, "i)^Your\b") > 0
+    }
+    if (emptyCount != 1)
+        return ""
+    found := ""
+    for knownSet in [safes, EarnSafeIgnored()] {
+        for known in knownSet {
+            if (EarnVinewoodSafeAmountOf(lines, known) != 0)
+                continue
+            if (found != "")
+                return ""
+            found := known
+        }
+    }
+    return found
 }
 
 ; 금액을 다른 사업장의 설명이나 이름 옆의 임의 숫자에서 추측하지 않는다. 선택한 행과 같은 사업장 문구 하나만 쓴다.
