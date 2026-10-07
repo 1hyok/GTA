@@ -132,6 +132,9 @@ EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
         "dj_confirm_tale", [0.30,0.46,0.70,0.53])
     if (!IsObject(area) && mctAreas.Has(name))
         area := mctAreas[name]
+    ; HDR 톤 매핑은 MCT 사업장 카드 제목도 바꾼다. 카드 고정 영역에서만 오차를 넓힌다.
+    if (name = "mct_bunker_card" || name = "mct_nightclub_card")
+        return TemplateSeen("Earn", name, area, &fx, &fy, Max(variation, 100))
     ; 구매 버튼 글자는 가격과 함께 가운데 정렬이라 보급 칸 수에 따라 1~2px 씩 밀리고 글자 가장자리가 달라진다.
     ; 1004 03:20 실측: $60,000 에서 8초 동안 버튼이 보였는데 오차 40으로는 못 찾았다. 다른 화면은 이 자리에서 오차 226 이상이다.
     if (name = "bunker_buy")

@@ -18,7 +18,8 @@ $cases = 0
 foreach ($contract in @(
     @{ Name = 'HDR seated text tolerance'; Pattern = 'TemplateSeen\("Earn", part, area, &fx, &fy, Max\(variation, 160\)\)' },
     @{ Name = 'HDR seated dark-background validation'; Pattern = 'TemplateAt\("Earn", part "_bg", fx, fy, 120\)' },
-    @{ Name = 'HDR MCT title tolerance'; Pattern = 'TemplateSeen\("Earn", name, IsObject\(area\) \? area : \[0\.3,0,0\.7,0\.1\], &fx, &fy, Max\(variation, 150\)\)' }
+    @{ Name = 'HDR MCT title tolerance'; Pattern = 'TemplateSeen\("Earn", name, IsObject\(area\) \? area : \[0\.3,0,0\.7,0\.1\], &fx, &fy, Max\(variation, 150\)\)' },
+    @{ Name = 'HDR MCT business-card tolerance'; Pattern = 'TemplateSeen\("Earn", name, area, &fx, &fy, Max\(variation, 100\)\)' }
 )) {
     if ($core -notmatch $contract.Pattern) { throw "Missing MCT recognition contract: $($contract.Name)" }
     $cases++
