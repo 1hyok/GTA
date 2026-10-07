@@ -25,7 +25,7 @@ $ahkSuites = @('test-earner', 'test-antiafk', 'test-altf4teleport', 'test-botwar
     'test-earnpolicy', 'test-earnscreen', 'test-earnscreen-command', 'test-earnvinewood', 'test-earnwarehouse-read', 'test-earnwarehouse',
     'test-earnstaff', 'test-afk-notification-command', 'test-afk-input-lock', 'test-arrow-color', 'test-cpuboost', 'test-earndj')
 $expectedChecks = @('syntax-powershell', 'syntax-python', 'validate-main') + $ahkSuites + @(
-    'test-earnocr', 'test-mct-seated-template', 'test-bunker-templates', 'test-earnwarehouse-templates', 'test-afk-overlays', 'test-notification-dismiss', 'test-session-guard', 'test-gui-input', 'test-perf-watch', 'test-screen-capture')
+    'test-earnocr', 'test-mct-seated-template', 'test-bunker-templates', 'test-earnwarehouse-templates', 'test-afk-overlays', 'test-notification-dismiss', 'test-session-guard', 'test-gui-input', 'test-perf-watch', 'test-fps-helper', 'test-screen-capture')
 $started = [DateTime]::UtcNow
 . (Join-Path $PSScriptRoot 'common.ps1')
 
@@ -167,6 +167,9 @@ try {
     Invoke-LoggedCheck 'test-perf-watch' $powershell ($psArguments + @(
         (Join-Path $repositoryRoot 'tools\tests\gta-perf-watch.tests.ps1'),
         '-FixtureDir', (Join-Path $outputPath 'perf-fixtures')
+    ))
+    Invoke-LoggedCheck 'test-fps-helper' $powershell ($psArguments + @(
+        (Join-Path $repositoryRoot 'tools\tests\fps-helper.tests.ps1')
     ))
     Invoke-LoggedCheck 'test-screen-capture' $powershell ($psArguments + @(
         (Join-Path $repositoryRoot 'tools\tests\screen-capture.tests.ps1'), '-AhkPath', $AhkPath
