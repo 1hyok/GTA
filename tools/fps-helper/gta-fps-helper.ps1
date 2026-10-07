@@ -15,8 +15,23 @@ public static class Rtss {
 }
 "@
 $applied = -1
+$rtssStartDeferred = $false
 while ($true) {
-    if (-not (Get-Process RTSS -ErrorAction SilentlyContinue)) { Start-Process "$rtssDir\RTSS.exe"; Start-Sleep 5 }
+    if (-not (Get-Process RTSS -ErrorAction SilentlyContinue)) {
+        # RTSS가 이미 켜져 있으면 프레임 제한을 계속 조절한다. 꺼진 RTSS만 실행 중인 GTA에 다시 붙이지 않고,
+        # GTA가 끝난 뒤 시작해 다음 게임 실행부터 적용한다(1007 RTSS 시작 16초 뒤 GTA BEX64 충돌 회피).
+        if (Get-Process GTA5_Enhanced -ErrorAction SilentlyContinue) {
+            if (-not $rtssStartDeferred) {
+                "$(Get-Date -Format s) RTSS start deferred until GTA exits" | Out-File $log -Append -Encoding utf8
+                $rtssStartDeferred = $true
+            }
+            Start-Sleep 5
+            continue
+        }
+        Start-Process "$rtssDir\RTSS.exe"
+        Start-Sleep 5
+        $rtssStartDeferred = $false
+    }
     $fps = 0
     try { $t = ([IO.File]::ReadAllText($want)).Trim(); if ($t -match '^(0|30|60)$') { $fps = [int]$t } } catch {}
     if ($fps -ne $applied) {
