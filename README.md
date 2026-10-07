@@ -22,14 +22,15 @@ Copy-Item Main.ahk Main_check.ahk
 
 GitHub Actions의 [CI](.github/workflows/ci.yml)는 Windows에서 AHK 문법, PowerShell·Python 구문, 게임 입력 없는 회귀검사를 실행한다. 실제 게임 입력·화면 캡처·GPU 측정·작업 스케줄러 실행은 포함하지 않는다. 검사 도구와 고정한 실행기 버전은 [tools/ci](tools/ci/README.md), 구성요소와 현장 시험의 경계는 [도구 경계](docs/tool-boundaries.md)에 있다.
 
-로컬에서도 Windows PowerShell 5.1에서 같은 검사를 실행한다. Python 3가 PATH에 있어야 하며, 다른 실행기를 쓰면 `run-checks.ps1 -PythonPath`로 지정한다. AutoHotkey는 임시 디렉터리에 압축만 풀어 기존 설치를 유지한다.
+개발 중에는 Windows PowerShell 5.1에서 변경 영역의 검사만 선택해 실행한다. 예를 들어 직원 파견 변경은 `-Checks @('test-earnstaff')`, 업무 흐름 변경은 `-Checks @('test-earntasks')`로 확인한다. PR의 GitHub Actions는 전체 회귀검사를 실행하며, feature 브랜치 `push`는 별도 전체 실행을 하지 않는다. Python 3가 PATH에 있어야 하며, 다른 실행기를 쓰면 `run-checks.ps1 -PythonPath`로 지정한다. AutoHotkey는 임시 디렉터리에 압축만 풀어 기존 설치를 유지한다.
 
 ```powershell
 $ciDirectory = Join-Path $env:TEMP ('gta-ci-' + [guid]::NewGuid().ToString('N'))
 $ahk = & .\tools\ci\install-autohotkey.ps1 -Destination (Join-Path $ciDirectory 'ahk')
-& .\tools\ci\run-checks.ps1 -AhkPath $ahk -OutputDirectory (Join-Path $ciDirectory 'checks')
-& .\tools\ci\package-macro.ps1 -CheckResults (Join-Path $ciDirectory 'checks\results.json') -OutputDirectory (Join-Path $ciDirectory 'package')
+& .\tools\ci\run-checks.ps1 -AhkPath $ahk -Checks @('validate-main', 'test-earnstaff') -OutputDirectory (Join-Path $ciDirectory 'checks')
 ```
+
+전체 검사 결과가 필요한 수동 패키징 때만 `-Checks`를 생략한다. 선택 검사 결과는 `verificationScope: targeted`로 기록되며 배포 ZIP 생성에 사용할 수 없다.
 
 패키지는 검사를 통과한 소스와 이미지, 캡처 런타임, 기능을 꺼 둔 `Config.example.ini`, 파일별 SHA-256을 담는다. 실제 `Config.ini`는 포함하지 않는다. 처음 설치할 때 예제를 `Config.ini`로 복사해 검토하고 필요한 기능을 켠다. 기존 설치를 갱신할 때는 설정을 보존한다. 패키지 생성은 매크로 재시작·실행 파일 설치·작업 스케줄러 갱신을 수행하지 않는다.
 

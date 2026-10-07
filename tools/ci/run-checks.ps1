@@ -3,7 +3,8 @@
 param(
     [Parameter(Mandatory = $true)][string]$AhkPath,
     [string]$PythonPath = 'python',
-    [string]$OutputDirectory = (Join-Path $env:TEMP ('gta-ci-' + [guid]::NewGuid().ToString('N')))
+    [string]$OutputDirectory = (Join-Path $env:TEMP ('gta-ci-' + [guid]::NewGuid().ToString('N'))),
+    [string[]]$Checks
 )
 
 $ErrorActionPreference = 'Stop'
@@ -24,8 +25,13 @@ $sourceHashes = @()
 $ahkSuites = @('test-earner', 'test-antiafk', 'test-altf4teleport', 'test-botwarp-stop', 'test-claw-stop', 'test-autoclick-stop', 'test-earnnav', 'test-earntasks', 'test-earnblip',
     'test-earnpolicy', 'test-earnscreen', 'test-earnscreen-command', 'test-earnvinewood', 'test-earnwarehouse-read', 'test-earnwarehouse',
     'test-earnstaff', 'test-afk-notification-command', 'test-afk-input-lock', 'test-arrow-color', 'test-cpuboost', 'test-earndj', 'test-phone-call-template')
-$expectedChecks = @('syntax-powershell', 'syntax-python', 'validate-main') + $ahkSuites + @(
+$allExpectedChecks = @('syntax-powershell', 'syntax-python', 'validate-main') + $ahkSuites + @(
     'test-earnocr', 'test-mct-seated-template', 'test-bunker-templates', 'test-earnwarehouse-templates', 'test-afk-overlays', 'test-notification-dismiss', 'test-session-guard', 'test-gui-input', 'test-perf-watch', 'test-fps-helper', 'test-screen-capture')
+$unknownChecks = @()
+if ($Checks) { $unknownChecks = @($Checks | Where-Object { $_ -notin $allExpectedChecks }) }
+if ($unknownChecks.Count) { throw ('Unknown check(s): ' + ($unknownChecks -join ', ')) }
+$expectedChecks = if ($Checks -and $Checks.Count) { @($Checks | Select-Object -Unique) } else { $allExpectedChecks }
+$verificationScope = if ($Checks -and $Checks.Count) { 'targeted' } else { 'full' }
 $started = [DateTime]::UtcNow
 . (Join-Path $PSScriptRoot 'common.ps1')
 
@@ -65,6 +71,7 @@ function Stop-CheckProcessTree([Diagnostics.Process]$Process, [DateTime]$Started
 
 function Invoke-LoggedCheck {
     param([string]$Name, [string]$Executable, [string[]]$Arguments, [int]$TimeoutSeconds = 90, [switch]$RequireEmptyStderr)
+    if ($Name -notin $expectedChecks) { return }
     $stdoutPath = Join-Path $outputPath ($Name + '.stdout.log')
     $stderrPath = Join-Path $outputPath ($Name + '.stderr.log')
     $info = New-Object Diagnostics.ProcessStartInfo
@@ -186,7 +193,7 @@ try {
     $passed = -not $failure -and $results.Count -eq $expectedChecks.Count -and
         $failedChecks.Count -eq 0 -and $missingChecks.Count -eq 0
     [ordered]@{
-        passed = $passed; revision = $revision; workingTree = $workingTree
+        passed = $passed; verificationScope = $verificationScope; revision = $revision; workingTree = $workingTree
         startedUtc = $started.ToString('o'); finishedUtc = [DateTime]::UtcNow.ToString('o')
         powershell = $PSVersionTable.PSVersion.ToString()
         autoHotkeyVersion = $runtimeVersion; autoHotkeySha256 = $runtimeHash
