@@ -16,7 +16,13 @@ function Get-MacroInputs([string]$RepositoryRoot) {
     $inputs += [pscustomobject]@{
         path = 'Config.example.ini'; source = Join-Path $RepositoryRoot 'tools\ci\Config.example.ini'
     }
-    return @($inputs | Sort-Object path)
+    # Sort-Object uses culture-sensitive comparison. Punctuation can compare
+    # equal on Windows, leaving same-prefix paths dependent on enumeration order.
+    # UTF-16 code-unit keys provide a deterministic ordinal order instead.
+    return @($inputs | Sort-Object {
+        $sortKey = -join ([char[]]$_.path | ForEach-Object { '{0:X4}' -f [int]$_ })
+        $sortKey
+    })
 }
 
 function Get-MacroHashes([string]$RepositoryRoot) {

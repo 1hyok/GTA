@@ -3,7 +3,9 @@
 param(
     [Parameter(Mandatory = $true)][string]$AhkPath,
     [string]$PythonPath = 'python',
-    [string]$OutputDirectory = (Join-Path $env:TEMP ('gta-ci-' + [guid]::NewGuid().ToString('N')))
+    [string]$OutputDirectory = (Join-Path $env:TEMP ('gta-ci-' + [guid]::NewGuid().ToString('N'))),
+    [string[]]$ChangedFiles,
+    [string]$ChangedFilesPath = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -24,8 +26,23 @@ $sourceHashes = @()
 $ahkSuites = @('test-earner', 'test-antiafk', 'test-altf4teleport', 'test-botwarp-stop', 'test-claw-stop', 'test-autoclick-stop', 'test-earnnav', 'test-earntasks', 'test-earnblip',
     'test-earnpolicy', 'test-earnscreen', 'test-earnscreen-command', 'test-earnvinewood', 'test-earnwarehouse-read', 'test-earnwarehouse',
     'test-earnstaff', 'test-afk-notification-command', 'test-afk-input-lock', 'test-arrow-color', 'test-cpuboost', 'test-earndj', 'test-phone-call-template')
-$expectedChecks = @('syntax-powershell', 'syntax-python', 'validate-main') + $ahkSuites + @(
+$allAuxChecks = @(
     'test-earnocr', 'test-mct-seated-template', 'test-bunker-templates', 'test-earnwarehouse-templates', 'test-afk-overlays', 'test-notification-dismiss', 'test-session-guard', 'test-gui-input', 'test-perf-watch', 'test-fps-helper', 'test-screen-capture')
+$selectionScript = Join-Path $PSScriptRoot 'check-selection.ps1'
+. $selectionScript
+if ($ChangedFilesPath) {
+    $changedFiles = @(Get-Content -LiteralPath $ChangedFilesPath -Encoding UTF8)
+    $checkPlan = Get-CiCheckPlan $changedFiles
+} elseif ($PSBoundParameters.ContainsKey('ChangedFiles')) {
+    $changedFiles = @($ChangedFiles)
+    $checkPlan = Get-CiCheckPlan $changedFiles
+} else {
+    $changedFiles = @()
+    $checkPlan = Get-CiCheckPlan @() -Full
+}
+$selectedSuites = @($checkPlan.Suites)
+$verificationScope = if ($checkPlan.Full) { 'full' } else { 'targeted' }
+$expectedChecks = @('syntax-powershell', 'syntax-python', 'validate-main', 'test-check-selection') + $selectedSuites
 $started = [DateTime]::UtcNow
 . (Join-Path $PSScriptRoot 'common.ps1')
 
@@ -152,28 +169,30 @@ try {
     # The verified 2.0.28 interpreter never executes Main.ahk here.
     Invoke-LoggedCheck 'validate-main' $AhkPath @('/validate', '/ErrorStdOut', '/CP65001', (Join-Path $repositoryRoot 'Main.ahk')) 30 -RequireEmptyStderr
     # Explicit allowlist: never discover/run arbitrary *test* scripts or Main.ahk.
+    Invoke-LoggedCheck 'test-check-selection' $powershell ($psArguments + @((Join-Path $PSScriptRoot 'test-check-selection.ps1')))
     foreach ($suite in $ahkSuites) {
+        if ($suite -notin $selectedSuites) { continue }
         $scriptPath = Join-Path $repositoryRoot ('tools\earn-test\' + $suite + '.ps1')
         Invoke-LoggedCheck $suite $powershell ($psArguments + @($scriptPath, '-AhkPath', $AhkPath))
     }
-    Invoke-LoggedCheck 'test-earnocr' $powershell ($psArguments + @((Join-Path $repositoryRoot 'tools\earn-test\test-earnocr.ps1')))
-    Invoke-LoggedCheck 'test-notification-dismiss' $powershell ($psArguments + @((Join-Path $repositoryRoot 'tools\earn-test\test-notification-dismiss.ps1')))
-    Invoke-LoggedCheck 'test-mct-seated-template' $powershell ($psArguments + @((Join-Path $repositoryRoot 'tools\earn-test\test-mct-seated-template.ps1')))
-    Invoke-LoggedCheck 'test-bunker-templates' $powershell ($psArguments + @((Join-Path $repositoryRoot 'tools\earn-test\test-bunker-templates.ps1')))
-    Invoke-LoggedCheck 'test-earnwarehouse-templates' $powershell ($psArguments + @((Join-Path $repositoryRoot 'tools\earn-test\test-earnwarehouse-templates.ps1')))
-    Invoke-LoggedCheck 'test-afk-overlays' $powershell ($psArguments + @((Join-Path $repositoryRoot 'tools\earn-test\test-afk-overlays.ps1')))
-    Invoke-LoggedCheck 'test-session-guard' $AhkPath @('/ErrorStdOut', '/CP65001', (Join-Path $repositoryRoot 'tools\earn-test\test-session-guard.ahk')) 30
-    Invoke-LoggedCheck 'test-gui-input' $AhkPath @('/ErrorStdOut', '/CP65001', (Join-Path $repositoryRoot 'tools\earn-test\gui-input.ahk'), '--self-test') 30
-    Invoke-LoggedCheck 'test-perf-watch' $powershell ($psArguments + @(
+    if ('test-earnocr' -in $selectedSuites) { Invoke-LoggedCheck 'test-earnocr' $powershell ($psArguments + @((Join-Path $repositoryRoot 'tools\earn-test\test-earnocr.ps1'))) }
+    if ('test-notification-dismiss' -in $selectedSuites) { Invoke-LoggedCheck 'test-notification-dismiss' $powershell ($psArguments + @((Join-Path $repositoryRoot 'tools\earn-test\test-notification-dismiss.ps1'))) }
+    if ('test-mct-seated-template' -in $selectedSuites) { Invoke-LoggedCheck 'test-mct-seated-template' $powershell ($psArguments + @((Join-Path $repositoryRoot 'tools\earn-test\test-mct-seated-template.ps1'))) }
+    if ('test-bunker-templates' -in $selectedSuites) { Invoke-LoggedCheck 'test-bunker-templates' $powershell ($psArguments + @((Join-Path $repositoryRoot 'tools\earn-test\test-bunker-templates.ps1'))) }
+    if ('test-earnwarehouse-templates' -in $selectedSuites) { Invoke-LoggedCheck 'test-earnwarehouse-templates' $powershell ($psArguments + @((Join-Path $repositoryRoot 'tools\earn-test\test-earnwarehouse-templates.ps1'))) }
+    if ('test-afk-overlays' -in $selectedSuites) { Invoke-LoggedCheck 'test-afk-overlays' $powershell ($psArguments + @((Join-Path $repositoryRoot 'tools\earn-test\test-afk-overlays.ps1'))) }
+    if ('test-session-guard' -in $selectedSuites) { Invoke-LoggedCheck 'test-session-guard' $AhkPath @('/ErrorStdOut', '/CP65001', (Join-Path $repositoryRoot 'tools\earn-test\test-session-guard.ahk')) 30 }
+    if ('test-gui-input' -in $selectedSuites) { Invoke-LoggedCheck 'test-gui-input' $AhkPath @('/ErrorStdOut', '/CP65001', (Join-Path $repositoryRoot 'tools\earn-test\gui-input.ahk'), '--self-test') 30 }
+    if ('test-perf-watch' -in $selectedSuites) { Invoke-LoggedCheck 'test-perf-watch' $powershell ($psArguments + @(
         (Join-Path $repositoryRoot 'tools\tests\gta-perf-watch.tests.ps1'),
         '-FixtureDir', (Join-Path $outputPath 'perf-fixtures')
-    ))
-    Invoke-LoggedCheck 'test-fps-helper' $powershell ($psArguments + @(
+    )) }
+    if ('test-fps-helper' -in $selectedSuites) { Invoke-LoggedCheck 'test-fps-helper' $powershell ($psArguments + @(
         (Join-Path $repositoryRoot 'tools\tests\fps-helper.tests.ps1')
-    ))
-    Invoke-LoggedCheck 'test-screen-capture' $powershell ($psArguments + @(
+    )) }
+    if ('test-screen-capture' -in $selectedSuites) { Invoke-LoggedCheck 'test-screen-capture' $powershell ($psArguments + @(
         (Join-Path $repositoryRoot 'tools\tests\screen-capture.tests.ps1'), '-AhkPath', $AhkPath
-    ))
+    )) }
     if (($sourceHashes | ConvertTo-Json -Compress) -cne ((Get-MacroHashes $repositoryRoot) | ConvertTo-Json -Compress)) {
         throw 'Package source files changed during verification.'
     }
@@ -187,6 +206,8 @@ try {
         $failedChecks.Count -eq 0 -and $missingChecks.Count -eq 0
     [ordered]@{
         passed = $passed; revision = $revision; workingTree = $workingTree
+        selectedPlan = [ordered]@{ full = $checkPlan.Full; suites = $selectedSuites; packageRequired = $checkPlan.PackageRequired; changedFiles = $changedFiles }
+        verificationScope = $verificationScope
         startedUtc = $started.ToString('o'); finishedUtc = [DateTime]::UtcNow.ToString('o')
         powershell = $PSVersionTable.PSVersion.ToString()
         autoHotkeyVersion = $runtimeVersion; autoHotkeySha256 = $runtimeHash
