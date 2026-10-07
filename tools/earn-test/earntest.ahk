@@ -98,6 +98,18 @@ PhoneStatus() {
         . " end=" EarnSeen("phone_call_end", [0.9,0.92,0.99,0.98])
 }
 
+; 호출자가 Contacts에서 Lester 선택을 화면으로 확인한 뒤 실행한다.
+; 입력 유휴 가드가 준비된 다음 발신하여 짧은 통화 화면을 놓치지 않는다.
+PhoneCallEndProbe() {
+    if (!EarnPress("Enter") || !EarnSleep(2000))
+        return false
+    before := PhoneStatus()
+    EarnLog("시험 전화 발신: " before)
+    if (!EarnSeen("phone_call_end", [0.9,0.92,0.99,0.98]))
+        return EarnFail("시험: 통화 종료 아이콘 미감지")
+    return EarnWaitCallEnd()
+}
+
 MCTSmoke() {
     global config
     config["Settings"]["EarnDJPopularityPct"] := 95
