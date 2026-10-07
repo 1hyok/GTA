@@ -215,6 +215,21 @@ RunMenuTests() {
         Check(EarnStaffSelectText("i)^" c[3] "$", 6) && selected = c[3] && keys.Length >= 1 && keys[1] = c[4],
             c[1] " " c[2] " -> " c[3] " first key " c[4])
     }
+    ; 1007 13:08:41 실제 메뉴는 3줄인데 회색 Bail Office OCR이 빠져 2줄로 계산됐다.
+    ; OCR 누락과 독립된 실제 3줄 키 입력 모델에서 최단 한 번으로 목표에 도달해야 한다.
+    for c in [["missing_bail_row","Warehouse","Hangar","Up"],
+        ["missing_warehouse_row","Bail Office","Hangar","Down"],
+        ["missing_hangar_row","Bail Office","Warehouse","Up"]] {
+        Reset(c[1],["busy","busy"])
+        screenState := "staff", selected := c[2]
+        Check(EarnStaffSelectText("i)^" c[3] "$",3) && selected = c[3], c[1] " reaches observed target")
+        Check(keys.Length = 1 && keys[1] = c[4], c[1] " uses actual three-row selection positions")
+    }
+    Reset("missing_hangar_row",["busy","busy"])
+    screenState := "staff", selected := "Warehouse"
+    Check(!EarnStaffSelectText(EarnStaffHangarPattern(),3), "missing target text cannot be accepted from known slots")
+    for key in keys
+        Check(key != "Enter", "missing target sends no Enter")
 }
 
 RunCargoTests() {
@@ -503,6 +518,12 @@ MockReadScreen(area, whiteText) {
             else
                 rows[4].text := "pail Office"
         }
+        if (mode = "missing_bail_row")
+            rows.RemoveAt(4)
+        if (mode = "missing_warehouse_row")
+            rows.RemoveAt(3)
+        if (mode = "missing_hangar_row")
+            rows.RemoveAt(2)
         return rows
     }
     if (screenState = "cargo") {
@@ -629,6 +650,14 @@ EarnMenuRowSelected(row) {
         return Abs(row.y-fixture.selectedY) < 8
     }
     if (!row.HasOwnProp("text")) {
+        if (screenState = "staff") {
+            names := ["Hangar","Warehouse","Bail Office"]
+            for index, name in names {
+                if (selected = name && Abs(row.y-144-37*index) < 8)
+                    return true
+            }
+            return false
+        }
         if (screenState = "bail")
             return mode = "bail_double_selection" || Abs(row.y-(selected = "Agent 1" ? 181 : 218)) < 8
         if (screenState != "cargo" || mode = "cargo_no_selection")

@@ -667,7 +667,16 @@ EarnStaffSelectText(pattern, maxPress) {
             return false
         if (row && EarnMenuRowSelected(row))
             return row
-        key := EarnMenuStepKey(lines, heading, row, 425, &why)
+        stepLines := lines
+        if (row && EarnStaffListSeen(lines)) {
+            ; 확인된 직원 목록은 Hangar·Warehouse·Bail Office 3줄이다. 회색 행 OCR 누락을 목록 끝으로
+            ; 계산하면 Warehouse에서 Hangar로 가려 Down을 눌러 Bail Office로 간다(1007 13:08:41).
+            ; 이동 방향은 실제 세 행의 선택 막대로 계산하고, 도착 확인은 위의 실제 OCR 목표 줄로 한다.
+            stepLines := []
+            Loop 3
+                stepLines.Push({y:heading.y + 37*A_Index})
+        }
+        key := EarnMenuStepKey(stepLines, heading, row, 425, &why)
         if (A_Index = 1 && A_Index <= maxPress)
             EarnLog("앱 이동: " why)
         if (A_Index > maxPress || !EarnPress(key) || !EarnSleep(200))
