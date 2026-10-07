@@ -17,7 +17,7 @@ $workingTreeDirty = $workingTreeProperty.Value.Count -gt 0
 $verificationHash = (Get-FileHash -LiteralPath $CheckResults -Algorithm SHA256).Hash
 $revision = (& git -C $repositoryRoot rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'Could not read the Git revision.' }
-if (-not $verification.passed -or $verification.repositoryRoot -ne $repositoryRoot -or $verification.revision -ne $revision) {
+if ($verification.verificationScope -ne 'full' -or -not $verification.passed -or $verification.repositoryRoot -ne $repositoryRoot -or $verification.revision -ne $revision) {
     throw 'Run run-checks.ps1 successfully on this checkout and revision before packaging.'
 }
 $hashes = Get-MacroHashes $repositoryRoot

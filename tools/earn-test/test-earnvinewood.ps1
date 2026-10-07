@@ -59,7 +59,7 @@ RunTests() {
         ["cancel_claim", "main", Map("Nightclub",240000), false, "", "earnings", 0],
         ["post_unconfirmed", "main", Map("Nightclub",240000), false, "Nightclub", "earnings", 0],
         ["select_cancel", "main", Map(), false, "", "earnings", 0],
-        ["no_selection", "main", Map(), false, "", "earnings", 0],
+        ["no_selection", "main", Map(), false, "", "standing", 0],
         ["close_unknown", "main", Map(), true, "", "unknown", 0],
         ["prompt_delay", "main", Map(), true, "", "standing", 0],
         ["normal", "standing", Map("Nightclub",250000), true, "Nightclub", "standing", 0],
@@ -80,6 +80,8 @@ RunTests() {
             claimed .= (claimed = "" ? "" : ",") name
         label := c[1] "/" c[2] "/" claimed
         Check(result = c[4] && claimed = c[5] && gState = c[6], label " result=" result " claims=" claimed " state=" gState)
+        if (c[1] = "no_selection")
+            Check(RetryIn() = 180000 && claimed = "" && gState = "standing", "unknown safe selection closes app and retries without claiming")
         if (c[7])
             Check(gScheduled = c[7] * 60000, label " scheduled " Round(gScheduled / 60000) " min, expected " c[7])
         Check(gClaimAttempts <= gClaims.Length + 1, label " never replays collection")
@@ -137,9 +139,12 @@ RunTests() {
     Reset("normal", "hud")
     Check(EarnVinewoodOpen(false) && gState = "main" && gMctCloses = 0 && gCEOCalls = 0,
         "staff opens away from MCT without terminal or boss operations")
-    Reset("normal", "standing")
+    Reset("normal", "mct")
+    Check(EarnVinewoodOpen(false) && gState = "main" && gMctCloses = 0 && gCEOCalls = 0,
+        "staff opens by phone from the MCT access prompt without closing it or changing boss state")
+    Reset("normal", "unknown")
     Check(!EarnVinewoodOpen(false) && gKeys.Length = 0 && gMctCloses = 0 && gCEOCalls = 0,
-        "staff does not substitute MCT position for a verified free HUD")
+        "staff still rejects an unverified screen")
     Reset("normal", "phone_job")
     Check(EarnVinewoodOpen() && gState = "main" && gKeys.Length = 2
         && gKeys[1] = "Right" && gKeys[2] = "Enter", "Job List home only moves right and opens the selected app")
@@ -288,7 +293,7 @@ EarnPress(key) {
         if (gState = "earnings")
             gIdx := Mod(gIdx, gBiz.Length) + 1, gSelected := gBiz[gIdx][1]
     } else if (key = "Up") {
-        if (gState != "standing" && gState != "hud")
+        if (gState != "standing" && gState != "hud" && gState != "mct")
             throw Error("Phone-opening Up is invalid when the phone is already open: " gState)
         gState := gMode = "wrong_phone" ? "wrong_phone" : "phone_job"
     } else if (key = "Right" && gState = "phone_job") {
@@ -336,7 +341,7 @@ EarnSeen(name, *) {
     global gState, gMode
     if (name = "m_title")
         return gMode = "hud_menu"
-    return name = "mct_sit" ? gState = "standing" : name = "ph_joblist_sel" ? gState = "phone_job" : name = "ph_vinewood_sel" && gState = "phone_vinewood"
+    return name = "mct_sit" ? (gState = "standing" || gState = "mct") : name = "ph_joblist_sel" ? gState = "phone_job" : name = "ph_vinewood_sel" && gState = "phone_vinewood"
 }
 EarnWaitSeen(name, *) => EarnSeen(name)
 EarnHudVisible() {

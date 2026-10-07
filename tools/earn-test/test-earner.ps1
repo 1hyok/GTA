@@ -120,6 +120,20 @@ gEarnDue["bunker"] := A_TickCount - 1
 EarnTick()
 Check(!gEarnOn && stopped = 1, "retry exhausted")
 Reset()
+gEarnTasks := [
+    {id:"safe", label:"사업장 금고", on:true, every:300000, fn:RunTask.Bind("safe")},
+    {id:"staff", label:"앱 직원 파견", on:true, every:300000, fn:RunTask.Bind("staff")}
+]
+gEarnDone := Map("safe", 0, "staff", 0)
+gEarnDue := Map("safe", A_TickCount - 1, "staff", A_TickCount - 1)
+taskModes["safe"] := "retry"
+EarnTick()
+Check(gEarnOn && gEarnSoftFails["safe"] = 1 && gEarnDue["safe"] > A_TickCount + 59000 && gEarnDone["staff"] = 0,
+    "unreadable safe is deferred without stopping automation")
+EarnTick()
+Check(gEarnOn && gEarnDone["staff"] = 1 && calls[calls.Length] = "staff" && stopped = 0,
+    "staff dispatch runs after safe OCR retry is deferred")
+Reset()
 mode := "fail"
 EarnTick()
 Check(!gEarnOn && stopped = 1 && releaseCount = 1 && !gEarnBusy, "hard failure")
@@ -439,7 +453,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 57 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 59 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout

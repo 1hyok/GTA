@@ -20,6 +20,7 @@ EarnSafeIgnored() {
 }
 
 EarnVinewoodSafeTask() {
+    global gEarnRetryIn
     safes := EarnSafeLimits()
     if (!EarnVinewoodOpen())
         return false
@@ -45,6 +46,10 @@ EarnVinewoodSafeTask() {
             return false
         if (name = "") {
             EarnLog("금고: 판독한 줄 " EarnVinewoodAmountDebug(lines))
+            ; 금액을 추측하지 않고 앱을 닫아 직원 작업이 이어지게 한 뒤 금고만 재시도한다.
+            gEarnRetryIn := 3 * 60000
+            if (!EarnVinewoodClose())
+                EarnLog("금고: 판독 실패 뒤 앱 닫힘 미확인, 직원 작업은 다음 예약에서 화면을 다시 확인")
             return EarnFail("금고: 수익 목록에서 선택한 사업장을 확인하지 못함")
         }
         if (seen.Has(name))
@@ -354,9 +359,10 @@ EarnVinewoodOpen(manageMCT := true) {
         return true
     if (!EarnSeen("ph_joblist_sel", [0.83,0.66,0.98,0.73])
         && !EarnSeen("ph_vinewood_sel", [0.83,0.66,0.98,0.73])) {
-        if (manageMCT && EarnAtMCT() && !EarnMCTClose())
+        atMCT := EarnSeen("mct_sit", [0,0,0.3,0.1]) || EarnSeen("mct_terrorbyte")
+        if (manageMCT && atMCT && !EarnMCTClose())
             return false
-        atMCT := manageMCT && (EarnSeen("mct_sit", [0,0,0.3,0.1]) || EarnSeen("mct_terrorbyte"))
+        ; 직원·앱 작업은 MCT 앞 접근 안내도 메뉴 없는 플레이 화면으로 쓸 수 있다. MCT를 닫거나 CEO 상태를 바꾸지 않는다.
         ; MCT 앞이 아니어도 메뉴·전화 없는 맨 HUD 에서 손을 뗀 지 오래면 전화로 앱을 연다(1005 사용자 요청).
         ; 그때 CEO·MC 상태는 사용자가 정한 것이라 건드리지 않는다.
         if (!atMCT && !EarnVinewoodFreeHud()) {
@@ -368,7 +374,7 @@ EarnVinewoodOpen(manageMCT := true) {
         }
         if (!atMCT)
             EarnLog("Vinewood 앱: 위치·보스 변경 없이 게임 HUD에서 전화로 앱을 연다")
-        if ((atMCT && !EarnCEO(false)) || !EarnPress("Up") || !EarnSleep(700))
+        if ((manageMCT && atMCT && !EarnCEO(false)) || !EarnPress("Up") || !EarnSleep(700))
             return false
     }
     ; 휴대폰이 다 올라오기까지 1초 넘게 걸릴 때가 있다(1004 14:20 녹화). 홈의 선택 제목이 보일 때까지 기다린다.

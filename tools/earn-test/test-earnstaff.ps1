@@ -27,7 +27,7 @@ $driver = @'
 #NoTrayIcon
 #Warn All, StdOut
 global mode, screenState, selected, statuses, requests, keys, reads, failure, checks := 0
-global config, cargoNames, cargoStatuses, cargoRequests, cargoReads, activeCount, opens, postReads
+global config, cargoNames, cargoStatuses, cargoRequests, cargoReads, activeCount, opens, postReads, gEarnRetryIn := 0
 global fixtureData := Map(), fixtureKey := ""
 global observedDeadlines := []
 global menuReads := 0, mainNames := []
@@ -123,6 +123,11 @@ RunTests() {
         Check(result = c[3], c[1] " success=" result)
         Check(requests[1] + requests[2] = c[4], c[1] " request count")
         Check(requests[1] <= 1 && requests[2] <= 1, c[1] " no repeated request")
+        if (c[1] = "unconfirmed" || c[1] = "unknown_bail_footer" || c[1] = "lost_bail_identity"
+            || c[1] = "missing_selected_agent" || c[1] = "bail_double_selection")
+            Check(gEarnRetryIn = 180000, c[1] " preserves F9 with a bounded staff-only retry")
+        if (c[1] = "cancel_bail_retry")
+            Check(gEarnRetryIn = 0, c[1] " user cancellation is not rescheduled")
         for key in keys
             Check(key != "Esc", c[1] " no Esc")
     }
@@ -169,6 +174,10 @@ RunTests() {
     Check(EarnStaffBailState(lines,1) = "invalid", "agent identity requires observed row position")
     lines := BailFrame(), lines[3].text := "Agent 3"
     Check(EarnStaffBailState(lines,1) = "invalid", "unknown other agent is rejected")
+    Reset("missing_selected_agent", ["ready","busy"])
+    screenState := "bail", selected := "Agent 1"
+    Check(!EarnStaffSelectText("i)^Agent [1Il]$", 2) && keys.Length = 0,
+        "missing selected Bail Office row retries OCR without guessing a direction key")
     RunDeadlineTests()
 }
 
@@ -459,12 +468,14 @@ Sum(values) {
 Reset(nextMode, initial) {
     global mode, screenState, selected, statuses, requests, keys, reads, failure
     global config, cargoNames, cargoStatuses, cargoRequests, cargoReads, activeCount, opens, postReads
+    global gEarnRetryIn
     global observedDeadlines
     global menuReads, mainNames, hangarState, hangarRequests, hangarReads, greyMissing, flickerReads
     greyMissing := 0, flickerReads := 0
     mode := nextMode, screenState := "staff", selected := "Hangar"
     hangarState := "ready", hangarRequests := 0, hangarReads := 0
     statuses := initial.Clone(), requests := [0,0], keys := [], reads := 0, failure := ""
+    gEarnRetryIn := 0
     config := Map("Settings",Map("EarnBailAgents",1,"EarnCargoStaff",1))
     cargoNames := ["Discount Retail Unit","Railyard Warehouse","Foreclosed Garage","Darnell Bros Warehouse","West Vinewood Backlot"]
     cargoStatuses := ["ready","ready","ready","ready","ready"], cargoRequests := [0,0,0,0,0]
@@ -482,6 +493,12 @@ EarnReadScreen(area, whiteText := false, deadline := 0) {
         fixture := fixtureData[fixtureKey]
         if (whiteText)
             return fixture.detail.Clone()
+        if (fixture.kind = "bail" && area[4] > 115) {
+            combined := fixture.heading.Clone()
+            for row in fixture.detail
+                combined.Push(row)
+            return combined
+        }
         return (area[4] = 35 ? fixture.label : fixture.heading).Clone()
     }
     rows := MockReadScreen(area, whiteText)

@@ -179,7 +179,7 @@ EarnStaffBailAgents() {
     Loop 2 {
         agent := A_Index
         if (!EarnStaffSelectText(agent = 1 ? "i)^Agent [1Il]$" : "i)^Agent 2$", 2))
-            return EarnFail("직원: 보석 집행 요원 " agent " 선택 실패")
+            return EarnStaffRetryFail("직원: 보석 집행 요원 " agent " 선택 실패")
         state := EarnStaffReadBail(agent)
         if (state = "busy") {
             EarnLog("직원: 보석 집행 요원 " agent " 작업 중, 건너뜀")
@@ -187,18 +187,30 @@ EarnStaffBailAgents() {
             continue
         }
         if (state != "ready")
-            return EarnFail("직원: 보석 집행 요원 " agent " 준비 문구 미확인")
+            return EarnStaffRetryFail("직원: 보석 집행 요원 " agent " 준비 문구 미확인")
         if (EarnStaffReadBail(agent) != "ready")
-            return EarnFail("직원: 보석 집행 요원 " agent " 파견 직전 상태 변경")
+            return EarnStaffRetryFail("직원: 보석 집행 요원 " agent " 파견 직전 상태 변경")
         deadline := A_TickCount + 60000
         if (!EarnPress("Enter") || !EarnSleep(700))
             return false
         if (!EarnStaffWaitBusy("bail", agent, deadline))
-            return EarnFail("직원: 보석 집행 요원 " agent " 파견 결과 미확인, 재요청 중단")
+            return EarnStaffRetryFail("직원: 보석 집행 요원 " agent " 파견 결과 미확인, 재요청 중단")
         EarnLog("직원: 보석 집행 요원 " agent " 파견 확인")
         EarnStaffTrack("bail " agent, "sent")
     }
     return true
+}
+
+; 화면 판독 실패는 매크로 전체를 끄지 않는다. 앱을 닫고 3분 뒤 다시 읽는다.
+; Enter 뒤 결과가 모호해도 다음 회차는 먼저 busy/ready를 확인하므로 중복 파견하지 않는다.
+EarnStaffRetryFail(reason) {
+    global gEarnRetryIn
+    if (EarnAborted())
+        return EarnFail(reason)
+    gEarnRetryIn := 3 * 60000
+    if (!EarnVinewoodClose())
+        EarnLog("직원: 앱 닫힘 미확인, 화면을 다시 확인하도록 3분 뒤 재시도")
+    return EarnFail(reason)
 }
 
 EarnStaffCargoWarehouses() {
@@ -582,6 +594,15 @@ EarnStaffBailBusyText(detail) {
 }
 
 ; 작업 중 판정만 허용한다. 이름이 사라진 행을 준비 상태나 결제 대상으로 추정하지 않는다.
+EarnStaffBailSelectedAgent(lines) {
+    heading := EarnStaffUniqueRow(lines, "i)^THE VINEWOOD CLUB APP$")
+    if (!heading)
+        return 0
+    first := EarnMenuRowSelected({y:heading.y+37})
+    second := EarnMenuRowSelected({y:heading.y+74})
+    return first = second ? 0 : first ? 1 : 2
+}
+
 EarnStaffBailBusyFrame(lines, agent) {
     if (agent != 1 && agent != 2)
         return false
@@ -748,6 +769,20 @@ EarnStaffSelectText(pattern, maxPress) {
         agent := pattern = "i)^Agent [1Il]$" ? 1 : pattern = "i)^Agent 2$" ? 2 : 0
         if (!row && agent && EarnStaffBailBusyFrame(lines, agent))
             return {y:heading.y+37*agent}
+        ; Bail Office 선택 행은 회색·흰 글자 OCR에서 통째로 사라질 수 있다.
+        ; 선택 막대로 현재 요원을 확인한 경우에만 두 행 사이의 방향을 정한다.
+        if (!row && agent) {
+            selectedAgent := EarnStaffBailSelectedAgent(lines)
+            if (selectedAgent && selectedAgent != agent) {
+                key := selectedAgent = 1 ? "Down" : "Up"
+                if (A_Index > maxPress || !EarnPress(key) || !EarnSleep(200))
+                    return false
+                continue
+            }
+            if (A_Index <= maxPress && EarnSleep(500))
+                continue
+            return false
+        }
         if (!row && pattern = EarnStaffHangarPattern() && EarnStaffHangarBusyFrame(lines))
             return {y:heading.y+37}
         stepLines := lines
