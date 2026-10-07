@@ -289,7 +289,8 @@ EarnFinishScheduledTask(result) {
         ; 주기는 확인을 시작한 때부터 잰다. 작업이 현재 화면에서 정한 다음 확인 시각이 있으면 그 값을 쓴다.
         gEarnDue[task.id] := gEarnNextDue.Has(task.id) ? gEarnNextDue.Delete(task.id) : result.startTick + task.every
         gEarnDone[task.id] += 1
-        EarnLog("끝: " task.label " (" gEarnDone[task.id] "회째, 다음 " FormatTime(DateAdd(A_Now, Max(0, gEarnDue[task.id] - A_TickCount) // 1000, "Seconds"), "HH:mm:ss") ")")
+        secondsUntilDue := Floor(Max(0, gEarnDue[task.id] - A_TickCount) / 1000)
+        EarnLog("끝: " task.label " (" gEarnDone[task.id] "회째, 다음 " FormatTime(DateAdd(A_Now, secondsUntilDue, "Seconds"), "HH:mm:ss") ")")
         return true
     }
     ; 위험하지 않은 실패(길을 못 찾음·재접속 자리가 나쁨)는 작업이 gEarnRetryIn 을 채워 두었다 → 끄지 않고 그때 다시 한다. 연속 EarnSoftFailMax 번이면 그때 끈다
