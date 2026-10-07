@@ -130,6 +130,20 @@ RunTests() {
     screenState := "bail", selected := "Agent 1"
     lines := BailFrame()
     Check(EarnStaffBailState(lines, 1) = "busy", "busy exact text")
+    dim := BailFrame()
+    dim.RemoveAt(2)
+    dim[3].text := "Your Bail Office staff member is curre tly"
+    dim[4].text := "outo a job."
+    Check(EarnStaffBailBusyFrame(dim, 1), "recorded blank first row and busy footer confirm no new request needed")
+    Check(!EarnStaffBailBusyFrame(dim, 2), "busy footer cannot identify the other selected row")
+    dim[3].text := "Send your Bail Office staff member out on"
+    dim[4].text := "a job."
+    Check(!EarnStaffBailBusyFrame(dim, 1), "blank label never authorizes sending a ready agent")
+    lines[2].text := "Agent I"
+    Check(EarnStaffBailState(lines, 1) = "busy", "recorded Agent I is first agent at the verified first row")
+    lines[2].y += 37
+    Check(EarnStaffBailState(lines, 1) = "invalid", "Agent I on second row is not agent one")
+    lines := BailFrame()
     Check(EarnStaffBailState(lines, 2) = "invalid", "wrong selected agent")
     Check(EarnStaffBailState(lines, 0) = "invalid", "invalid agent number")
     Check(EarnStaffBailState(false, 1) = "invalid", "false OCR result")
@@ -240,6 +254,9 @@ RunCargoTests() {
     cases := [
         ["normal",["ready","ready","full","ready","busy"],true,3],
         ["normal",["busy","busy","full","busy","busy"],true,0],
+        ["cargo_gray_blank",["ready","ready","full","ready","busy"],true,3],
+        ["cargo_gray_blank",["busy","busy","full","busy","busy"],true,0],
+        ["cargo_all_blank",["ready","busy","full","busy","busy"],false,0],
         ["delayed_cargo",["ready","busy","full","busy","busy"],true,1],
         ["merged_price",["ready","busy","full","busy","busy"],true,1],
         ["comma_price",["ready","busy","full","busy","busy"],true,1],
@@ -550,6 +567,13 @@ MockReadScreen(area, whiteText) {
         if (mode = "cargo_full_change" && cargoReads >= 2)
             cargoStatuses[1] := "full"
         lines := CargoFrame()
+        if (area[4] = 35 && mode = "cargo_all_blank")
+            return []
+        if (area[4] = 35 && mode = "cargo_gray_blank") {
+            for i, name in cargoNames
+                if (name = selected && cargoStatuses[i] != "ready")
+                    return []
+        }
         if (mode = "cargo_price_change" && cargoReads >= 2)
             lines[3].text := "$75000"
         if (mode = "cargo_bad_price")
@@ -658,6 +682,9 @@ EarnMenuRowSelected(row) {
         fixture := fixtureData[fixtureKey]
         return Abs(row.y-fixture.selectedY) < 8
     }
+    ; 실제 선택 판정은 글자 내용이 아니라 해당 행의 선택 막대 좌표를 본다.
+    if (screenState = "bail")
+        return mode = "bail_double_selection" || Abs(row.y-(selected = "Agent 1" ? 181 : 218)) < 8
     if (!row.HasOwnProp("text")) {
         if (screenState = "staff") {
             names := ["Hangar","Warehouse","Bail Office"]
@@ -667,8 +694,6 @@ EarnMenuRowSelected(row) {
             }
             return false
         }
-        if (screenState = "bail")
-            return mode = "bail_double_selection" || Abs(row.y-(selected = "Agent 1" ? 181 : 218)) < 8
         if (screenState != "cargo" || mode = "cargo_no_selection")
             return false
         if (mode = "cargo_double_selection")
@@ -815,7 +840,9 @@ EarnWarehouseGreyLabel(row) {
     global mode
     return mode = "grey_staff_unread" && row.y = 144 + 37 * 6
 }
-EarnVinewoodOpen() {
+EarnVinewoodOpen(manageMCT := true) {
+    if (manageMCT)
+        throw Error("Staff must not request MCT or CEO handling")
     global mode, opens
     opens += 1
     return mode != "open_fail"

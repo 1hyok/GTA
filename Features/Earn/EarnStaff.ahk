@@ -6,7 +6,7 @@ EarnVinewoodStaffTask() {
     if (!bail && !cargo && !hangar)
         return true
     EarnStaffTrack("reset")
-    if (!EarnVinewoodOpen())
+    if (!EarnVinewoodOpen(false))
         return false
     root := EarnStaffRoot()
     if (!root)
@@ -127,7 +127,8 @@ EarnStaffRoot() {
             }
             continue
         }
-        if ((EarnStaffBailIdentity(lines, 1) || EarnStaffBailIdentity(lines, 2))
+        if ((EarnStaffBailIdentity(lines, 1) || EarnStaffBailIdentity(lines, 2)
+            || EarnStaffBailBusyFrame(lines, 1) || EarnStaffBailBusyFrame(lines, 2))
             || IsObject(EarnStaffReadCargo())) {
             if (!EarnPress("Backspace") || !EarnSleep(700))
                 return false
@@ -159,11 +160,17 @@ EarnStaffBailAgents() {
         EarnStaffTrack("bail 1", "busy"), EarnStaffTrack("bail 2", "busy")
         return true
     }
-    if (!EarnStaffSelectEnter("~Bail Office", 3))
+    if (!EarnStaffSelectEnter("~Bail Office", 3)) {
+        if (EarnStaffSectionBusy("office")) {
+            EarnLog("직원: 보석 사무소 작업 중 문구 확인, 건너뜀")
+            EarnStaffTrack("bail 1", "busy"), EarnStaffTrack("bail 2", "busy")
+            return true
+        }
         return EarnFail("직원: 보석 사무소 목록 진입 실패")
+    }
     ; 두 요원이 모두 작업 중이면 Bail Office 줄이 회색이고 Enter 가 무시된다(1003 17:39 실측).
     ; 그대로 Agent 1 을 찾으면 Down 이 다른 줄로 넘어가므로, 목록이 그대로면 건너뛴다.
-    if (!EarnStaffMenuTarget("i)^Agent 1$") && (EarnStaffSectionBusy("office")
+    if (!EarnStaffMenuTarget("i)^Agent [1Il]$") && (EarnStaffSectionBusy("office")
         || EarnStaffMenuTarget("~Warehouse") && EarnStaffMenuTarget("~Bail Office"))) {
         EarnLog("직원: 보석 사무소 비활성(요원 모두 작업 중), 건너뜀")
         EarnStaffTrack("bail 1", "busy"), EarnStaffTrack("bail 2", "busy")
@@ -171,7 +178,7 @@ EarnStaffBailAgents() {
     }
     Loop 2 {
         agent := A_Index
-        if (!EarnStaffSelectText("i)^Agent " agent "$", 2))
+        if (!EarnStaffSelectText(agent = 1 ? "i)^Agent [1Il]$" : "i)^Agent 2$", 2))
             return EarnFail("직원: 보석 집행 요원 " agent " 선택 실패")
         state := EarnStaffReadBail(agent)
         if (state = "busy") {
@@ -195,8 +202,14 @@ EarnStaffBailAgents() {
 }
 
 EarnStaffCargoWarehouses() {
-    if (!EarnStaffSelectEnter("~Warehouse", 3))
+    if (!EarnStaffSelectEnter("~Warehouse", 3)) {
+        if (EarnStaffSectionBusy("ehouse")) {
+            EarnLog("직원: 창고 직원 작업 중 문구 확인, 건너뜀")
+            EarnStaffTrack("cargo all", "busy")
+            return true
+        }
         return EarnFail("직원: 스페셜 패키지 창고 목록 진입 실패")
+    }
     ; 창고 직원이 모두 조달 중이면 Warehouse 줄이 회색이고 Enter 가 무시된다(1004 21:37 녹화:
     ; "Your Warehouse staff members are currently busy."). 보석 사무소처럼 목록이 그대로면 건너뛴다.
     current := EarnStaffReadCargo()
@@ -224,10 +237,12 @@ EarnStaffCargoWarehouses() {
             EarnStaffTrack("cargo all", "busy")
             return EarnStaffCargoLeave()
         }
-        visited[StrLower(current.name)] := true
+        if (current.name != "")
+            visited[StrLower(current.name)] := true
+        displayName := current.name = "" ? "창고 " A_Index " (이름 판독 불가)" : current.name
         if (current.state = "busy" || current.state = "full") {
-            EarnLog("직원: " current.name (current.state = "busy" ? " 조달 중" : " 만재") ", 건너뜀")
-            EarnStaffTrack("cargo " current.name, current.state)
+            EarnLog("직원: " displayName (current.state = "busy" ? " 조달 중" : " 만재") ", 건너뜀")
+            EarnStaffTrack("cargo " displayName, current.state)
         } else {
             if (current.state != "ready" || current.price != 7500)
                 return EarnFail("직원: " current.name " 준비 문구 또는 $7,500 미확인")
@@ -386,11 +401,18 @@ EarnStaffReadCargo(pending := false, deadline := 0) {
         return false
     rowY := heading.y + 37*selectedIndex
     label := EarnStaffCargoLabel(EarnReadScreen([28,Round(rowY-17),434,35], false, deadline), rowY)
-    if (!label)
-        return false
     detail := EarnStaffCargoDetail(EarnReadScreen([28,Round(heading.y+56),434,229], true, deadline), heading)
     if (!EarnMenuRowSelected({y:rowY}) || (deadline && A_TickCount >= deadline))
         return false
+    if (!label) {
+        ; 밝은 선택 막대에서 회색 이름이 사라져도 작업 중·만재는 결제 없이 건너뛴다.
+        ; 요청 직후에는 이미 확인한 같은 인덱스·목록 크기일 때만 이전 이름을 유지한다.
+        if (!detail || (detail.state != "busy" && detail.state != "full") || selectedIndex > detail.count)
+            return false
+        if (IsObject(pending) && (pending.index != selectedIndex || pending.count != detail.count))
+            return false
+        return {name:IsObject(pending) ? pending.name : "", price:-1, index:selectedIndex, count:detail.count, state:detail.state}
+    }
     if (!detail) {
         if (IsObject(pending) && pending.name = label.name && pending.index = selectedIndex)
             return {name:label.name, price:label.price, index:selectedIndex, count:pending.count, state:"invalid"}
@@ -458,8 +480,14 @@ EarnStaffCargoDetail(lines, heading) {
 EarnStaffReadBail(agent, &identityValid := false, deadline := 0) {
     identityValid := false
     lines := EarnStaffBailRows(agent, deadline)
-    if (!EarnStaffBailIdentity(lines, agent))
+    if (!EarnStaffBailIdentity(lines, agent)) {
+        full := EarnReadScreen([25,125,450,180], false, deadline)
+        if (EarnStaffBailBusyFrame(full, agent)) {
+            identityValid := true
+            return "busy"
+        }
         return "invalid"
+    }
     identityValid := true
     last := EarnStaffBailLastRow(lines)
     detail := EarnReadScreen([28,Round(last.y+22),434,75], true, deadline)
@@ -493,9 +521,10 @@ EarnStaffBailIdentity(lines, agent) {
         return false
     observed := Map()
     for row in lines {
-        if (!RegExMatch(row.text, "i)^Agent ([0-9]+)$", &match))
+        if (!RegExMatch(row.text, "i)^Agent ([0-9]+|[Il])$", &match))
             continue
-        agentNumber := Integer(match[1])
+        ; 실제 밝은 화면의 Agent 1을 OCR이 Agent I로 읽는다. 행 위치·선택 검사는 그대로 둔다.
+        agentNumber := RegExMatch(match[1], "i)^[Il]$") ? 1 : Integer(match[1])
         if (agentNumber < 1 || agentNumber > 2 || observed.Has(agentNumber) || Abs(row.y-heading.y-37*agentNumber) > 8)
             return false
         observed[agentNumber] := row
@@ -522,9 +551,32 @@ EarnStaffBailState(lines, agent) {
     detail := EarnStaffFooter(lines, second)
     if (detail = "Send your Bail Office staff member out on a job.")
         return "ready"
-    if (detail = "Your Bail Office staff member is currently out on a job.")
+    if (EarnStaffBailBusyText(detail))
         return "busy"
     return "invalid"
+}
+
+EarnStaffBailBusyText(detail) {
+    text := StrLower(RegExReplace(detail, "[^A-Za-z]"))
+    return EarnStaffEditDistance(text, "yourbailofficestaffmemberiscurrentlyoutonajob") <= 3
+}
+
+; 작업 중 판정만 허용한다. 이름이 사라진 행을 준비 상태나 결제 대상으로 추정하지 않는다.
+EarnStaffBailBusyFrame(lines, agent) {
+    if (agent != 1 && agent != 2)
+        return false
+    heading := EarnStaffUniqueRow(lines, "i)^THE VINEWOOD CLUB APP$")
+    if (!heading || !EarnMenuRowSelected({y:heading.y+37*agent})
+        || EarnMenuRowSelected({y:heading.y+37*(agent = 1 ? 2 : 1)}))
+        return false
+    for row in lines {
+        if (RegExMatch(row.text, "i)^Agent ([0-9]+|[Il])$", &m)) {
+            n := RegExMatch(m[1], "i)^[Il]$") ? 1 : Integer(m[1])
+            if (n < 1 || n > 2 || Abs(row.y-heading.y-37*n) > 8)
+                return false
+        }
+    }
+    return EarnStaffBailBusyText(EarnStaffFooter(lines, {y:heading.y+74,h:22}))
 }
 
 ; 회색 Manage Staff Members 줄은 판독이 매번 다르게 깨진다. "Mem ers"(1005 19:24), "SfaffMem>ers"·"Staff _Members"·
@@ -667,6 +719,10 @@ EarnStaffSelectText(pattern, maxPress) {
             return false
         if (row && EarnMenuRowSelected(row))
             return row
+        ; 파견 후 글자가 사라진 선택 행은 작업 중 문구로만 유지한다. 이 결과로 결제하지 않는다.
+        agent := pattern = "i)^Agent [1Il]$" ? 1 : pattern = "i)^Agent 2$" ? 2 : 0
+        if (!row && agent && EarnStaffBailBusyFrame(lines, agent))
+            return {y:heading.y+37*agent}
         stepLines := lines
         if (row && EarnStaffListSeen(lines)) {
             ; 확인된 직원 목록은 Hangar·Warehouse·Bail Office 3줄이다. 회색 행 OCR 누락을 목록 끝으로
