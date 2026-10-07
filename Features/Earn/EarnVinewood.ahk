@@ -280,7 +280,7 @@ EarnVinewoodFreeHud() {
     idleMs := config["Settings"]["EarnUserIdleSec"] * 1000
     others := A_TimeIdle
     try others := %"AFKOthersIdleMs"%()
-    if (A_TimeIdlePhysical < idleMs || others < idleMs || !EarnHudVisible())
+    if (A_TimeIdlePhysical < idleMs || others < idleMs || !(EarnHudVisible() || EarnVinewoodHealthHud()))
         return false
     for name in ["afk_phone_frame", "ph_joblist_sel", "ph_vinewood_sel"]
         if (EarnSeen(name, [0.83,0.58,0.98,0.73]))
@@ -291,7 +291,42 @@ EarnVinewoodFreeHud() {
     return true
 }
 
-EarnVinewoodOpen() {
+; 앱 진입용 HUD 확인. 밝기가 바뀌어도 체력 막대의 녹색 우세와 가로 연속성을 본다.
+; 전역 이동·로딩 판정의 색 허용치는 바꾸지 않는다.
+EarnVinewoodHealthHud() {
+    hwnd := IsGTAActive()
+    if (!hwnd)
+        return false
+    previous := DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
+    try {
+        WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
+        if (cw != 1920 || ch != 1080)
+            return false
+        CoordMode("Pixel", "Screen")
+        colors := []
+        Loop 16
+            colors.Push(PixelGetColor(cx + 40 + (A_Index-1)*3, cy + 1053))
+        return EarnVinewoodHealthColors(colors)
+    } catch {
+        return false
+    } finally {
+        if (previous)
+            DllCall("SetThreadDpiAwarenessContext", "ptr", previous, "ptr")
+    }
+}
+
+EarnVinewoodHealthColors(colors) {
+    if (colors.Length != 16)
+        return false
+    green := 0
+    for color in colors {
+        r := (color >> 16) & 255, g := (color >> 8) & 255, b := color & 255
+        green += g >= 100 && g-r >= 40 && g-b >= 40 && Abs(r-b) <= 25
+    }
+    return green >= 12
+}
+
+EarnVinewoodOpen(manageMCT := true) {
     lines := EarnReadScreen([25,15,450,500])
     if (!IsObject(lines))
         return false
@@ -299,9 +334,9 @@ EarnVinewoodOpen() {
         return true
     if (!EarnSeen("ph_joblist_sel", [0.83,0.66,0.98,0.73])
         && !EarnSeen("ph_vinewood_sel", [0.83,0.66,0.98,0.73])) {
-        if (EarnAtMCT() && !EarnMCTClose())
+        if (manageMCT && EarnAtMCT() && !EarnMCTClose())
             return false
-        atMCT := EarnSeen("mct_sit", [0,0,0.3,0.1]) || EarnSeen("mct_terrorbyte")
+        atMCT := manageMCT && (EarnSeen("mct_sit", [0,0,0.3,0.1]) || EarnSeen("mct_terrorbyte"))
         ; MCT 앞이 아니어도 메뉴·전화 없는 맨 HUD 에서 손을 뗀 지 오래면 전화로 앱을 연다(1005 사용자 요청).
         ; 그때 CEO·MC 상태는 사용자가 정한 것이라 건드리지 않는다.
         if (!atMCT && !EarnVinewoodFreeHud()) {
@@ -309,10 +344,10 @@ EarnVinewoodOpen() {
             ; (1004 21:56 사용자가 일시정지 메뉴를 연 채 손을 떼자 MCT 작업은 미뤄졌는데 금고만 자동화를 껐다).
             global gEarnRetryIn
             gEarnRetryIn := 3 * 60000
-            return EarnFail("금고: MCT 앞 대기 위치를 확인하지 못함")
+            return EarnFail("Vinewood 앱: 사용자 입력 유휴 또는 메뉴 없는 게임 HUD 미확인")
         }
         if (!atMCT)
-            EarnLog("금고: MCT 앞이 아니라 빈 화면에서 전화로 앱을 연다")
+            EarnLog("Vinewood 앱: 위치·보스 변경 없이 게임 HUD에서 전화로 앱을 연다")
         if ((atMCT && !EarnCEO(false)) || !EarnPress("Up") || !EarnSleep(700))
             return false
     }
@@ -364,7 +399,7 @@ EarnVinewoodClose() {
     ; 조달 직후에는 게임 알림이 왼쪽 위 안내 자리를 몇 초 덮는다(1005 08:40 실측: 격납고 조달 뒤 닫기 제한).
     ; 마지막까지 앱·전화가 안 보였으면 닫힌 것이다. 위치는 다음 작업이 시작할 때 다시 확인한다.
     if (closedReads >= 3) {
-        EarnLog("금고: 앱은 닫혔고 MCT 안내는 가려져 있음")
+        EarnLog("Vinewood 앱: 앱·전화 닫힘 확인, MCT 위치 확인은 필요 없음")
         return true
     }
     return EarnFail("금고: 앱 메뉴 닫기 제한")
