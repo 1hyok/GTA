@@ -132,6 +132,10 @@ EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
     ; 홈의 두 제목은 서로 오차 154 이상 떨어져 70이면 구분된다.
     if (name = "ph_joblist_sel" || name = "ph_vinewood_sel")
         variation := Max(variation, 70)
+    ; 통화 종료 아이콘은 녹화에서 오차 12여도 실제 데스크톱에서는 55였다(1007 실측).
+    ; 이 아이콘만 60으로 허용한다. 전화 없는 같은 영역은 오차 178로 구분된다.
+    if (name = "phone_call_end")
+        variation := Max(variation, 60)
     return TemplateSeen("Earn", name, area, &fx, &fy, variation)
 }
 ; timeoutMs 안에 name 이 보이면 true. 전체 멈춤·포커스 이탈이면 바로 false.
