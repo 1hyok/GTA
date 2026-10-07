@@ -152,13 +152,14 @@ EarnSelectText(pattern, heading, maxPress := 12) {
 }
 
 ; Vinewood 앱 목록은 끝에서 반대쪽 끝으로 돈다. 제목 아래 37px 간격의 줄을 세어
-; 선택 줄에서 목표 줄까지 위·아래 중 덜 누르는 쪽을 고른다. 판단이 안 서면 원래대로 Down.
+; 선택 줄에서 목표 줄까지 위·아래 중 덜 누르는 쪽을 고른다. 판단이 안 서면 호출자가 정한 방향(기본 Down)을 쓴다.
 ; areaBottom 은 판독 영역의 아래 끝이다. 마지막 줄 다음 자리가 영역 밖이면 목록이 잘렸을 수 있어
 ; 끝을 돌아가는 Up 은 쓰지 않는다(줄 수를 적게 세면 위아래를 오가며 헤맨다).
-EarnMenuStepKey(lines, heading, target, areaBottom, &why := "") {
+EarnMenuStepKey(lines, heading, target, areaBottom, &why := "", uncertainKey := "Down") {
     why := "목표 줄이 화면에 없음 → Down"
     if (!IsObject(lines) || !IsObject(heading) || !IsObject(target))
         return "Down"
+    uncertainKey := uncertainKey = "Up" ? "Up" : "Down"
     rows := []
     Loop 12 {
         y := heading.y + 37 * A_Index, hit := false
@@ -182,8 +183,8 @@ EarnMenuStepKey(lines, heading, target, areaBottom, &why := "") {
     }
     n := rows.Length
     if (!cur || !goal) {
-        why := target.text " 까지: 선택 줄을 못 찾음(" n "줄) → Down"
-        return "Down"
+        why := target.text " 까지: 선택 줄을 못 찾음(" n "줄) → " uncertainKey
+        return uncertainKey
     }
     clipped := heading.y + 37 * (n + 1) + 5 > areaBottom
     up := clipped ? (goal < cur ? cur - goal : 99) : Mod(cur - goal + n, n)

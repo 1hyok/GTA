@@ -182,11 +182,11 @@ RunDeadlineTests() {
 
 RunMenuTests() {
     global mode, screenState, selected, keys
-    for nextMode in ["truncated_menu_raw","missing_menu_target","wrong_menu_heading","duplicate_menu_target","misplaced_menu_target","menu_changes_before_enter","menu_selection_before_enter"] {
+    for nextMode in ["truncated_menu_raw","missing_selected_menu_row","missing_menu_target","wrong_menu_heading","duplicate_menu_target","misplaced_menu_target","menu_changes_before_enter","menu_selection_before_enter"] {
         Reset(nextMode,["busy","busy"])
         screenState := "main", selected := "Claim Business Earnings"
         result := EarnStaffRoot()
-        expected := nextMode = "truncated_menu_raw"
+        expected := nextMode = "truncated_menu_raw" || nextMode = "missing_selected_menu_row"
         Check(result = expected, nextMode " root result")
         enters := 0, downs := 0, ups := 0
         for key in keys {
@@ -200,7 +200,7 @@ RunMenuTests() {
         Check(enters = (expected ? 1 : 0), nextMode " exact selected verification before Enter")
         Check(downs <= 6, nextMode " bounded menu traversal")
         if (expected)
-            Check(screenState = "staff" && downs = 0 && ups = 1, "six actual main menu rows: bottom row is one Up from the top")
+            Check(screenState = "staff" && downs = 0 && ups = 1, "main menu reaches bottom row with one Up even when selected row OCR is missing")
     }
     ; 작업 중 요원 행의 일반 판독이 깨져도("I Agent 2", 1004 02:01 실측) 흰 글자 판독으로 위치를 확인하고 돌아간다.
     Reset("garbled_busy_root",["busy","busy"])
@@ -454,13 +454,22 @@ EarnReadScreen(area, whiteText := false, deadline := 0) {
 MockReadScreen(area, whiteText) {
     global mode, screenState, selected, statuses, reads, requests
     global cargoNames, cargoStatuses, cargoRequests, cargoReads, postReads
-    global menuReads, mainNames, hangarReads, greyText, greyMissing, flickerReads
+    global menuReads, mainNames, hangarReads, greyText, greyMissing, flickerReads, keys
     if (screenState = "main") {
         if (area[4] = 263 || area[4] = 300)
             menuReads += 1
         rows := [TextLine("THE VINEWOOD CLUB APP",144)]
         for index, name in mainNames
             rows.Push(TextLine(name,144+37*index))
+        ; 실제 로그처럼 첫 판독에서 선택 막대 안의 검은 글자 한 줄만 빠진다. 키를 누른 뒤에는 다시 읽힌다.
+        if (mode = "missing_selected_menu_row" && keys.Length = 0) {
+            for index, name in mainNames {
+                if (name = selected) {
+                    rows.RemoveAt(index+1)
+                    break
+                }
+            }
+        }
         if (mode = "truncated_menu_raw" && !whiteText || mode = "missing_menu_target")
             rows[7].text := "Manage Staff Mem"
         if (mode = "grey_staff_menu")
