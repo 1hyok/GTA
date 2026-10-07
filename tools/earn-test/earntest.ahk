@@ -29,6 +29,7 @@ StopAll(*) {
 }
 global gAbort := false
 global gEarnNextDue := Map()
+global gEarnDue := Map()
 global gEarnBusy := false
 global gTestArmed := false
 global gTestInputMutex := 0
@@ -51,7 +52,7 @@ if (!A_Args.Length) {
 fn := A_Args[1], arg := A_Args.Length > 1 ? A_Args[2] : "", arg2 := A_Args.Length > 2 ? A_Args[3] : "", arg3 := A_Args.Length > 3 ? A_Args[4] : ""
 global gTestIdleMs := 8000
 t0 := A_TickCount
-if (fn != "MCTStatus" && fn != "Idle" && fn != "Status" && fn != "SessionInfo" && fn != "BlipInfo" && fn != "NavInfo" && fn != "EarnSpawnRoute" && !EarnTestPrepare()) {
+if (fn != "PhoneStatus" && fn != "MCTStatus" && fn != "Idle" && fn != "Status" && fn != "SessionInfo" && fn != "BlipInfo" && fn != "NavInfo" && fn != "EarnSpawnRoute" && !EarnTestPrepare()) {
     FileAppend(fn " = not started fail=" gEarnFail "`n", "*", "UTF-8")
     ExitApp(3)
 }
@@ -89,6 +90,12 @@ MCTStatus() {
         . " bunkerCard=" EarnSeen("mct_bunker_card") " nightclubCard=" EarnSeen("mct_nightclub_card")
         . " popularity=" EarnPopularityMCTPct()
         . " stock=" EarnBarFill(766,1154,555,"green") " supply=" EarnBarFill(766,1154,577,"blue")
+}
+
+PhoneStatus() {
+    return "active=" (IsGTAActive() ? 1 : 0) " frame=" EarnSeen("afk_phone_frame", [0.83,0.58,0.98,0.72])
+        . " endDefault=" TemplateSeen("Earn", "phone_call_end", [0.9,0.92,0.99,0.98])
+        . " end=" EarnSeen("phone_call_end", [0.9,0.92,0.99,0.98])
 }
 
 MCTSmoke() {
