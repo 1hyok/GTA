@@ -200,6 +200,8 @@ DJ 기본 목표는 95%다. 직원 업그레이드·일반 수입 배수에서 �
 
 앱 첫 화면의 `Manage Staff Members`는 맨 위 기본 선택에서 `Up` 한 번으로 감아 이동한다. 현재 선택 줄 OCR이 빠져도 이 진입만은 `Up`을 기본 방향으로 사용하고, 이동 뒤 실제 선택 줄을 다시 확인한 다음 Enter를 보낸다. 직원 관리의 Hangar·Warehouse·Bail Office 목록이 확인되면 이동 방향은 실제 3개 행의 선택 막대 위치로 계산한다. 회색 행이 OCR에서 빠져도 목록을 2줄로 줄여 계산하지 않는다. 목표에 도착했는지는 실제로 읽힌 목표 이름과 선택 막대를 다시 확인한다. 목표 이름이 계속 읽히지 않으면 제한된 탐색 뒤 중단하고 Enter를 보내지 않는다.
 
+별도 `EarnHangarStaff=1` 설정은 격납고 직원에게 $25,000 조달을 요청한다. 파견 뒤 회색 Hangar 이름이 판독에서 사라지면 앱 제목, Warehouse·Bail Office의 고정 위치, 격납고 행의 선택 막대와 전체 조달 중 문구를 함께 확인해 완료로 처리한다. 이 보완은 이미 작업 중인 직원의 확인에만 사용하며, 이름·가격을 못 읽은 상태에서는 결제하지 않는다.
+
 반복 예약과 오류 처리의 입력 없는 검사는 `powershell -NoProfile -ExecutionPolicy Bypass -File tools/earn-test/test-earner.ps1`로 실행한다. 실제 스케줄러 함수를 사용하지만 게임·창·키 입력은 대체하므로 장시간 게임 운용을 검증하는 시험은 아니다.
 
 이전 금고 방문·아케이드 복귀 경로의 실측과 실패 기록은 [9월 인계 기록](docs/earner-handoff.md)에 보존한다. 이 이동 경로는 현재 F9 금고 작업의 완료 조건에서 제외했다. 남아 있는 길찾기·블립 검사는 `tools/earn-test/test-earnnav.ps1`, `tools/earn-test/test-earnblip.ps1`이다.
