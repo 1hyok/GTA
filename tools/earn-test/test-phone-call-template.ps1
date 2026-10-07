@@ -64,6 +64,12 @@ for sample in HOME_CASES {
     if (EarnSeen(sample[1], [0.83,0.66,0.98,0.73]) != sample[3])
         throw Error("Phone home fallback mismatch: " sample[1])
 }
+requiredVariation := 55, homeMinimum := 255
+if (!EarnSeen("ph_joblist_sel") || !EarnSeen("ph_vinewood_sel"))
+    throw Error("Original phone home tolerance 70 must remain supported")
+requiredVariation := 255, homeMinimum := 55
+if (EarnSeen("ph_joblist_sel") || EarnSeen("ph_vinewood_sel"))
+    throw Error("New live phone home templates must keep tolerance 40")
 FileAppend("PASS phone-call fixtures and unrelated tolerance`n", "*")
 ExitApp(0)
 TemplateSeen(folder,name,area,&x,&y,variation) => (name = "phone_call_end_live" ? liveRequiredVariation
