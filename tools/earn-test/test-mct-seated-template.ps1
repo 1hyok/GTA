@@ -11,8 +11,19 @@ $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $assetDirectory = Join-Path $root 'Images\Earn\1920x1080'
 $evidence = Join-Path $root 'docs\evidence\2026-09-27-mct'
+$core = Get-Content -LiteralPath (Join-Path $root 'Features\Earn\EarnCore.ahk') -Raw
 $cases = 0
 . (Join-Path $PSScriptRoot 'compare-png-pixels.ps1')
+
+foreach ($contract in @(
+    @{ Name = 'HDR seated text tolerance'; Pattern = 'TemplateSeen\("Earn", part, area, &fx, &fy, Max\(variation, 160\)\)' },
+    @{ Name = 'HDR seated dark-background validation'; Pattern = 'TemplateAt\("Earn", part "_bg", fx, fy, 120\)' },
+    @{ Name = 'HDR MCT title tolerance'; Pattern = 'TemplateSeen\("Earn", name, IsObject\(area\) \? area : \[0\.3,0,0\.7,0\.1\], &fx, &fy, Max\(variation, 150\)\)' }
+)) {
+    if ($core -notmatch $contract.Pattern) { throw "Missing MCT recognition contract: $($contract.Name)" }
+    $cases++
+    Write-Output "PASS recognition $($contract.Name)"
+}
 
 # Also runs the existing nightclub positive/negative regression. Its public
 # pixel matcher implements the same per-channel ImageSearch comparison.

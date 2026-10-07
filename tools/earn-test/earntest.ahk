@@ -121,6 +121,10 @@ MCTSmoke() {
     return EarnDJSwapLoop(EarnPopularityMCTPct())
 }
 
+MCTOpenCloseSmoke() {
+    return EarnMCTOpen() && EarnMCTClose()
+}
+
 ; 복귀 경로 시험: 아케이드로 한 번 이동한 뒤 실제 MCT 전용 안내까지 확인한다.
 ; 경로 실패로 다시 접속하지 않으며 Main/AFK를 실행하지 않는다.
 ArcadeReturnSmoke() {

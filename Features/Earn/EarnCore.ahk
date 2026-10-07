@@ -87,14 +87,18 @@ EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
     ; Enter 만 보내다 멈춤, 녹화 프레임에서 1,500자리 넘게 일치). 맞은 자리의 글자 밖 바탕이 안내 상자처럼 어두워야 인정한다.
     if (name = "mct_seated") {
         for part in ["mct_seated_mansion", "mct_seated"]
-            if (TemplateSeen("Earn", part, area, &fx, &fy, variation) && TemplateAt("Earn", part "_bg", fx, fy))
+            if (TemplateSeen("Earn", part, area, &fx, &fy, Max(variation, 160))
+                && TemplateAt("Earn", part "_bg", fx, fy, 120))
                 return true
         return false
     }
     ; "Press E to sit down" 도 같은 흰 글자 템플릿이라 밝은 벽 앞에서 맞는다(1005 22:55 길가에서 MC 판매를 돕던 중 글자 차이 30~33 으로
     ; 맞아 E 를 누르고 앉기를 기다리다 꺼짐. 그때 글자 밖 바탕 밝기 231, 진짜 안내는 7). 바탕이 어두워야 인정한다.
     if (name = "mct_sit")
-        return TemplateSeen("Earn", "mct_sit", area, &fx, &fy, variation) && TemplateAt("Earn", "mct_sit_bg", fx, fy)
+        return TemplateSeen("Earn", "mct_sit", area, &fx, &fy, Max(variation, 60)) && TemplateAt("Earn", "mct_sit_bg", fx, fy)
+    ; HDR 톤 매핑은 MCT 웹 화면 제목 픽셀을 크게 바꾸지만, 이 고정된 제목 영역의 문구는 고유하다.
+    if (name = "mct_title")
+        return TemplateSeen("Earn", name, IsObject(area) ? area : [0.3,0,0.7,0.1], &fx, &fy, Max(variation, 150))
     ; 테러바이트 안내는 CEO 여부에 따라 두 모양이다. CEO 일 때는 'Touchscreen computer / Master Control Terminal'.
     ; 반투명 상자라 뒤 배경에 따라 픽셀이 바뀌고, 남은 커서가 한 줄을 가릴 수 있다(1003 17:15 실측).
     ; 그래서 세 줄 중 하나만 맞아도 인정하고 허용 오차를 60으로 둔다.
