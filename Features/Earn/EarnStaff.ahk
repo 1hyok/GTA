@@ -676,7 +676,10 @@ EarnStaffSelectText(pattern, maxPress) {
             Loop 3
                 stepLines.Push({y:heading.y + 37*A_Index})
         }
-        key := EarnMenuStepKey(stepLines, heading, row, 425, &why)
+        ; 앱 첫 화면은 맨 위 Claim Business Earnings에서 열리고 Manage Staff Members는 맨 아래다.
+        ; 선택 막대 안의 검은 글자가 OCR에서 빠져 줄 위치 계산이 불완전해도 아래로 다섯 번 가지 않고 위로 한 번 돈다.
+        uncertainKey := row && EarnStaffTextMatch(row.text, "i)^Manage Staff Members$") ? "Up" : "Down"
+        key := EarnMenuStepKey(stepLines, heading, row, 425, &why, uncertainKey)
         if (A_Index = 1 && A_Index <= maxPress)
             EarnLog("앱 이동: " why)
         if (A_Index > maxPress || !EarnPress(key) || !EarnSleep(200))
