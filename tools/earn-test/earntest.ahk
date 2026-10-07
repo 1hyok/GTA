@@ -45,6 +45,7 @@ config["Settings"]["EarnDJPopularityPct"] := 95
 config["Settings"]["EarnBunkerIntervalSec"] := 6720
 config["Settings"]["EarnBailAgents"] := 1
 config["Settings"]["EarnCargoStaff"] := 1
+config["Settings"]["EarnUserIdleSec"] := 8
 if (!A_Args.Length) {
     FileAppend("함수 이름이 필요합니다. 읽기 전용 상태: Status`n", "*", "UTF-8")
     ExitApp(2)
