@@ -9,6 +9,22 @@ $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $template = [Drawing.Bitmap]::FromFile((Join-Path $root 'Images\Earn\1920x1080\phone_call_end.png'))
 $liveTemplate = [Drawing.Bitmap]::FromFile((Join-Path $root 'Images\Earn\1920x1080\phone_call_end_live.png'))
 $scenarios = @()
+$homeScenarios = @()
+foreach ($name in @('ph_joblist_sel', 'ph_vinewood_sel')) {
+    $homeTemplate = [Drawing.Bitmap]::FromFile((Join-Path $root "Images\Earn\1920x1080\${name}_live.png"))
+    try {
+        foreach ($sample in @('ph_joblist_sel', 'ph_vinewood_sel')) {
+            $source = [Drawing.Bitmap]::FromFile((Join-Path $PSScriptRoot "phone-call-fixtures\${sample}_live.png"))
+            try {
+                $x=0; $y=0
+                $area = New-Object Drawing.Rectangle 0, 0, $source.Width, $source.Height
+                $minimum = [EarnNightclubTemplateTest]::MinimumVariation($source,$homeTemplate,$area,[ref]$x,[ref]$y)
+                if (($minimum -le 40) -ne ($sample -eq $name)) { throw "Phone home selection mismatch: $name / $sample / $minimum" }
+                $homeScenarios += '["' + $name + '",' + $minimum + ',' + ([int]($sample -eq $name)) + ']'
+            } finally { $source.Dispose() }
+        }
+    } finally { $homeTemplate.Dispose() }
+}
 try {
     foreach ($sample in @(@('live-call-end', $true), @('recorded-call-end', $true), @('live-call-end-2122', $true), @('no-phone', $false))) {
         $source = [Drawing.Bitmap]::FromFile((Join-Path $PSScriptRoot "phone-call-fixtures\$($sample[0]).png"))
@@ -32,6 +48,7 @@ $driver = @'
 #Warn All, StdOut
 global requiredVariation := 0
 global liveRequiredVariation := 0
+global homeMinimum := 255
 OnError((err,*) => (FileAppend("FAIL " err.Message "`n", "**"), ExitApp(1)))
 for sample in FIXTURE_CASES {
     requiredVariation := sample[2]
@@ -42,12 +59,19 @@ for sample in FIXTURE_CASES {
 requiredVariation := 55
 if (EarnSeen("afk_phone_frame", [0.83,0.58,0.98,0.72]))
     throw Error("Unrelated phone-frame tolerance must remain unchanged")
+for sample in HOME_CASES {
+    requiredVariation := 255, homeMinimum := sample[2]
+    if (EarnSeen(sample[1], [0.83,0.66,0.98,0.73]) != sample[3])
+        throw Error("Phone home fallback mismatch: " sample[1])
+}
 FileAppend("PASS phone-call fixtures and unrelated tolerance`n", "*")
 ExitApp(0)
-TemplateSeen(folder,name,area,&x,&y,variation) => (name = "phone_call_end_live" ? liveRequiredVariation : requiredVariation) <= variation
+TemplateSeen(folder,name,area,&x,&y,variation) => (name = "phone_call_end_live" ? liveRequiredVariation
+    : name = "ph_joblist_sel_live" || name = "ph_vinewood_sel_live" ? homeMinimum : requiredVariation) <= variation
 TemplateAt(*) => false
 '@
 $driver = $driver.Replace('FIXTURE_CASES', '[' + ($scenarios -join ',') + ']')
+$driver = $driver.Replace('HOME_CASES', '[' + ($homeScenarios -join ',') + ']')
 $info = New-Object Diagnostics.ProcessStartInfo
 $info.FileName = $AhkPath
 $info.Arguments = '/ErrorStdOut /CP65001 *'

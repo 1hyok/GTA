@@ -108,7 +108,7 @@ RunTests() {
     Check(EarnVinewoodClose() && gState = "standing", "phone home is closed before reporting success")
     Reset("normal", "pause_menu")
     RetryIn(0)
-    Check(!EarnVinewoodOpen() && gKeys.Length = 0 && RetryIn() = 180000 && InStr(gFailure, "대기 위치"),
+    Check(!EarnVinewoodOpen() && gKeys.Length = 0 && RetryIn() = 180000 && InStr(gFailure, "HUD"),
         "away from MCT retries in three minutes without input")
     for idle in [[1000, 600000, "physical"], [600000, 1000, "remote"]] {
         Reset("normal", "hud")
@@ -116,11 +116,27 @@ RunTests() {
         gPhysIdle := idle[1], gOthersIdle := idle[2]
         Check(!EarnVinewoodOpen() && gKeys.Length = 0 && RetryIn() = 180000,
             "free HUD waits while recent " idle[3] " input exists")
+        Check(!EarnVinewoodOpen(false) && gKeys.Length = 0, "staff preserves " idle[3] " input guard")
     }
     Reset("hud_menu", "hud")
     Check(!EarnVinewoodOpen() && gKeys.Length = 0, "free HUD with an open menu sends no keys")
+    Check(!EarnVinewoodOpen(false) && gKeys.Length = 0, "staff also blocks an open menu")
+    for color in [0x4C8F4C, 0x9BFF9F, 0x000000, 0xFFFFFF, 0xFF3333, 0x3399FF] {
+        samples := []
+        Loop 16
+            samples.Push(color)
+        Check(EarnVinewoodHealthColors(samples) = (color = 0x4C8F4C || color = 0x9BFF9F),
+            "health bar accepts recorded normal/bright green and rejects other colors " color)
+    }
+    Check(!EarnVinewoodHealthColors([0x9BFF9F]), "one green pixel is not a health bar")
     Reset("normal", "hud")
     Check(EarnVinewoodOpen() && gState = "main" && gKeys[1] = "Up" && gCEOCalls = 0, "free HUD opens the phone without CEO setup")
+    Reset("normal", "hud")
+    Check(EarnVinewoodOpen(false) && gState = "main" && gMctCloses = 0 && gCEOCalls = 0,
+        "staff opens away from MCT without terminal or boss operations")
+    Reset("normal", "standing")
+    Check(!EarnVinewoodOpen(false) && gKeys.Length = 0 && gMctCloses = 0 && gCEOCalls = 0,
+        "staff does not substitute MCT position for a verified free HUD")
     Reset("normal", "phone_job")
     Check(EarnVinewoodOpen() && gState = "main" && gKeys.Length = 2
         && gKeys[1] = "Right" && gKeys[2] = "Enter", "Job List home only moves right and opens the selected app")

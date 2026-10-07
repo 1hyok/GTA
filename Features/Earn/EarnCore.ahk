@@ -78,6 +78,10 @@ EarnAborted() {
 
 ; name 템플릿(Images\Earn\<해상도>\<name>.png)이 area(클라이언트 비율 [x1, y1, x2, y2]) 안에 보이면 true. 찾은 자리(화면 좌표)는 &fx, &fy.
 EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
+    ; 실제 밝은 전화 홈의 제목 변형. 다른 메뉴의 허용 오차를 넓히지 않는다.
+    if (name = "ph_joblist_sel" || name = "ph_vinewood_sel")
+        return TemplateSeen("Earn", name, area, &fx, &fy, variation)
+            || TemplateSeen("Earn", name "_live", area, &fx, &fy, variation)
     ; 저택 MCT는 'Press ... to access' 대신 메뉴형 안내를 표시한다.
     ; 템플릿이 흰 글자만 보므로 밝은 하늘 위에서는 아무 데나 맞는다(1003 23:44 실측: 선 채 하늘을 볼 때 앉은 안내로 오판해
     ; Enter 만 보내다 멈춤, 녹화 프레임에서 1,500자리 넘게 일치). 맞은 자리의 글자 밖 바탕이 안내 상자처럼 어두워야 인정한다.
