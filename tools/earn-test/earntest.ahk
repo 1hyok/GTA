@@ -84,12 +84,20 @@ Probe() {
 }
 
 MCTStatus() {
-    return "mct=" EarnSeen("mct_title", [0.3,0,0.7,0.1])
-        . " needsCEO=" EarnSeen("mct_need_ceo") " seated=" EarnSeen("mct_seated", [0,0,0.3,0.1]) " sit=" EarnSeen("mct_sit", [0,0,0.3,0.1])
-        . " bunkerPage=" EarnSeen("bunker_page") " bunkerPageExplicit=" EarnSeen("bunker_page", [0.15,0,0.35,0.12])
-        . " bunkerBuy=" EarnSeen("bunker_buy") " bunkerConfirm=" EarnSeen("bunker_confirm") " bunkerPending=" EarnSeen("bunker_pending")
-        . " bunkerCard=" EarnSeen("mct_bunker_card") " nightclubCard=" EarnSeen("mct_nightclub_card")
+    return "mct=" (EarnSeen("mct_title", [0.3,0,0.7,0.1]) ? 1 : 0)
+        . " needsCEO=" (EarnSeen("mct_need_ceo") ? 1 : 0) " seated=" (EarnSeen("mct_seated", [0,0,0.3,0.1]) ? 1 : 0) " sit=" (EarnSeen("mct_sit", [0,0,0.3,0.1]) ? 1 : 0)
+        . " bunkerEntry=" (EarnSeen("bunker_entry", [0.34,0.54,0.64,0.64]) ? 1 : 0)
+        . " bunkerPage=" (EarnSeen("bunker_page") ? 1 : 0) " bunkerPageExplicit=" (EarnSeen("bunker_page", [0.15,0,0.35,0.12]) ? 1 : 0)
+        . " bunkerBuy=" (EarnSeen("bunker_buy") ? 1 : 0) " bunkerConfirm=" (EarnSeen("bunker_confirm") ? 1 : 0) " bunkerPending=" (EarnSeen("bunker_pending") ? 1 : 0)
+        . " bunkerCard=" (EarnSeen("mct_bunker_card") ? 1 : 0) " nightclubCard=" (EarnSeen("mct_nightclub_card") ? 1 : 0)
         . " popularity=" EarnPopularityMCTPct()
+        . " nightclubHome=" (EarnSeen("nc_popularity_home", [0.38,0.14,0.54,0.19]) ? 1 : 0) " homePopularity=" EarnPopularityHomePct()
+        . " djMenu=" (EarnSeen("dj_solomun") ? 1 : 0)
+        . " leftRebook10k=" (EarnSeen("dj_rebook_10k", [0.38,0.50,0.603,0.58]) ? 1 : 0)
+        . " leftResident=" (EarnSeen("dj_resident", [0.38,0.50,0.603,0.58]) ? 1 : 0)
+        . " rightResident=" (EarnSeen("dj_resident_right", [0.61,0.50,0.835,0.58]) ? 1 : 0)
+        . " confirmSolomun=" (EarnSeen("dj_confirm_solomun") ? 1 : 0)
+        . " confirmTale=" (EarnSeen("dj_confirm_tale") ? 1 : 0)
         . " stock=" EarnBarFill(766,1154,555,"green") " supply=" EarnBarFill(766,1154,577,"blue")
 }
 
@@ -123,6 +131,55 @@ MCTSmoke() {
 
 MCTOpenCloseSmoke() {
     return EarnMCTOpen() && EarnMCTClose()
+}
+
+DJMenuBackSmoke() {
+    if (!EarnUIReady("dj_solomun"))
+        return EarnFail("DJ 복귀: 확인된 주민 DJ 목록이 아님")
+    if (!EarnPress("Backspace") || !EarnWaitSeen("nc_home", "", 5000))
+        return EarnFail("DJ 복귀: Nightclub Home 미확인")
+    return EarnUIBackToMCT("nc_home", 1)
+}
+
+DJConfirmStatus() {
+    return EarnSeen("dj_confirm_solomun") ? 1 : 0
+}
+
+DJCancelCurrentSmoke() {
+    if (!EarnUIReady("dj_confirm_solomun"))
+        return EarnFail("DJ 취소: Solomun 재고용 확인창 미확인")
+    if (!EarnUIClick("dj_confirm_solomun", 750, 628)
+        || !EarnWaitGone("dj_confirm_solomun", "", 3000))
+        return EarnFail("DJ 취소: 확인창 닫힘 미확인")
+    return true
+}
+
+DJConfirmCurrentSmoke(pop := 51) {
+    global gEarnDJCheckAbove
+    area := [0.38,0.50,0.603,0.58]
+    if (!EarnUIReady("dj_confirm_solomun")
+        || !EarnUIClick("dj_confirm_solomun", 1160, 628)
+        || !EarnWaitGone("dj_confirm_solomun", "", 15000)
+        || !EarnWaitSeen("dj_resident", area, 5000))
+        return EarnFail("DJ 복귀: 확인된 Solomun 재고용 결과 없음")
+    gEarnDJCheckAbove := pop
+    EarnStateSet("dj_check_above", pop)
+    EarnDJSchedule(pop, true)
+    if (!EarnUIClick("nc_home", 495, 596)
+        || !EarnWaitSeen("nc_popularity_home", [0.38,0.14,0.54,0.19], 5000))
+        return EarnFail("DJ 복귀: 재고용 뒤 Home 미확인")
+    EarnLog("DJ: 재고용 결과 확인, 인기도 확인값 " pop "% 이후 상승 여부 다음 확인")
+    return EarnUIBackToMCT("nc_dj_menu", 1)
+}
+
+DJPopularityReadSmoke() {
+    if (!EarnDJHomeOpen())
+        return EarnFail("DJ 판독: Nightclub Home 진입 실패")
+    pop := EarnPopularityHomePct()
+    EarnLog("DJ: 재고용 후 실제 Home 인기도 " pop "%")
+    if (pop < 0)
+        return EarnFail("DJ 판독: Nightclub Home 인기도 미확인")
+    return EarnUIBackToMCT("nc_home", 1)
 }
 
 ; 복귀 경로 시험: 아케이드로 한 번 이동한 뒤 실제 MCT 전용 안내까지 확인한다.

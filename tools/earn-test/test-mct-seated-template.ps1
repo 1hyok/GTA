@@ -19,6 +19,16 @@ foreach ($contract in @(
     @{ Name = 'HDR seated text tolerance'; Pattern = 'TemplateSeen\("Earn", part, area, &fx, &fy, Max\(variation, 160\)\)' },
     @{ Name = 'HDR seated dark-background validation'; Pattern = 'TemplateAt\("Earn", part "_bg", fx, fy, 120\)' },
     @{ Name = 'HDR MCT title tolerance'; Pattern = 'TemplateSeen\("Earn", name, IsObject\(area\) \? area : \[0\.3,0,0\.7,0\.1\], &fx, &fy, Max\(variation, 150\)\)' },
+    @{ Name = 'HDR CEO prompt OCR fallback is title-gated'; Pattern = '(?s)if \(name = "mct_need_ceo"\).*?EarnSeen\("mct_title", \[0\.3,0,0\.7,0\.1\]\).*?EarnMCTNeedsCEOText\(EarnReadScreen\(\[25,15,500,120\]\)\)' },
+    @{ Name = 'CEO OCR requires both unique prompt lines'; Pattern = '(?s)EarnMCTNeedsCEOText\(lines\) \{\s*return EarnFindText\(lines, "i\)\^You need to be a CEO or Motorcycle\$"\)\s*&& EarnFindText\(lines, "i\)\^Club President to manage this business\\\.\$"\)' },
+    @{ Name = 'MCT bunker entry OCR fallback is list-excluded'; Pattern = '(?s)if \(name = "bunker_entry"\) \{.*?EarnSeen\("mct_title", \[0\.3,0,0\.7,0\.1\]\).*?EarnMCTBunkerEntryText\(EarnReadScreen\(\[600,400,720,350\]\)\)' },
+    @{ Name = 'Bunker OCR requires title, platform, and button'; Pattern = '(?s)EarnMCTBunkerEntryText\(lines\) \{\s*return EarnFindText\(lines, "i\)\^DISRUPTION\$"\)\s*&& EarnFindText\(lines, "i\)\^LOGISTICS\$"\)\s*&& EarnFindText\(lines, "i\)\^Click To Enter\$"\)' },
+    @{ Name = 'Nightclub OCR is limited to three home views'; Pattern = '(?s)if \(name = "nc_home" \|\| name = "nc_dj_menu" \|\| name = "nc_popularity_home"\).*?EarnMCTNightclubHomeText\(lastNightclubLines\)' },
+    @{ Name = 'Nightclub OCR requires a unique page and resident label'; Pattern = '(?s)EarnMCTNightclubHomeText\(lines\) \{\s*return EarnFindText\(lines, "i\)\^Nightclub Jobs Completed\$"\)\s*&& EarnFindText\(lines, "i\)\^Resident DJ\$"\)' },
+    @{ Name = 'Home navigation is verified on Home or DJ list'; Pattern = '(?s)EarnMCTHomeNavText\(lines\) \{\s*return EarnFindText\(lines, "i\)\^Home\$"\)\s*&& \(EarnMCTNightclubHomeText\(lines\) \|\| EarnMCTDJMenuText\(lines\)\)' },
+    @{ Name = 'DJ fallback requires distinct artist, resident, and card identity'; Pattern = '(?s)EarnMCTDJMenuText\(lines\) \{\s*return EarnFindText\(lines, "i\)\^Dixon\$"\)\s*&& EarnFindText\(lines, "i\)\^The Black Madonna\$"\)\s*&& EarnFindText\(lines, "i\)\^Resident\$"\)' },
+    @{ Name = 'DJ purchase fallback requires exact side price'; Pattern = '(?s)EarnMCTDJRebookText\(lines, side\) \{.*?RegExMatch\(row.text, "i\)\^Rebook\$"\).*?RegExMatch\(row.text, "\^\\\$10,000\$"\)' },
+    @{ Name = 'DJ confirmation fallback requires exact artist and amount'; Pattern = '(?s)EarnMCTDJConfirmationText\(lines, djName\) \{\s*return EarnFindText\(lines, "i\)\^Resident DJ\$"\).*?" for \\\$10000 and make\$"\).*?"i\)\^C\[Oo\]\[NnRr\]firm\$"' },
     @{ Name = 'HDR MCT business-card tolerance'; Pattern = 'TemplateSeen\("Earn", name, area, &fx, &fy, Max\(variation, 100\)\)' }
 )) {
     if ($core -notmatch $contract.Pattern) { throw "Missing MCT recognition contract: $($contract.Name)" }

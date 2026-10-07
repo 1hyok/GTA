@@ -948,7 +948,7 @@ EarnFail(reason) {
     $djFlowDriver = @'
 global config := Map("Settings",Map("EarnDJPopularityPct",95)), popularity := 90, allowRebook := true,
     gain := 10, confirmations := 0, djScene := "mct", djMode := "", homeReads := 0, backs := 0,
-    gEarnDJCheckAbove := -1
+    gEarnDJCheckAbove := -1, djState := Map()
 ; Real Home reader/opening and DJ flow. A stale MCT value (92) is never authoritative.
 ; One Home visit per run: a rebook goes Home → MCT once, and the next run checks that popularity rose.
 ; [popularity, rebook allowed, gain, result, payments, start scene, mode, previous rebook popularity]
@@ -962,8 +962,10 @@ cases := [[97,true,10,true,0,"mct","",-1],[90,true,10,true,1,"mct","",-1],
     [95,true,10,false,0,"mct","back_failed",-1],[90,true,10,false,0,"mct","abort",-1],
     ; 지난 재고용이 먹었는지는 다음 방문의 첫 Home 값으로 본다.
     [100,true,10,true,0,"mct","",91],[91,true,10,false,0,"mct","",91],
-    [80,true,10,false,0,"mct","",91],[91,true,10,true,1,"mct","",80]]
+    [80,true,10,false,0,"mct","",91],[91,true,10,true,0,"mct","",80],
+    [55,true,10,true,0,"mct","",51]]
 for c in cases {
+    djState.Clear()
     popularity := c[1], allowRebook := c[2], gain := c[3], confirmations := 0,
         djScene := c[6], djMode := c[7], homeReads := 0, backs := 0, gEarnDJCheckAbove := c[8]
     result := EarnDJSwapLoop(92)
@@ -975,8 +977,12 @@ for c in cases {
         throw Error("DJ read Home popularity more than once in one visit")
     if (gEarnDJCheckAbove != (confirmations ? c[1] : -1))
         throw Error("DJ flow " A_Index ": next-visit check=" gEarnDJCheckAbove)
+    if (djState.Get("dj_check_above", -1) != (confirmations ? c[1] : -1))
+        throw Error("DJ flow " A_Index ": persisted next-visit check=" djState.Get("dj_check_above", -1))
 }
 FileAppend("PASS DJFlow cases=" cases.Length "`n", "*")
+EarnStateGet(key, defaultValue := "") => djState.Get(key, defaultValue)
+EarnStateSet(key, value) => djState[key] := value
 ExitApp(0)
 EarnPopularityMCTPct() {
     throw Error("MCT popularity is diagnostic only and must not be read for DJ spending")
@@ -1052,7 +1058,7 @@ EarnDJSchedule(*) => true
     foreach ($fn in @('EarnDJNeedsRebook','EarnDJHomeOpen','EarnPopularityHomePct')) {
         $djFlowDriver += "`n" + (Get-EarnFunctionBody $sourceText $fn)
     }
-    Invoke-EarnOfflineCheck 'DJFlow' 'EarnDJSwapLoop' $djFlowDriver 19
+    Invoke-EarnOfflineCheck 'DJFlow' 'EarnDJSwapLoop' $djFlowDriver 20
     # Real saved pixels, real bar sampler and real Home reader. No desktop APIs.
     Add-Type -AssemblyName System.Drawing
     Add-Type -ReferencedAssemblies System.Drawing @'
@@ -1714,6 +1720,38 @@ for c in [["main",true],["preferences",true],["boss",true],["securo",true],["unk
     MenuCheck(EarnMenuIsOpen() = c[2], "known title " c[1])
 }
 MenuCheck(!EarnSeen("mct_need_ceo"), "CEO warning uses its bounded prompt area")
+MenuCheck(EarnMCTNeedsCEOText([{text:"You need to be a CEO or Motorcycle"},{text:"Club President to manage this business."}]),
+    "MCT registration OCR requires both prompt lines")
+MenuCheck(!EarnMCTNeedsCEOText([{text:"You need to be a CEO or Motorcycle"}]),
+    "MCT registration OCR rejects a partial prompt")
+MenuCheck(EarnMCTBunkerEntryText([{text:"DISRUPTION"},{text:"LOGISTICS"},{text:"Click To Enter"}]),
+    "Bunker entry OCR requires all three page labels")
+MenuCheck(!EarnMCTBunkerEntryText([{text:"LOGISTICS"},{text:"Click To Enter"}]),
+    "Bunker entry OCR rejects a generic enter button")
+nightclubHomeLines := [{text:"Nightclub Jobs Completed"},{text:"Resident DJ"},{text:"Home"}]
+MenuCheck(EarnMCTNightclubHomeText(nightclubHomeLines), "Nightclub home OCR confirms unique summary and DJ row")
+MenuCheck(!EarnMCTNightclubHomeText([{text:"Resident DJ"},{text:"Home"}]), "Nightclub OCR rejects a page without its summary")
+MenuCheck(EarnMCTHomeNavText(nightclubHomeLines), "Home row is confirmed on Nightclub Home")
+djLines := [{text:"Dixon",x:943,y:670},{text:"The Black Madonna",x:1388,y:670},
+    {text:"Rebook",x:943,y:569},{text:"$10,000",x:942,y:602},{text:"Resident",x:1389,y:584},
+    {text:"Home",x:368,y:597}]
+MenuCheck(EarnMCTDJMenuText(djLines), "DJ OCR identifies the full resident list")
+MenuCheck(EarnMCTHomeNavText(djLines), "Home row is confirmed on the DJ list")
+MenuCheck(!EarnMCTDJMenuText([{text:"Solomun"},{text:"Tale Of Us"}]), "DJ OCR rejects partial business page")
+MenuCheck(EarnMCTDJRebookText(djLines,"left") && !EarnMCTDJRebookText(djLines,"right"),
+    "DJ OCR identifies only the side with an exact $10,000 rebook")
+MenuCheck(EarnMCTDJResidentText(djLines,"right") && !EarnMCTDJResidentText(djLines,"left"),
+    "DJ OCR keeps resident identity tied to its card")
+djConfirmLines := [{text:"Resident DJ"},{text:"Are you sure you'd like to rebook Solomun for $10000 and make"},
+    {text:"him your resident DJ?"},{text:"Cancel"},{text:"Confirm"}]
+MenuCheck(EarnMCTDJConfirmationText(djConfirmLines,"Solomun"),
+    "DJ confirmation OCR validates resident, selected DJ, exact price and both actions")
+djConfirmHoverLines := [{text:"Resident DJ"},{text:"Are you sure you'd like to rebook Solomun for $10000 and make"},
+    {text:"him your resident DJ?"},{text:"Cancel"},{text:"Corfirm"}]
+MenuCheck(EarnMCTDJConfirmationText(djConfirmHoverLines,"Solomun"),
+    "DJ confirmation OCR tolerates the cursor hiding one Confirm stroke")
+MenuCheck(!EarnMCTDJConfirmationText(djConfirmLines,"Tale Of Us"),
+    "DJ confirmation OCR rejects a different DJ")
 menuScene := "boss", menuCursor := 0, menuOrder := ""
 MenuCheck(EarnSelectRow("m_ceo_sel",EARN_MENU_AREA,"Down",3) && menuOrder = "DD",
     "boss submenu can select a row that is not initially highlighted")
@@ -1814,6 +1852,15 @@ EarnPress(key) {
     return true
 }
 EarnHudVisible() => menuScene = "closed"
+EarnMCTDJMenuLines() => []
+EarnReadScreen(*) => []
+EarnFindText(lines, pattern) {
+    if (IsObject(lines))
+        for line in lines
+            if (RegExMatch(line.text, pattern))
+                return line
+    return false
+}
 ; relayout: 메뉴를 연 직후 한 번 쉬기 전까지는 보스·SecuroServ 줄이 그려지지 않는다.
 Drawn() => menuMode != "relayout" || menuSlept
 ; arrow_white 는 해제 전 노랑, Retire 를 누른 뒤 흰색이다.
@@ -1832,10 +1879,10 @@ EarnFail(reason) {
     return false
 }
 '@
-    foreach ($fn in @('EarnSeen','EarnMenuIsOpen','EarnSelectRow','EarnMenuOpen','EarnMenuClose','EarnCEOIs')) {
+    foreach ($fn in @('EarnSeen','EarnMCTNeedsCEOText','EarnMCTBunkerEntryText','EarnMCTNightclubHomeText','EarnMCTHomeNavText','EarnMCTDJMenuText','EarnMCTDJRebookText','EarnMCTDJResidentText','EarnMCTDJConfirmationText','EarnMenuIsOpen','EarnSelectRow','EarnMenuOpen','EarnMenuClose','EarnCEOIs')) {
         $ceoMenuDriver += "`n" + (Get-EarnFunctionBody $sourceText $fn)
     }
-    Invoke-EarnOfflineCheck 'CEOSubmenu' 'EarnCEO' $ceoMenuDriver 24
+    Invoke-EarnOfflineCheck 'CEOSubmenu' 'EarnCEO' $ceoMenuDriver 39
     $mctOpenDriver = @'
 global EARN_PROMPT_AREA := [0,0,0.3,0.1], openOptions := Map(), openScene := "", openOrder := "",
     openClockMs := 0, openAborted := false, promptWaits := 0, seatedAfterAt := -1, titleAfterAt := -1

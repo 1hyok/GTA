@@ -78,6 +78,67 @@ EarnAborted() {
 
 ; name 템플릿(Images\Earn\<해상도>\<name>.png)이 area(클라이언트 비율 [x1, y1, x2, y2]) 안에 보이면 true. 찾은 자리(화면 좌표)는 &fx, &fy.
 EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
+    ; MCT Nightclub 홈의 네비게이션/인기도 글자는 HDR·UI 배율에 따라 템플릿 크기가 달라진다.
+    ; 페이지의 고유 문구를 OCR로 한 번 읽어 홈, DJ 메뉴, 인기도 문맥을 구분한다.
+    if (name = "nc_home" || name = "nc_dj_menu" || name = "nc_popularity_home") {
+        static ncAreas := Map("nc_home",[0.16,0.53,0.23,0.58],
+            "nc_dj_menu",[0.16,0.68,0.26,0.73], "nc_popularity_home",[0.38,0.14,0.54,0.19])
+        if (!IsObject(area))
+            area := ncAreas[name]
+        static lastNightclubProbe := 0, lastNightclubLines := false
+        if (A_TickCount - lastNightclubProbe >= 750) {
+            lastNightclubProbe := A_TickCount
+            lastNightclubLines := EarnReadScreen([300,130,1300,700])
+        }
+        if (name = "nc_home")
+            return EarnMCTHomeNavText(lastNightclubLines)
+        if (!EarnMCTNightclubHomeText(lastNightclubLines))
+            return false
+        if (TemplateSeen("Earn", name, area, &fx, &fy, variation))
+            return true
+        if (name = "nc_dj_menu")
+            return EarnFindText(lastNightclubLines, "i)^Nightclub Management$")
+        return true
+    }
+    if (name = "dj_confirm_solomun" || name = "dj_confirm_tale") {
+        static djConfirmAreas := Map("dj_confirm_solomun",[0.30,0.46,0.69,0.53],
+            "dj_confirm_tale",[0.30,0.46,0.70,0.53])
+        if (!IsObject(area))
+            area := djConfirmAreas[name]
+        if (TemplateSeen("Earn", name, area, &fx, &fy, variation))
+            return true
+        static lastDJConfirmProbe := 0, lastDJConfirmLines := false
+        if (A_TickCount - lastDJConfirmProbe >= 750) {
+            lastDJConfirmProbe := A_TickCount
+            lastDJConfirmLines := EarnReadScreen([520,370,900,340])
+        }
+        djName := name = "dj_confirm_solomun" ? "Solomun" : "Tale Of Us"
+        return EarnMCTDJConfirmationText(lastDJConfirmLines, djName)
+    }
+    ; DJ 카드와 $10,000 재고용 버튼도 UI 배율이 바뀌면 이미지 크기가 맞지 않는다.
+    ; 고유한 DJ 네 명과 해당 카드 안의 가격을 함께 확인해야만 OCR fallback 을 허용한다.
+    if (name = "dj_solomun" || name = "dj_rebook_10k" || name = "dj_rebook_10k_right"
+        || name = "dj_resident" || name = "dj_resident_right") {
+        static djAreas := Map("dj_solomun",[0.45,0.22,0.54,0.27],
+            "dj_rebook_10k",[0.38,0.50,0.603,0.58], "dj_rebook_10k_right",[0.61,0.50,0.835,0.58],
+            "dj_resident",[0.38,0.50,0.603,0.58], "dj_resident_right",[0.61,0.50,0.835,0.58])
+        if (!IsObject(area))
+            area := djAreas[name]
+        if (TemplateSeen("Earn", name, area, &fx, &fy, variation))
+            return true
+        lines := EarnMCTDJMenuLines()
+        if (!EarnMCTDJMenuText(lines))
+            return false
+        if (name = "dj_solomun")
+            return EarnFindText(lines, "i)^Solomun$")
+        if (name = "dj_rebook_10k")
+            return EarnMCTDJRebookText(lines, "left")
+        if (name = "dj_rebook_10k_right")
+            return EarnMCTDJRebookText(lines, "right")
+        if (name = "dj_resident")
+            return EarnMCTDJResidentText(lines, "left")
+        return EarnMCTDJResidentText(lines, "right")
+    }
     ; 실제 밝은 전화 홈의 제목 변형. 다른 메뉴의 허용 오차를 넓히지 않는다.
     if (name = "ph_joblist_sel" || name = "ph_vinewood_sel")
         return TemplateSeen("Earn", name, area, &fx, &fy, Max(variation, 70))
@@ -99,6 +160,34 @@ EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
     ; HDR 톤 매핑은 MCT 웹 화면 제목 픽셀을 크게 바꾸지만, 이 고정된 제목 영역의 문구는 고유하다.
     if (name = "mct_title")
         return TemplateSeen("Earn", name, IsObject(area) ? area : [0.3,0,0.7,0.1], &fx, &fy, Max(variation, 150))
+    ; MCT 사업장 시작 화면은 UI 배율에 따라 "Click To Enter" 글자 폭이 템플릿과 달라진다.
+    ; 다른 페이지에서 같은 문구를 오인하지 않도록 MCT 목록이 아닌 화면에서 세 문구를 함께 확인한다.
+    if (name = "bunker_entry") {
+        if (TemplateSeen("Earn", name, IsObject(area) ? area : [0.34,0.54,0.64,0.64], &fx, &fy, variation))
+            return true
+        if (EarnSeen("mct_title", [0.3,0,0.7,0.1]))
+            return false
+        static lastBunkerProbe := 0, lastBunkerResult := false
+        if (A_TickCount - lastBunkerProbe < 750)
+            return lastBunkerResult
+        lastBunkerProbe := A_TickCount
+        lastBunkerResult := EarnMCTBunkerEntryText(EarnReadScreen([600,400,720,350]))
+        return lastBunkerResult
+    }
+    ; MCT 등록 안내는 1920x1080 화면에서도 HDR/UI 스케일에 따라 줄바꿈과 글자 폭이 달라진다.
+    ; 기존 이미지 템플릿을 먼저 쓰고, MCT 제목이 확인된 경우에만 상단 안내 문구를 OCR로 보완한다.
+    if (name = "mct_need_ceo") {
+        if (TemplateSeen("Earn", name, IsObject(area) ? area : [0,0,0.3,0.1], &fx, &fy, Max(variation, 100)))
+            return true
+        if (!EarnSeen("mct_title", [0.3,0,0.7,0.1]))
+            return false
+        static lastCEOProbe := 0, lastCEOResult := false
+        if (A_TickCount - lastCEOProbe < 750)
+            return lastCEOResult
+        lastCEOProbe := A_TickCount
+        lastCEOResult := EarnMCTNeedsCEOText(EarnReadScreen([25,15,500,120]))
+        return lastCEOResult
+    }
     ; 테러바이트 안내는 CEO 여부에 따라 두 모양이다. CEO 일 때는 'Touchscreen computer / Master Control Terminal'.
     ; 반투명 상자라 뒤 배경에 따라 픽셀이 바뀌고, 남은 커서가 한 줄을 가릴 수 있다(1003 17:15 실측).
     ; 그래서 세 줄 중 하나만 맞아도 인정하고 허용 오차를 60으로 둔다.
@@ -148,6 +237,78 @@ EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
             || TemplateSeen("Earn", "phone_call_end_live", area, &fx, &fy, variation)
     }
     return TemplateSeen("Earn", name, area, &fx, &fy, variation)
+}
+
+EarnMCTNeedsCEOText(lines) {
+    return EarnFindText(lines, "i)^You need to be a CEO or Motorcycle$")
+        && EarnFindText(lines, "i)^Club President to manage this business\.$")
+}
+
+EarnMCTBunkerEntryText(lines) {
+    return EarnFindText(lines, "i)^DISRUPTION$")
+        && EarnFindText(lines, "i)^LOGISTICS$")
+        && EarnFindText(lines, "i)^Click To Enter$")
+}
+
+EarnMCTNightclubHomeText(lines) {
+    return EarnFindText(lines, "i)^Nightclub Jobs Completed$")
+        && EarnFindText(lines, "i)^Resident DJ$")
+}
+
+EarnMCTHomeNavText(lines) {
+    return EarnFindText(lines, "i)^Home$")
+        && (EarnMCTNightclubHomeText(lines) || EarnMCTDJMenuText(lines))
+}
+
+EarnMCTDJMenuLines() {
+    static lastProbe := 0, lastLines := false
+    if (A_TickCount - lastProbe >= 750) {
+        lastProbe := A_TickCount
+        lastLines := EarnReadScreen([720,210,900,830])
+    }
+    return lastLines
+}
+
+EarnMCTDJMenuText(lines) {
+    return EarnFindText(lines, "i)^Dixon$")
+        && EarnFindText(lines, "i)^The Black Madonna$")
+        && EarnFindText(lines, "i)^Resident$")
+}
+
+EarnMCTDJRebookText(lines, side) {
+    left := side = "left"
+    x1 := left ? 850 : 1330, x2 := left ? 1050 : 1600
+    hasButton := false, hasPrice := false
+    if (IsObject(lines))
+        for row in lines {
+            if (row.x < x1 || row.x > x2)
+                continue
+            if (RegExMatch(row.text, "i)^Rebook$") && row.y >= 545 && row.y <= 610)
+                hasButton := true
+            if (RegExMatch(row.text, "^\$10,000$") && row.y >= 585 && row.y <= 635)
+                hasPrice := true
+        }
+    return hasButton && hasPrice
+}
+
+EarnMCTDJResidentText(lines, side) {
+    left := side = "left"
+    x1 := left ? 850 : 1330, x2 := left ? 1050 : 1600
+    if (IsObject(lines))
+        for row in lines
+            if (row.x >= x1 && row.x <= x2 && row.y >= 545 && row.y <= 625
+                && RegExMatch(row.text, "i)^Resident$"))
+                return true
+    return false
+}
+
+EarnMCTDJConfirmationText(lines, djName) {
+    return EarnFindText(lines, "i)^Resident DJ$")
+        && EarnFindText(lines, "i)^Are you sure you'd like to rebook " djName " for \$10000 and make$")
+        && EarnFindText(lines, "i)^him your resident DJ\?$")
+        && EarnFindText(lines, "i)^Cancel$")
+        ; 마우스 포인터가 버튼 위에 놓이면 글자 한 획을 가릴 수 있다(Confirm→Corfirm). 이 모달의 고유 문구와 가격을 먼저 확인한다.
+        && EarnFindText(lines, "i)^C[Oo][NnRr]firm$")
 }
 ; timeoutMs 안에 name 이 보이면 true. 전체 멈춤·포커스 이탈이면 바로 false.
 EarnWaitSeen(name, area, timeoutMs) {

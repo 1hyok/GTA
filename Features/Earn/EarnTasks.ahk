@@ -297,6 +297,7 @@ global gEarnBunkerOrdered := false
 global gEarnBunkerFull := false
 ; 지난 DJ 재고용 직전 인기도. 다음 DJ 작업이 Home 에서 이보다 높게 읽어야 재고용이 먹은 것이다(-1 이면 확인할 것 없음).
 global gEarnDJCheckAbove := -1
+try gEarnDJCheckAbove := Integer(EarnStateGet("dj_check_above", -1))
 
 EarnBunkerTask(manageSession := true) {
     global config, gEarnNextDue, gEarnBunkerOrdered, gEarnBunkerFull
@@ -619,8 +620,12 @@ EarnDJSwapLoop(previousMCTReading := "") {
     if (gEarnDJCheckAbove >= 0) {
         before := gEarnDJCheckAbove
         gEarnDJCheckAbove := -1
+        EarnStateSet("dj_check_above", -1)
         if (pop <= before)
             return EarnFail("DJ: 지난 재고용 뒤 인기도 증가 미확인 (" before " → " pop ")")
+        EarnLog("DJ: 재고용 뒤 인기도 상승 확인 (" before " → " pop "%). 이번 확인에서는 추가 재고용 안 함")
+        EarnDJSchedule(pop, false)
+        return EarnUIBackToMCT("nc_dj_menu", 1)
     }
     if (!EarnDJNeedsRebook(pop, config["Settings"]["EarnDJPopularityPct"])) {
         EarnLog("DJ: 목표 인기도 도달로 교체 안 함")
@@ -650,6 +655,7 @@ EarnDJSwapLoop(previousMCTReading := "") {
         || !EarnWaitSeen(resident, area, 5000))
         return EarnFail("DJ: 교체 결과 미확인")
     gEarnDJCheckAbove := pop
+    EarnStateSet("dj_check_above", pop)
     EarnDJSchedule(pop, true)
     if (!EarnUIClick("nc_home", 495, 596)
         || !EarnWaitSeen("nc_popularity_home", [0.38,0.14,0.54,0.19], 5000))

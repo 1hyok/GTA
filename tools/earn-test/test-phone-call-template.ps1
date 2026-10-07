@@ -75,6 +75,17 @@ ExitApp(0)
 TemplateSeen(folder,name,area,&x,&y,variation) => (name = "phone_call_end_live" ? liveRequiredVariation
     : name = "ph_joblist_sel_live" || name = "ph_vinewood_sel_live" ? homeMinimum : requiredVariation) <= variation
 TemplateAt(*) => false
+EarnReadScreen(*) => false
+EarnFindText(*) => false
+EarnMCTHomeNavText(*) => false
+EarnMCTNightclubHomeText(*) => false
+EarnMCTDJConfirmationText(*) => false
+EarnMCTDJMenuLines(*) => false
+EarnMCTDJMenuText(*) => false
+EarnMCTDJRebookText(*) => false
+EarnMCTDJResidentText(*) => false
+EarnMCTBunkerEntryText(*) => false
+EarnMCTNeedsCEOText(*) => false
 '@
 $driver = $driver.Replace('FIXTURE_CASES', '[' + ($scenarios -join ',') + ']')
 $driver = $driver.Replace('HOME_CASES', '[' + ($homeScenarios -join ',') + ']')
