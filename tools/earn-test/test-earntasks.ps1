@@ -36,6 +36,9 @@ function Invoke-EarnOfflineCheck {
     )
 
     $functionBody = Get-EarnFunctionBody $sourceText $FunctionName
+    if ($Name -eq 'MCTEndDeadline') {
+        $functionBody = $functionBody.Replace('A_TickCount', 'CleanupClock()')
+    }
     $prefix = @'
 #Requires AutoHotkey v2.0
 #SingleInstance Off
@@ -648,6 +651,39 @@ ExitApp(0)
 '@
     $mctEndDriver += "`n" + $mctCleanupSupport
     Invoke-EarnOfflineCheck 'MCTEnd' 'EarnTaskMCTEnd' $mctEndDriver 32
+    $deadlineDriver = @'
+global endScene := "unknown", endFailure := "", endOrder := "", endAbort := false, endBoss := true, gEarnFail := "original", endLogs := []
+global clockMs := 0, reads := 0, abortRead := 0, foundRead := 0
+for scenario in [0,1,2] {
+    interrupted := scenario = 1
+    clockMs := 0, reads := 0, endAbort := false, endOrder := "", endLogs := [], abortRead := interrupted ? 2 : 0, foundRead := scenario = 2 ? 5 : 0
+    result := EarnTaskMCTEnd()
+    if (result || endOrder != "" || gEarnFail != "original")
+        throw Error("Slow cleanup must not input or erase the original failure")
+    if (reads != (interrupted ? 2 : 5) || clockMs != (interrupted ? 2200 : 5500))
+        throw Error("Cleanup exceeded its elapsed deadline: reads=" reads " elapsed=" clockMs)
+    for message in endLogs
+        if (InStr(message,"오류"))
+            throw Error("Cleanup attempted a forbidden read: " message)
+}
+FileAppend("PASS MCTEndDeadline cases=3`n", "*")
+ExitApp(0)
+CleanupClock() => clockMs
+EarnUIReady(name, area := "") {
+    global clockMs, reads, endAbort
+    if (clockMs >= 5000 || endAbort)
+        throw Error("Another screen read started after the deadline or interruption")
+    if ((name = "mct_title" || name = "mct_seated") && !IsObject(area))
+        throw Error("Cleanup searched the whole screen for a known bounded menu")
+    reads++, clockMs += 1100
+    if (abortRead && reads = abortRead)
+        endAbort := true
+    return foundRead && reads = foundRead
+}
+'@
+    $deadlineSupport = $mctCleanupSupport.Replace((Get-EarnFunctionBody $mctCleanupSupport 'EarnUIReady'), '')
+    $deadlineDriver += "`n" + $deadlineSupport
+    Invoke-EarnOfflineCheck 'MCTEndDeadline' 'EarnTaskMCTEnd' $deadlineDriver 3
     $mctEndPromptDriver = @'
 global endScene := "", endFailure := "", endOrder := "", endAbort := false, endBoss := true, gEarnFail := "", endLogs := []
 global cleanupClockMs := 0, cleanupPromptAt := -1, cleanupAbortAt := -1, cleanupWaits := 0, cleanupPromptName := "mct_sit"
