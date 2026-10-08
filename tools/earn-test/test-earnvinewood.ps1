@@ -35,11 +35,12 @@ EarnTransactionBegin(id, reason) {
     return true
 }
 EarnTransactionConfirmed(id) => transactionPending.Delete(id)
-global gMode, gState, gSelected, gBiz, gIdx, gReads, gClaims, gClaimAttempts, gKeys, gStandWaits, gMctCloses, gCEOCalls, gFailure, gScheduled, gTests := 0
+global gMode, gState, gSelected, gBiz, gIdx, gReads, gClaims, gClaimAttempts, gKeys, gStandWaits, gMctCloses, gCEOCalls, gFailure, gScheduled, gPhoneFrameVisible, gTests := 0
 ; 입금 알림 감시(EarnSafeFeedWatch)는 스케줄러 전역을 쓴다. 이 시험은 파서만 부른다.
 global gEarnRetryIn := 0, gEarnOn := false, gEarnBusy := false, gEarnDue := Map(), gEarnNextDue := Map()
 global config := Map("Settings", Map("EarnUserIdleSec", 45)), gPhysIdle := 600000, gOthersIdle := 600000
 IsGTAActive() => false
+EarnAborted() => false
 RunTests()
 FileAppend("PASS EarnVinewood cases=" gTests Chr(10), "*", "UTF-8")
 ExitApp(0)
@@ -77,8 +78,12 @@ RunTests() {
         ["normal", "standing", Map("Nightclub",250000), true, "Nightclub", "standing", 0],
         ["normal", "mct", Map("Nightclub",250000), true, "Nightclub", "standing", 0],
         ["normal", "phone_job", Map("Nightclub",250000), true, "Nightclub", "standing", 0],
+        ["normal", "phone_internet", Map("Nightclub",250000), true, "Nightclub", "standing", 0],
         ["normal", "phone_vinewood", Map("Nightclub",250000), true, "Nightclub", "standing", 0],
         ["phone_texts", "hud", Map("Nightclub",250000), true, "Nightclub", "standing", 0],
+        ["phone_texts_hdr", "hud", Map("Nightclub",250000), true, "Nightclub", "standing", 0],
+        ["phone_texts_hdr", "phone_texts", Map("Nightclub",250000), true, "Nightclub", "standing", 0],
+        ["phone_texts_internet", "hud", Map("Nightclub",250000), true, "Nightclub", "standing", 0],
         ["open_unreadable", "standing", Map(), false, "", "standing", 0],
         ["open_unreadable", "phone_job", Map(), false, "", "phone_job", 0],
         ["normal", "unknown", Map(), false, "", "unknown", 0],
@@ -111,10 +116,25 @@ RunTests() {
             for key in gKeys
                 Check(key != "Up", "open phone never sends the phone-opening Up key again")
         }
+        if (c[2] = "phone_internet")
+            Check(gKeys.Length >= 3 && gKeys[1] = "Up" && gKeys[2] = "Right" && gKeys[3] = "Enter",
+                "already-open Internet home moves up to verified Job List without reopening the phone")
         if (c[1] = "phone_texts")
             Check(gKeys.Length >= 4 && gKeys[1] = "Up" && gKeys[2] = "Down"
                 && gKeys[3] = "Right" && gKeys[4] = "Enter",
                 "recorded Texts home is verified, moved to Job List, then opened")
+        if (c[1] = "phone_texts_hdr")
+            if (c[2] = "phone_texts")
+                Check(gKeys.Length >= 3 && gKeys[1] = "Down" && gKeys[2] = "Right" && gKeys[3] = "Enter",
+                    "already-open HDR Texts home is recognized without pressing Up again")
+            else
+                Check(gKeys.Length >= 4 && gKeys[1] = "Up" && gKeys[2] = "Down"
+                    && gKeys[3] = "Right" && gKeys[4] = "Enter",
+                    "Texts OCR recovers the phone home when the HDR frame template is absent")
+        if (c[1] = "phone_texts_internet")
+            Check(gKeys.Length >= 5 && gKeys[1] = "Up" && gKeys[2] = "Down" && gKeys[3] = "Up"
+                && gKeys[4] = "Right" && gKeys[5] = "Enter",
+                "Internet after Down is corrected to verified Job List before opening Vinewood")
         if (c[1] = "open_unreadable" || c[2] = "unknown")
             Check(gKeys.Length = 0, "unknown opening screen sends no keys")
         if (c[1] = "no_earnings")
@@ -123,7 +143,8 @@ RunTests() {
             downs := 0
             for key in gKeys
                 downs += key = "Down"
-            Check(downs = gBiz.Length + (c[1] = "phone_texts" ? 1 : 0), label " visits every row once and stops on wrap (downs=" downs ")")
+            Check(downs = gBiz.Length + ((c[1] = "phone_texts" || c[1] = "phone_texts_hdr" || c[1] = "phone_texts_internet") ? 1 : 0),
+                label " visits every row once and stops on wrap (downs=" downs ")")
         }
     }
     Reset("close_stuck", "main")
@@ -246,8 +267,9 @@ RunTests() {
 
 Reset(mode, state, amounts := "") {
     global transactionPending := Map()
-    global gMode, gState, gSelected, gBiz, gIdx, gReads, gClaims, gClaimAttempts, gKeys, gStandWaits, gMctCloses, gCEOCalls, gFailure, gScheduled, gPhysIdle, gOthersIdle
+    global gMode, gState, gSelected, gBiz, gIdx, gReads, gClaims, gClaimAttempts, gKeys, gStandWaits, gMctCloses, gCEOCalls, gFailure, gScheduled, gPhysIdle, gOthersIdle, gPhoneFrameVisible
     gMode := mode, gState := state = "earnings_mid" ? "earnings" : state, gBiz := DefaultBiz(), gIdx := state = "earnings_mid" ? 4 : 1
+    gPhoneFrameVisible := mode != "phone_texts_hdr"
     if (mode = "unknown_business")
         gBiz.InsertAt(3, ["Weed Shop", 50000])
     if (IsObject(amounts))
@@ -265,6 +287,10 @@ EarnReadScreen(*) {
         return false
     if (gState = "phone_texts")
         return [FakeLine("Texts")]
+    if (gState = "phone_internet")
+        return [FakeLine("Internet")]
+    if (gState = "phone_job")
+        return [FakeLine("Job List")]
     if (gState = "main") {
         lines := [FakeLine("THE VINEWOOD CLUB APP"), FakeLine("Claim Business Earnings"), FakeLine("Purchase Ammo")]
         if (gMode = "no_earnings")
@@ -316,13 +342,16 @@ EarnPress(key) {
         if (gMode = "select_cancel")
             return false
         if (gState = "phone_texts")
-            gState := "phone_job"
+            gState := gMode = "phone_texts_internet" ? "phone_internet" : "phone_job"
         else if (gState = "earnings")
             gIdx := Mod(gIdx, gBiz.Length) + 1, gSelected := gBiz[gIdx][1]
     } else if (key = "Up") {
-        if (gState != "standing" && gState != "hud")
+        if (gState = "phone_internet")
+            gState := "phone_job"
+        else if (gState != "standing" && gState != "hud")
             throw Error("Phone-opening Up is invalid when the phone is already open: " gState)
-        gState := gMode = "wrong_phone" ? "wrong_phone" : gMode = "phone_texts" ? "phone_texts" : "phone_job"
+        else
+            gState := gMode = "wrong_phone" ? "wrong_phone" : (gMode = "phone_texts" || gMode = "phone_texts_hdr" || gMode = "phone_texts_internet") ? "phone_texts" : "phone_job"
     } else if (key = "Right" && gState = "phone_job") {
         gState := gMode = "right_stuck" ? "phone_other" : "phone_vinewood"
     } else if (key = "Backspace" && gState = "phone_other") {
@@ -369,7 +398,7 @@ EarnSeen(name, *) {
     if (name = "m_title")
         return gMode = "hud_menu"
     if (name = "afk_phone_frame")
-        return gState = "phone_texts"
+        return gPhoneFrameVisible && (gState = "phone_texts" || gState = "phone_internet" || gState = "phone_job")
     return name = "mct_sit" ? gState = "standing" : name = "ph_joblist_sel" ? gState = "phone_job" : name = "ph_vinewood_sel" && gState = "phone_vinewood"
 }
 EarnWaitSeen(name, *) => EarnSeen(name)
