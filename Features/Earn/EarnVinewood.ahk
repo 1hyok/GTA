@@ -305,6 +305,9 @@ EarnVinewoodFreeHud() {
     try others := %"AFKOthersIdleMs"%()
     if (A_TimeIdlePhysical < idleMs || others < idleMs || !(EarnHudVisible() || EarnVinewoodHealthHud()))
         return false
+    ; HDR 에서 전화기 테두리 템플릿이 사라져도 제목 OCR 로 열린 홈을 식별한다.
+    if (EarnVinewoodPhoneTitle() != "")
+        return false
     for name in ["afk_phone_frame", "ph_joblist_sel", "ph_vinewood_sel"]
         if (EarnSeen(name, [0.83,0.58,0.98,0.73]))
             return false
@@ -312,6 +315,35 @@ EarnVinewoodFreeHud() {
         if (EarnSeen(name, name = "mct_title" ? [0.3,0,0.7,0.1] : [0,0,0.27,0.55]))
             return false
     return true
+}
+
+; HDR 에서 전화기 프레임 템플릿이 맞지 않을 때 홈 제목을 상태 앵커로 사용한다.
+EarnVinewoodPhoneTitle() {
+    lines := EarnReadScreen([1580,710,300,100], false)
+    if (!IsObject(lines))
+        return ""
+    for title in ["Texts", "Job List", "Internet", "Contacts", "Email", "Mail", "Camera", "Snapmatic", "Settings", "Quick Save", "Radio"]
+        if (EarnFindText(lines, "i)^" title "$"))
+            return title
+    return ""
+}
+
+EarnVinewoodWaitJobList(timeoutMs) {
+    deadline := A_TickCount + timeoutMs
+    nextTitleRead := 0
+    Loop {
+        if (EarnAborted())
+            return false
+        if (EarnSeen("ph_joblist_sel", [0.83,0.66,0.98,0.73]))
+            return true
+        if (A_TickCount >= nextTitleRead) {
+            if (EarnVinewoodPhoneTitle() = "Job List")
+                return true
+            nextTitleRead := A_TickCount + 300
+        }
+        if (A_TickCount >= deadline || !EarnSleep(200))
+            return false
+    }
 }
 
 ; 앱 진입용 HUD 확인. 밝기가 바뀌어도 체력 막대의 녹색 우세와 가로 연속성을 본다.
@@ -330,8 +362,10 @@ EarnVinewoodOpen(manageMCT := true) {
         return false
     if (EarnFindText(lines, "i)^THE VINEWOOD CLUB APP$"))
         return true
-    if (!EarnSeen("ph_joblist_sel", [0.83,0.66,0.98,0.73])
-        && !EarnSeen("ph_vinewood_sel", [0.83,0.66,0.98,0.73])) {
+    phoneTitle := EarnVinewoodPhoneTitle()
+    jobList := EarnSeen("ph_joblist_sel", [0.83,0.66,0.98,0.73]) || phoneTitle = "Job List"
+    vinewood := EarnSeen("ph_vinewood_sel", [0.83,0.66,0.98,0.73])
+    if (!jobList && !vinewood && phoneTitle = "") {
         if (manageMCT && EarnAtMCT() && !EarnMCTClose())
             return false
         atMCT := manageMCT && (EarnSeen("mct_sit", [0,0,0.3,0.1]) || EarnSeen("mct_terrorbyte"))
@@ -349,25 +383,52 @@ EarnVinewoodOpen(manageMCT := true) {
         if ((atMCT && !EarnCEO(false)) || !EarnPress("Up") || !EarnSleep(700))
             return false
     }
-    ; 휴대폰이 다 올라오기까지 1초 넘게 걸릴 때가 있다(1004 14:20 녹화). 홈의 선택 제목이 보일 때까지 기다린다.
+    ; 전화 프레임 그림이 HDR 에서 누락돼도 화면 제목과 선택 앱으로 홈 상태를 판정한다.
     deadline := A_TickCount + 4000
-    while (!EarnSeen("ph_joblist_sel", [0.83,0.66,0.98,0.73]) && !EarnSeen("ph_vinewood_sel", [0.83,0.66,0.98,0.73])) {
-        ; Up opens the phone on the previously selected home icon. In the Mansion recording
-        ; it opened on Texts, so the two expected app templates never appeared. Recover only
-        ; when both the phone frame and exact Texts heading are visible, then verify Job List.
-        if (EarnSeen("afk_phone_frame", [0.83,0.58,0.98,0.78])) {
-            phoneLines := EarnReadScreen([1580,710,300,100], false, deadline)
-            if (IsObject(phoneLines) && EarnFindText(phoneLines, "i)^Texts$")) {
-                EarnLog("Vinewood 앱: 전화 홈 Texts 선택 확인 → Job List로 이동")
-                if (!EarnPress("Down") || !EarnWaitSeen("ph_joblist_sel", [0.83,0.66,0.98,0.73], 1500))
+    nextTitleRead := 0
+    while (!jobList && !vinewood) {
+        jobList := EarnSeen("ph_joblist_sel", [0.83,0.66,0.98,0.73])
+        vinewood := EarnSeen("ph_vinewood_sel", [0.83,0.66,0.98,0.73])
+        if (jobList || vinewood)
+            break
+        if (A_TickCount >= nextTitleRead) {
+            phoneTitle := EarnVinewoodPhoneTitle()
+            nextTitleRead := A_TickCount + 300
+        }
+        if (phoneTitle = "Job List") {
+            jobList := true
+            break
+        }
+        if (phoneTitle = "Texts") {
+            EarnLog("Vinewood 앱: 전화 홈 Texts 제목 확인 → Job List로 이동")
+            if (!EarnPress("Down"))
+                return false
+            jobList := EarnVinewoodWaitJobList(1500)
+            if (!jobList) {
+                ; 화면이 Internet 이라고 확인된 경우에만 한 칸 위로 보정한다.
+                phoneTitle := EarnVinewoodPhoneTitle()
+                if (phoneTitle = "Internet") {
+                    EarnLog("Vinewood 앱: Down 후 Internet 제목 확인 → Up으로 Job List 보정")
+                    if (!EarnPress("Up") || !EarnVinewoodWaitJobList(1500))
+                        return EarnFail("금고: Texts에서 Job List 이동 미확인")
+                    jobList := true
+                } else {
                     return EarnFail("금고: Texts에서 Job List 이동 미확인")
-                break
+                }
             }
+            break
+        }
+        if (phoneTitle = "Internet") {
+            EarnLog("Vinewood 앱: 전화 홈 Internet 제목 확인 → Up으로 Job List 이동")
+            if (!EarnPress("Up") || !EarnVinewoodWaitJobList(1500))
+                return EarnFail("금고: Internet에서 Job List 이동 미확인")
+            jobList := true
+            break
         }
         if (A_TickCount >= deadline || !EarnSleep(200))
             return EarnFail("금고: 전화 홈 화면 미확인")
     }
-    if (EarnSeen("ph_joblist_sel", [0.83,0.66,0.98,0.73])) {
+    if (jobList) {
         if (!EarnPress("Right"))
             return false
     }
