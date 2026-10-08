@@ -49,6 +49,8 @@ $driver = @'
 global requiredVariation := 0
 global liveRequiredVariation := 0
 global homeMinimum := 255
+; This test isolates EarnSeen's template branch; OCR is covered by test-earner.
+EarnMCTSitOcrSeen() => false
 OnError((err,*) => (FileAppend("FAIL " err.Message "`n", "**"), ExitApp(1)))
 for sample in FIXTURE_CASES {
     requiredVariation := sample[2]
