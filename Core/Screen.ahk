@@ -3,6 +3,40 @@
 ; 템플릿의 FF00FF 칸은 투명으로 친다(반투명 메뉴 바탕 위 글자는 글자와 어두운 바탕만 남기고 가장자리는 투명으로 떠 둔다).
 global gImageRoot := A_ScriptDir "\Images"   ; 템플릿 폴더 뿌리 (시험 스크립트가 바꿔 쓸 수 있게 전역)
 
+; 실측 체력 막대의 가로 연속성. HUD 존재만 확인하며 전화·메뉴 제외는 소비자가 수행한다.
+HealthHudVisible() {
+    hwnd := IsGTAActive()
+    if (!hwnd)
+        return false
+    previous := DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
+    try {
+        WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
+        if (cw != 1920 || ch != 1080)
+            return false
+        CoordMode("Pixel", "Screen")
+        colors := []
+        Loop 16
+            colors.Push(PixelGetColor(cx + 40 + (A_Index-1)*3, cy + 1053))
+        return HealthHudColors(colors)
+    } catch {
+        return false
+    } finally {
+        if (previous)
+            DllCall("SetThreadDpiAwarenessContext", "ptr", previous, "ptr")
+    }
+}
+
+HealthHudColors(colors) {
+    if (colors.Length != 16)
+        return false
+    green := 0
+    for color in colors {
+        r := (color >> 16) & 255, g := (color >> 8) & 255, b := color & 255
+        green += g >= 100 && g-r >= 40 && g-b >= 40 && Abs(r-b) <= 25
+    }
+    return green >= 12
+}
+
 ; area 는 클라이언트 비율 [x1, y1, x2, y2] (0~1). 찾은 자리(화면 좌표)는 &fx, &fy.
 TemplateSeen(folder, name, area := "", &fx := 0, &fy := 0, variation := 40) {
     global gImageRoot

@@ -222,6 +222,8 @@ MCT에서 일어선 뒤 게임 전화가 연결되면 통화 종료 아이콘을
 Start-Process -FilePath "$env:LOCALAPPDATA\Programs\AutoHotkey\v2\AutoHotkey64.exe" -ArgumentList '/ErrorStdOut tools\earn-test\afk-guard.ahk' -WindowStyle Hidden
 ```
 
+AFK와 앱 진입은 같은 체력 막대 확인을 사용한다. 1920×1080 화면의 고정된 체력 줄에서 16개 표본 중 12개 이상의 녹색 우세를 확인하므로 HDR에서 밝아진 막대도 인식한다. 체력 막대는 전화·앱 안에도 보일 수 있어 기존 메뉴 제외 확인과 사용자 입력 유휴 확인을 함께 적용한다.
+
 GUI 작업에서 확인한 구간을 직접 조작할 때는 `tools/earn-test/gui-input.ahk`와 `gui-input.ps1`을 쓴다. GTA가 이미 앞에 있어야 하며 Main·AFK를 켜거나 창을 전면화하지 않는다. 처음 시작할 때만 실제 사용자 입력 유휴 8초를 확보한다(최대 60초 대기). 이후 자기 입력 때문에 유휴 시간을 다시 기다리지 않는다. 실제 사용자 입력·GTA 포커스 이탈·End를 감지하면 보유 키를 놓고 종료하며, 전체 실행 제한은 25분이다. 다른 작업·매크로·Computer Use와의 조작권 직렬화는 계속 필요하다.
 
 아래 PowerShell은 현재 디렉터리가 이 저장소 루트이고 AutoHotkey v2가 현재 사용자의 기본 위치에 설치됐다고 가정한다. 실행마다 새 빈 TEMP 디렉터리와 토큰을 만든다.
