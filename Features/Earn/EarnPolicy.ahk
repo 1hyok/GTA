@@ -1,7 +1,7 @@
 ; 벙커 구매 계획. 화면 판독값으로 다음 20% 소모 경계를 고른다.
 ; 기본 6720초는 풀업그레이드·제조 전용·기본 속도에서 112분(4칸)이다.
 ; 남은 1칸은 약 28분 생산분이므로 약 10분 배송 동안에도 생산을 이어간다.
-; waitMs는 같은 조건의 예상 시간이다. 실제 소비처는 다시 화면을 읽어야 한다.
+; waitMs는 실제 잔량에 따른 관측 간격이다. 생산 속도로 구매 시각을 외삽하지 않는다.
 ; buy=true도 결제 허가는 아니다. 배송 중이 아닌지 확인하고, 확인창의 실제
 ; 가격을 EarnBunkerPriceAllowed로 검사한 뒤에만 결제한다.
 EarnBunkerOrderPlan(supplyFraction, stockFraction, requestedSeconds := 6720) {
@@ -31,7 +31,8 @@ EarnBunkerOrderPlan(supplyFraction, stockFraction, requestedSeconds := 6720) {
     ; 75%/55%처럼 이미 경계를 지나쳤다면 비싼 올림값으로 사지 않고 다음 경계를 기다린다.
     nextBars := Min(5, Max(requestedBars, Floor(missing * 5) + 1))
     remainingFraction := Max(0, nextBars / 5 - missing)
-    return {buy: false, bars: nextBars, waitMs: Max(1000, Round(remainingFraction * 8400000)), reason: "wait_boundary"}
+    nearBoundary := remainingFraction <= 0.03 + 1.0e-9
+    return {buy: false, bars: nextBars, waitMs: nearBoundary ? 10000 : 60000, nearBoundary: nearBoundary, reason: "wait_boundary"}
 }
 
 ; OCR/화면 판독이 정확한 정수 금액을 돌려줄 때만 허용한다.
