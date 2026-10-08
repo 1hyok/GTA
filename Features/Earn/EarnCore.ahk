@@ -532,7 +532,7 @@ ATan2Deg(x, y) {
 ; 천천히 돌린다: 60단위/10ms(≈200도/초) 이상으로 돌리면 게임이 미니맵을 축소해 아이콘이 가장자리에 붙어 몇 초 동안 위치를 못 읽는다.
 ; 20단위/15ms(≈46도/초)에서는 그대로다(0927 실측: 20u/15ms 정상, 40u/12ms·60u/10ms 축소). 90도에 약 2초 걸린다
 ; 돌리는 동안에도 전체 멈춤·포커스를 본다. GTA 가 뒤로 가면 상대 이동이 바탕화면 커서를 날린다
-EarnTurn(units, pitchUnits := 0) {
+EarnTurn(units, pitchUnits := 0, hdrMCTRecovery := false) {
     if (EarnAborted())
         return false
     n := Max(1, Round(Max(Abs(units), Abs(pitchUnits)) / 20))
@@ -540,12 +540,26 @@ EarnTurn(units, pitchUnits := 0) {
     Loop n {
         if (EarnAborted())
             return false
-        if (!EarnHudVisible())
+        if (!EarnHudVisible() && !(hdrMCTRecovery && EarnMCTRecoveryHud()))
             return EarnFail("카메라: 게임 HUD를 확인하지 못함")
         DllCall("mouse_event", "uint", 1, "int", step, "int", pitchStep, "uint", 0, "uptr", 0)
         Sleep(15)
     }
     return true
+}
+
+; MCT에서 일어선 뒤 제자리 복귀 회전만 HDR 체력 막대 판정을 사용한다.
+; 전화·앱·상호작용 메뉴·터미널이 보이면 체력 막대가 있어도 회전하지 않는다.
+EarnMCTRecoveryHud() {
+    global EARN_PROMPT_AREA
+    if (!HealthHudVisible() || EarnMenuIsOpen())
+        return false
+    for name in ["afk_phone_frame", "ph_joblist_sel", "ph_vinewood_sel"]
+        if (EarnSeen(name, [0.83,0.58,0.98,0.73]))
+            return false
+    return !EarnSeen("afk_vinewood_title", [0,0,0.27,0.2])
+        && !EarnSeen("mct_title", [0.3,0,0.7,0.1])
+        && !EarnSeen("mct_seated", EARN_PROMPT_AREA)
 }
 
 ; 블립이 target 각도(±tol)에 올 때까지 카메라를 돌린다. 못 찾거나 maxIter 번 안에 못 맞추면 false.
@@ -948,7 +962,7 @@ EarnMCTClose() {
         ; (1003 23:54~23:59 실측 7/7). 걷지 않으니 자리가 흐트러지지 않는다.
         ; 3인칭처럼 시선이 다를 때는 카메라를 90도씩 돌리며 W 를 짧게 눌러 캐릭터를 카메라 방향으로 세우고 안내를 찾는다.
         ; 저택 MCT는 미니맵 블립이 없어 길찾기를 못 쓴다. 한 번에 조금만 움직여 네 방향을 돌아도 의자 곁에 남는다.
-        if (!EarnTurn(Round(180 * config["Settings"]["EarnTurnUnitsPerDeg"])))
+        if (!EarnTurn(Round(180 * config["Settings"]["EarnTurnUnitsPerDeg"]), 0, true))
             return EarnFail("MCT: 일어선 뒤 접근 안내 미확인")
         found := EarnWaitSeen("mct_sit", EARN_PROMPT_AREA, 2000)
         Loop 4 {
@@ -956,7 +970,7 @@ EarnMCTClose() {
                 break
             if (!EarnWaitCallEnd())
                 return false
-            if (A_Index > 1 && !EarnTurn(Round(90 * config["Settings"]["EarnTurnUnitsPerDeg"])))
+            if (A_Index > 1 && !EarnTurn(Round(90 * config["Settings"]["EarnTurnUnitsPerDeg"]), 0, true))
                 return EarnFail("MCT: 일어선 뒤 접근 안내 미확인")
             if (!EarnWalk("w:150"))
                 return false
