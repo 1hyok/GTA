@@ -254,7 +254,7 @@ Start-Process -FilePath $guiAhk -ArgumentList $guiArgs -WindowStyle Hidden -Pass
 
 `navigate`는 `Up`·`Down`·`Left`·`Right`·`PgUp`·`PgDn` 1~20개를 한 번에 보낸다. `-InterKeyMs`는 150~500ms이며 기본값은 200ms다. Enter·Backspace 등 실행 확정·뒤로 키는 넣을 수 없다. 결과와 `navigate-N.log`에 완료 키 수와 `elapsed_ms`가 남는다.
 
-프리모드에서 전화는 `tap -Key Up` 한 번으로 연다. Up을 빠르게 두 번 누르면 Snapmatic 카메라가 열리므로, 전화 열기 다음 탐색은 `Right` → `Up` 순서를 쓴다. 먼저 전화 홈의 `Job List`가 선택된 상태를 확인한 뒤 아래 구간으로 Contacts에 이동하고, 선택 결과를 확인한 뒤 별도 `tap -Key Enter`로 목록을 연다. 2026-09-27 수정 경로의 성공 실측은 이미 열린 Job List 홈에서 시작했으며, 프리모드부터 수정한 전체 경로는 아직 재검증하지 않았다.
+프리모드에서 전화는 `tap -Key Up` 한 번으로 연다. Up을 빠르게 두 번 누르면 Snapmatic 카메라가 열리므로, 전화 열기 다음 탐색은 `Right` → `Up` 순서를 쓴다. 먼저 전화 홈의 `Job List`가 선택된 상태를 확인한다. 홈이 `Texts`에 열리면 해당 제목과 전화 프레임을 함께 확인한 뒤 `Down` 한 번으로 `Job List`에 이동하고 선택을 다시 검증한다. 그 다음 Contacts로 이동하고, 선택 결과를 확인한 뒤 별도 `tap -Key Enter`로 목록을 연다. 2026-09-27 수정 경로의 성공 실측은 이미 열린 Job List 홈에서 시작했으며, 프리모드부터 수정한 전체 경로는 아직 재검증하지 않았다.
 
 ```powershell
 & .\tools\earn-test\gui-input.ps1 -SessionDir $guiSession -Action navigate -Keys @('Right','Up') -InterKeyMs 200
