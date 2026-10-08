@@ -119,6 +119,13 @@ function Complete-FrameCapture($Capture, [string]$Directory) {
 }
 
 if ($LibraryOnly) { return }
+# Start-Process launched from PowerShell 7 can inherit its incompatible module
+# search path. Pin this isolated Windows PowerShell worker to its own modules.
+if ($PSVersionTable.PSEdition -eq 'Desktop') {
+    $env:PSModulePath = (Join-Path $PSHOME 'Modules') + ';' +
+        (Join-Path $env:ProgramFiles 'WindowsPowerShell\Modules') + ';' +
+        (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell\Modules')
+}
 $mutex = New-Object Threading.Mutex($false, 'Local\GTAFrameEvidenceWatch')
 $ownsMutex = $false
 try { $ownsMutex = $mutex.WaitOne(0) } catch [Threading.AbandonedMutexException] { $ownsMutex = $true }
