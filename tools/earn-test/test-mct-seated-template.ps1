@@ -23,6 +23,14 @@ Write-Output 'PASS production mct_sit detection consumes alternate HDR text/back
 # Also runs the existing nightclub positive/negative regression. Its public
 # pixel matcher implements the same per-channel ImageSearch comparison.
 & (Join-Path $PSScriptRoot 'test-nightclub-templates.ps1')
+$screen = [IO.File]::ReadAllText((Join-Path $root 'Core\Screen.ahk'))
+$atBody = [regex]::Match($screen, '(?s)TemplateAt\(folder,.*?\n\}').Value
+if ($atBody -notmatch 'Min\(x \+ cw - 1, cx \+ cw - 1\)') {
+    throw 'TemplateAt search width clips the 536px MCT HDR title background to 401px'
+}
+if ($atBody -notmatch 'return fx = x && fy = y') { throw 'TemplateAt must reject matches shifted from the supplied origin' }
+$cases++
+Write-Output 'PASS production TemplateAt admits wide backgrounds and keeps exact-origin guard'
 $hdrSitBound = 40
 if ($core -match 'mct_sit_hdr_alt"[^\r\n]*Max\(variation,\s*(\d+)\)') { $hdrSitBound = [int]$Matches[1] }
 $hdrPhoneBound = 40
