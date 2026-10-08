@@ -25,59 +25,61 @@ PolicyRuntimeFailure(failure, *) {
 }
 global assertions := 0
 
-; Name, supply, stock, requested seconds, buy, bars, wait milliseconds, reason.
+; Name, supply, stock, requested seconds, buy, bars, reason.
 cases := [
-    ["112 minute full", 1, 0, 6720, false, 4, 6720000, "wait_boundary"],
-    ["112 minute half", 0.5, 0.4, 6720, false, 4, 2520000, "wait_boundary"],
-    ["112 minute remaining one bar", 0.2, 0.4, 6720, true, 4, 0, "boundary"],
-    ["112 minute observed after delivery", 0.99, 0.4, 6720, false, 4, 6636000, "wait_boundary"],
-    ["explicit 140 minute full", 1, 0, 8400, false, 5, 8400000, "wait_boundary"],
-    ["explicit 140 minute half", 0.5, 0.4, 8400, false, 5, 4200000, "wait_boundary"],
-    ["explicit 140 minute does not buy one bar", 0.8, 0.4, 8400, false, 5, 6720000, "wait_boundary"],
-    ["explicit 140 minute empty", 0, 0.4, 8400, true, 5, 0, "boundary"],
-    ["explicit 140 minute nearly empty waits", 0.002, 0.4, 8400, false, 5, 16800, "wait_boundary"],
-    ["one bar", 0.8, 0.4, 1680, true, 1, 0, "boundary"],
-    ["two bars", 0.6, 0.4, 3360, true, 2, 0, "boundary"],
-    ["three bars", 0.4, 0.4, 5040, true, 3, 0, "boundary"],
-    ["four bars", 0.2, 0.4, 6720, true, 4, 0, "boundary"],
-    ["five bars", 0, 0.4, 8400, true, 5, 0, "boundary"],
-    ["one bar configured catches later two", 0.6, 0.4, 1680, true, 2, 0, "boundary"],
-    ["one bar configured catches empty", 0, 0.4, 1680, true, 5, 0, "boundary"],
-    ["two bars configured waits at one", 0.8, 0.4, 3360, false, 2, 1680000, "wait_boundary"],
-    ["late poll 75", 0.75, 0.4, 1680, false, 2, 1260000, "wait_boundary"],
-    ["late poll 55", 0.55, 0.4, 3360, false, 3, 1260000, "wait_boundary"],
-    ["late poll 35", 0.35, 0.4, 5040, false, 4, 1260000, "wait_boundary"],
-    ["late poll 15", 0.15, 0.4, 6720, false, 5, 1260000, "wait_boundary"],
-    ["too early 81", 0.81, 0.4, 1680, false, 1, 84000, "wait_boundary"],
-    ["missed one bar 79", 0.79, 0.4, 1680, false, 2, 1596000, "wait_boundary"],
-    ["sub-boundary observation waits", 0.802, 0.4, 1680, false, 1, 16800, "wait_boundary"],
-    ["small lag candidate", 0.798, 0.4, 1680, true, 1, 0, "boundary"],
-    ["stock full", 0, 1, 8400, false, 0, 300000, "stock_full"],
-    ["stock full safety threshold", 0, 0.97, 8400, false, 0, 300000, "stock_full"],
-    ["invalid supply sentinel", -1, 0.4, 8400, false, 0, 300000, "invalid_read"],
-    ["invalid stock sentinel", 0, -1, 8400, false, 0, 300000, "invalid_read"],
-    ["invalid supply overfull", 1.001, 0.4, 8400, false, 0, 300000, "invalid_read"],
-    ["invalid stock overfull", 0, 1.001, 8400, false, 0, 300000, "invalid_read"],
-    ["invalid text read", "unknown", 0.4, 8400, false, 0, 300000, "invalid_read"],
-    ["invalid empty read", "", 0.4, 8400, false, 0, 300000, "invalid_read"],
-    ["invalid short interval", 0, 0.4, 300, false, 0, 300000, "invalid_interval"],
-    ["invalid zero interval", 0, 0.4, 0, false, 0, 300000, "invalid_interval"],
-    ["invalid twenty seven minutes", 0, 0.4, 1620, false, 0, 300000, "invalid_interval"],
-    ["invalid thirty minutes", 0, 0.4, 1800, false, 0, 300000, "invalid_interval"],
-    ["invalid fractional interval", 0, 0.4, 1680.5, false, 0, 300000, "invalid_interval"],
-    ["invalid beyond full", 0, 0.4, 10080, false, 0, 300000, "invalid_interval"],
-    ["invalid text interval", 0, 0.4, "unknown", false, 0, 300000, "invalid_interval"]
+    ["112 minute full", 1, 0, 6720, false, 4, "wait_boundary"],
+    ["112 minute half", 0.5, 0.4, 6720, false, 4, "wait_boundary"],
+    ["112 minute remaining one bar", 0.2, 0.4, 6720, true, 4, "boundary"],
+    ["112 minute observed after delivery", 0.99, 0.4, 6720, false, 4, "wait_boundary"],
+    ["explicit 140 minute full", 1, 0, 8400, false, 5, "wait_boundary"],
+    ["explicit 140 minute half", 0.5, 0.4, 8400, false, 5, "wait_boundary"],
+    ["explicit 140 minute does not buy one bar", 0.8, 0.4, 8400, false, 5, "wait_boundary"],
+    ["explicit 140 minute empty", 0, 0.4, 8400, true, 5, "boundary"],
+    ["explicit 140 minute nearly empty waits", 0.002, 0.4, 8400, false, 5, "wait_boundary"],
+    ["one bar", 0.8, 0.4, 1680, true, 1, "boundary"],
+    ["two bars", 0.6, 0.4, 3360, true, 2, "boundary"],
+    ["three bars", 0.4, 0.4, 5040, true, 3, "boundary"],
+    ["four bars", 0.2, 0.4, 6720, true, 4, "boundary"],
+    ["five bars", 0, 0.4, 8400, true, 5, "boundary"],
+    ["one bar configured catches later two", 0.6, 0.4, 1680, true, 2, "boundary"],
+    ["one bar configured catches empty", 0, 0.4, 1680, true, 5, "boundary"],
+    ["two bars configured waits at one", 0.8, 0.4, 3360, false, 2, "wait_boundary"],
+    ["late poll 75", 0.75, 0.4, 1680, false, 2, "wait_boundary"],
+    ["late poll 55", 0.55, 0.4, 3360, false, 3, "wait_boundary"],
+    ["late poll 35", 0.35, 0.4, 5040, false, 4, "wait_boundary"],
+    ["late poll 15", 0.15, 0.4, 6720, false, 5, "wait_boundary"],
+    ["too early 81", 0.81, 0.4, 1680, false, 1, "wait_boundary"],
+    ["missed one bar 79", 0.79, 0.4, 1680, false, 2, "wait_boundary"],
+    ["sub-boundary observation waits", 0.802, 0.4, 1680, false, 1, "wait_boundary"],
+    ["small lag candidate", 0.798, 0.4, 1680, true, 1, "boundary"],
+    ["stock full", 0, 1, 8400, false, 0, "stock_full"],
+    ["stock full safety threshold", 0, 0.97, 8400, false, 0, "stock_full"],
+    ["invalid supply sentinel", -1, 0.4, 8400, false, 0, "invalid_read"],
+    ["invalid stock sentinel", 0, -1, 8400, false, 0, "invalid_read"],
+    ["invalid supply overfull", 1.001, 0.4, 8400, false, 0, "invalid_read"],
+    ["invalid stock overfull", 0, 1.001, 8400, false, 0, "invalid_read"],
+    ["invalid text read", "unknown", 0.4, 8400, false, 0, "invalid_read"],
+    ["invalid empty read", "", 0.4, 8400, false, 0, "invalid_read"],
+    ["invalid short interval", 0, 0.4, 300, false, 0, "invalid_interval"],
+    ["invalid zero interval", 0, 0.4, 0, false, 0, "invalid_interval"],
+    ["invalid twenty seven minutes", 0, 0.4, 1620, false, 0, "invalid_interval"],
+    ["invalid thirty minutes", 0, 0.4, 1800, false, 0, "invalid_interval"],
+    ["invalid fractional interval", 0, 0.4, 1680.5, false, 0, "invalid_interval"],
+    ["invalid beyond full", 0, 0.4, 10080, false, 0, "invalid_interval"],
+    ["invalid text interval", 0, 0.4, "unknown", false, 0, "invalid_interval"]
 ]
 for c in cases {
     plan := EarnBunkerOrderPlan(c[2], c[3], c[4])
-    Check(plan.buy = c[5] && plan.bars = c[6] && plan.waitMs = c[7] && plan.reason = c[8], c[1])
+    Check(plan.buy = c[5] && plan.bars = c[6] && plan.reason = c[7], c[1])
 }
 plan := EarnBunkerOrderPlan(0.8, 0.4)
 Check(!plan.buy && plan.bars = 4, "omitted interval defaults to 112 minutes")
 plan := EarnBunkerOrderPlan(0.21, 0.4)
-Check(!plan.buy && plan.bars = 4 && plan.waitMs = 84000, "default waits one production tick before remaining 20 percent")
+Check(!plan.buy && plan.bars = 4 && plan.waitMs = 10000, "actual remaining supply near boundary requests ten-second observation regardless of production speed")
 plan := EarnBunkerOrderPlan(0.19, 0.4)
 Check(!plan.buy && plan.bars = 5, "missed final nonempty boundary does not silently allow rounded spending")
+Check(EarnBunkerOrderPlan(1,0.4).waitMs = 60000 && EarnBunkerOrderPlan(0.5,0.4).waitMs = 60000,
+    "unknown accelerated production is observed within one minute from full or partial supply")
 
 priceCases := [
     [15000, 1, true], [30000, 2, true], [45000, 3, true], [60000, 4, true], [75000, 5, true],
@@ -301,7 +303,7 @@ try {
     }
     $stdout = $testProcess.StandardOutput.ReadToEnd().Trim()
     $stderr = $testProcess.StandardError.ReadToEnd().Trim()
-    if ($testProcess.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnPolicy cases=112') {
+    if ($testProcess.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnPolicy cases=113') {
         throw "EarnPolicy failed (exit=$($testProcess.ExitCode))`nstdout: $stdout`nstderr: $stderr"
     }
     Write-Output $stdout

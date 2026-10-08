@@ -1167,21 +1167,21 @@ PixelGetColor(x,y) {
 global config := Map("Settings",Map("EarnBunkerIntervalSec",6720)), gEarnNextDue := Map(), gEarnBunkerOrdered := false, gEarnBunkerFull := false
 global c := [], buyCalls := 0, beginCalls := 0, endCalls := 0
 ; stock, supply, interval, begin OK, buy OK, end OK, result, buys, ends, due milliseconds.
-cases := [[0.4,1,8400,true,true,true,true,0,1,300000],
-    [0.4,0.25,6720,true,true,true,true,0,1,240000],
-    [0.4,0.24,6720,true,true,true,true,0,1,156000],
-    [0.4,0.2,6720,true,true,true,true,1,1,600000],
+cases := [[0.4,1,8400,true,true,true,true,0,1,60000],
+    [0.4,0.25,6720,true,true,true,true,0,1,60000],
+    [0.4,0.24,6720,true,true,true,true,0,1,60000],
+    [0.4,0.2,6720,true,true,true,true,1,1,60000],
     [1,0,8400,true,true,true,true,0,1,604800000],
-    [0.4,0.75,1680,true,true,true,true,0,1,300000],
-    [0.4,0,8400,true,true,true,true,1,1,600000],
-    [0.4,0.8,1680,true,true,true,true,1,1,600000],
-    [0.4,0.6,3360,true,true,true,true,1,1,600000],
+    [0.4,0.75,1680,true,true,true,true,0,1,60000],
+    [0.4,0,8400,true,true,true,true,1,1,60000],
+    [0.4,0.8,1680,true,true,true,true,1,1,60000],
+    [0.4,0.6,3360,true,true,true,true,1,1,60000],
     [0.4,0,1645,true,true,true,false,0,1,0],
     [-1,0,8400,true,true,true,false,0,1,0],
     [0.4,1.1,8400,true,true,true,false,0,1,0],
     [0.4,0,8400,false,true,true,false,0,0,0],
-    [0.4,0,8400,true,false,true,false,1,1,600000],
-    [0.4,0,8400,true,true,false,false,1,1,600000]]
+    [0.4,0,8400,true,false,true,false,1,1,60000],
+    [0.4,0,8400,true,true,false,false,1,1,60000]]
 for row in cases {
     c := row, config["Settings"]["EarnBunkerIntervalSec"] := c[3]
     gEarnNextDue := Map("bunker",0), buyCalls := 0, beginCalls := 0, endCalls := 0, gEarnBunkerOrdered := true
@@ -1195,8 +1195,8 @@ for row in cases {
         throw Error("Bunker task scheduling " A_Index " due=" due)
 }
 ; The grouped scheduler already owns the MCT session, including no-purchase and invalid-read paths.
-for row in [[0.4,1,8400,false,true,false,true,0,0,300000],
-    [0.4,0,8400,false,true,false,true,1,0,600000],
+for row in [[0.4,1,8400,false,true,false,true,0,0,60000],
+    [0.4,0,8400,false,true,false,true,1,0,60000],
     [-1,0,8400,false,true,false,false,0,0,0]] {
     c := row, config["Settings"]["EarnBunkerIntervalSec"] := c[3]
     gEarnNextDue := Map("bunker",0), buyCalls := 0, beginCalls := 0, endCalls := 0, gEarnBunkerOrdered := true
@@ -1245,24 +1245,25 @@ global c := Map(), clockMs := 0, supplyNow := 0.21, stockNow := 0.4,
     refreshes := 0, buys := 0, begins := 0, ends := 0, sleeps := [], abortNow := false, reads := 0
 ; Name, observations/options, result, purchases, next delay, expected observation time.
 cases := [
-    ["catch boundary on fresh frame",Map("supply",0.22,"at",150000,"next",0.2),true,1,600000,154000],
-    ["already at boundary",Map("supply",0.2),true,1,600000,0],
-    ["production paused stays bounded",Map(),true,0,5000,240000],
-    ["new delivery resets prediction",Map("at",20000,"next",1),true,0,300000,22000],
+    ["catch boundary on fresh frame",Map("supply",0.22,"at",150000,"next",0.2),true,1,60000,154000],
+    ["already at boundary",Map("supply",0.2),true,1,60000,0],
+    ["production paused stays bounded",Map(),true,0,10000,240000],
+    ["accelerated supply reaches actual boundary",Map("supply",0.22,"at",11000,"next",0.2),true,1,60000,11000],
+    ["new delivery resets prediction",Map("at",20000,"next",1),true,0,60000,22000],
     ["stock fills during observation",Map("at",20000,"nextStock",1),true,0,604800000,22000],
-    ["missed boundary preserves spending limit",Map("at",20000,"next",0.19),true,0,300000,22000],
-    ["scheduler late after another task",Map("beginMs",200000,"supply",0.19),true,0,300000,200000],
+    ["missed boundary preserves spending limit",Map("at",20000,"next",0.19),true,0,60000,22000],
+    ["scheduler late after another task",Map("beginMs",200000,"supply",0.19),true,0,60000,200000],
     ["invalid later supply stops",Map("at",20000,"next",-1),false,0,0,22000],
     ["invalid later stock stops",Map("at",20000,"nextStock",-1),false,0,0,22000],
     ["refresh failure stops",Map("refreshFail",true),false,0,0,11000],
     ["sleep detects focus loss",Map("sleepAbort",true),false,0,0,10000],
     ["refresh detects user input",Map("refreshAbort",true),false,0,0,11000],
     ["abort before observation",Map("abort",true),false,0,0,0],
-    ["late refresh cannot authorize payment",Map("refreshMs",230000,"at",1,"next",0.2),true,0,5000,240000],
-    ["refresh crossing deadline cannot authorize payment",Map("refreshMs",231000,"at",1,"next",0.2),true,0,5000,241000],
-    ["near earlier configured boundary",Map("interval",1680,"supply",0.81,"at",20000,"next",0.8),true,1,600000,22000],
-    ["deadline not extended by closer observation",Map("supply",0.22,"at",20000,"next",0.21),true,0,5000,240000],
-    ["read completing after deadline discarded",Map("lateRead",true,"at",1,"next",0.2),true,0,5000,240000]]
+    ["late refresh cannot authorize payment",Map("refreshMs",230000,"at",1,"next",0.2),true,0,10000,240000],
+    ["refresh crossing deadline cannot authorize payment",Map("refreshMs",231000,"at",1,"next",0.2),true,0,10000,241000],
+    ["near earlier configured boundary",Map("interval",1680,"supply",0.81,"at",20000,"next",0.8),true,1,60000,22000],
+    ["deadline not extended by closer observation",Map("supply",0.22,"at",20000,"next",0.21),true,0,10000,240000],
+    ["read completing after deadline discarded",Map("lateRead",true,"at",1,"next",0.2),true,0,10000,240000]]
 for scenario in cases {
     c := scenario[2], config["Settings"]["EarnBunkerIntervalSec"] := c.Get("interval",6720)
     clockMs := 0, supplyNow := c.Get("supply",0.21), stockNow := 0.4,
@@ -1280,7 +1281,7 @@ for scenario in cases {
     if (scenario[6] >= 240000 && buys)
         throw Error("No deadline-late purchase permitted")
 }
-FileAppend("PASS BunkerObserve cases=18`n", "*")
+FileAppend("PASS BunkerObserve cases=19`n", "*")
 ExitApp(0)
 BunkerClock() => clockMs
 EarnTaskMCTBegin() {
@@ -1336,7 +1337,7 @@ EarnFail(*) => false
     $savedBunkerSource = $sourceText
     try {
         $sourceText = $sourceText.Replace('A_TickCount', 'BunkerClock()')
-        Invoke-EarnOfflineCheck 'BunkerObserve' 'EarnBunkerTask' $bunkerObserveDriver 18
+        Invoke-EarnOfflineCheck 'BunkerObserve' 'EarnBunkerTask' $bunkerObserveDriver 19
     } finally { $sourceText = $savedBunkerSource }
     $taskFinallyDriver = @'
 global config := Map("Settings",Map("EarnBunkerIntervalSec",8400,"EarnDJPopularityPct",95)),

@@ -315,16 +315,15 @@ EarnBunkerTask(manageSession := true) {
             ok := true
         } else if (!plan.buy) {
             EarnLog("벙커: " plan.reason " → 다음 " plan.bars "칸 소모 경계에서 재확인")
-            ; 84초 생산 틱·막대 판독·MCT 진입 지연을 위해 경계보다 3분 먼저 준비한다.
-            ; waitMs는 구매 시각이 아니다. 재진입 뒤 반드시 새 보급량과 가격을 읽는다.
-            nextWait := plan.reason = "wait_boundary" ? plan.waitMs - 180000 : plan.waitMs
-            gEarnNextDue["bunker"] := A_TickCount + Max(5000, Min(300000, nextWait))
+            ; 실제 잔량이 경계에 가까우면 짧게 보고, 그 밖에도 최대 1분마다 새 잔량을 확인한다.
+            ; 생산 가속 여부를 시간으로 추측하지 않으며 구매는 새 잔량과 가격을 읽어 결정한다.
+            gEarnNextDue["bunker"] := A_TickCount + Max(5000, Min(60000, plan.waitMs))
             ok := true
         } else {
             gEarnBunkerOrdered := false
             ok := EarnBunkerBuy()
             ; 배송 중 안내도 정상이다. 주문 완료와 보급 완료를 구분한다.
-            gEarnNextDue["bunker"] := A_TickCount + 600000
+            gEarnNextDue["bunker"] := A_TickCount + 60000
         }
     } finally {
         ended := manageSession ? EarnTaskMCTEnd() : true
@@ -352,9 +351,9 @@ EarnBunkerObservePlan(requestedSeconds) {
         if (plan.reason = "invalid_read" || plan.reason = "invalid_interval")
             return EarnFail(plan.reason = "invalid_read" ? "벙커: 막대 범위 오류"
                 : "벙커 주기는 1680초의 1~5배(28~140분)여야 함")
-        ; 3분 예약 여유를 넘겨 4분 관측 기한까지 받는다. 3분 기준이면 3분을 조금 넘는 판독에서
-        ; 몇 초 뒤 재예약이 되어 MCT·CEO 를 수십 초마다 다시 열었다(1003 19:15~19:18 실측, 보급 22%).
-        if (plan.buy || plan.reason != "wait_boundary" || plan.waitMs > 240000)
+        ; 다음 20% 경계까지 실제 잔량 차이가 3% 이하일 때만 화면 안에서 재관측한다.
+        ; 생산 속도가 바뀌어도 고정 시간 예상으로 구매하거나 관측을 미루지 않는다.
+        if (plan.buy || plan.reason != "wait_boundary" || !plan.nearBoundary)
             return plan
         if (!deadline) {
             deadline := A_TickCount + 240000
