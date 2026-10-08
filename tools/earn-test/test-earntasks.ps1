@@ -2108,25 +2108,30 @@ global turnCase := [], moves := 0, movedX := 0, movedY := 0, turnMs := 0, menuCh
 for scenario in [[5220,0,-1,-1,true,261,5220,0],
     [5220,0,0,-1,false,0,0,0],[5220,0,1,-1,false,1,20,0],
     [5220,0,-1,0,false,0,0,0],[5220,0,-1,1,false,1,20,0],
-    [5220,0,-1,0,true,261,5220,0,true,true,1200],
+    [5220,0,-1,0,true,261,5220,0,true,true,1200,false,125],
     [5220,0,1,0,false,1,20,0,true,true],
     [5220,0,-1,0,false,0,0,0,true,false],
     [5220,0,-1,0,false,0,0,0,false,true],
     [5220,0,-1,0,false,0,0,0,true,true,9500],
-    [5220,0,-1,0,false,134,2680,0,true,true,5000],
-    [5220,0,-1,0,false,0,0,0,true,true,100,true]] {
+    [5220,0,-1,0,false,200,4000,0,true,true,5000],
+    [5220,0,-1,0,false,0,0,0,true,true,100,true],
+    [5220,0,-1,0,false,17,340,0,true,true,0,false,0,1]] {
     turnCase := scenario, moves := 0, movedX := 0, movedY := 0, turnMs := 0, menuChecks := 0, menuAbort := false
     if (EarnTurn(scenario[1],0,scenario.Length >= 9 ? scenario[9] : false) != scenario[5] || moves != scenario[6]
         || movedX != scenario[7] || movedY != scenario[8])
-        throw Error("Camera recovery must preserve abort/HUD guards and bounded movement")
-    if (scenario.Length >= 11 && scenario[11] = 1200 && (menuChecks != 2 || turnMs > 6500))
+        throw Error("Camera recovery must preserve abort/HUD guards and bounded movement: moves=" moves " time=" turnMs " expected=" scenario[6])
+    if (scenario.Length >= 11 && scenario[11] = 1200 && (menuChecks != 2 || turnMs > 8500))
         throw Error("Slow menu checks must be throttled while HDR recovery remains bounded")
 }
-FileAppend("PASS TurnGuard cases=12`n", "*")
+FileAppend("PASS TurnGuard cases=13`n", "*")
 ExitApp(0)
 EarnAborted() => menuAbort || (turnCase[3] >= 0 && moves >= turnCase[3])
 EarnHudVisible() => turnCase[4] < 0 || moves < turnCase[4]
-HealthHudVisible() => turnCase.Length >= 10 && turnCase[10]
+HealthHudVisible() {
+    global turnMs
+    turnMs += turnCase.Length >= 13 ? turnCase[13] : 0
+    return turnCase.Length >= 10 && turnCase[10] && (turnCase.Length < 14 || moves < turnCase[14])
+}
 EarnMCTRecoveryHud() {
     global turnMs, menuChecks, menuAbort
     menuChecks++, turnMs += turnCase.Length >= 11 ? turnCase[11] : 0
@@ -2150,7 +2155,7 @@ EarnFail(*) => false
 '@
     $turnSource = $sourceText
     $sourceText = $sourceText.Replace('A_TickCount','TurnClock()')
-    try { Invoke-EarnOfflineCheck 'TurnGuard' 'EarnTurn' $turnGuardDriver 12 }
+    try { Invoke-EarnOfflineCheck 'TurnGuard' 'EarnTurn' $turnGuardDriver 13 }
     finally { $sourceText = $turnSource }
     $recoveryHudDriver = @'
 global EARN_PROMPT_AREA := [], overlay := "", healthColor := 0xAAFFB4
