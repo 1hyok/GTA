@@ -2,7 +2,7 @@
 ; 단축키(기본 F9) 두 번으로 켜고 끈다. End(전체 멈춤)도 끈다. 켜 두면 1초마다 할 일을 본다.
 ; 때가 된 벙커·DJ·창고는 MCT를 한 번 열어 묶어 처리하고 한 번 닫는다. 금고·앱 파견은 그다음 별도로 한다.
 ; 사용자 물리 입력이 EarnUserIdleSec 동안 없고 GTA가 앞일 때만 시작한다. 진행 중 사용자 입력·포커스 이탈 시 중단한다.
-; 어느 단계든 화면 확인이 안 되면 자동화 전체를 끄고(멈춤 까닭은 %TEMP%\gta-earn.log·오버레이·설정 창) AFK 방지는 켜 둔다.
+; 개별 실패는 기록하고 정리된 화면에서 다른 작업을 계속한다. 결과 불명확 작업은 보류한다.
 ; 게임 종료·재시작 시 끄고, 사용자가 다시 켜야 새 게임 상태에서 예약을 시작한다.
 global gEarnOn := false
 global gEarnDue := Map()        ; 작업 id → 다음 실행 시각(A_TickCount)
@@ -11,7 +11,10 @@ global gEarnCurrent := ""       ; 지금 하는 작업 이름
 global gEarnSellNotice := ""    ; 창고 만재 3개 이상일 때 판매 필요 알림(EarnWarehouseSellNotice)
 global gEarnTasks := []
 global gEarnNextDue := Map()   ; 작업이 스스로 정한 다음 실행 시각(A_TickCount). 없으면 시작 시각 + 간격
-global gEarnSoftFails := Map()   ; 작업별 연속 "다시 하기" 횟수. EarnSoftFailMax 를 넘으면 그때 끈다
+global gEarnSoftFails := Map()   ; 작업별 연속 실패 횟수. 빠른 재시도 뒤 최대 30분으로 간격을 늘린다
+global gEarnHeld := Map()        ; 거래 결과 불명확 작업 id → 사유. 수동 재활성화 전에는 재실행하지 않는다
+global gEarnFailures := Map()    ; 작업 id → 마지막 실패 사유와 다음 시도 시각(보류는 0)
+global gEarnRecovery := ""        ; 확인된 정리 경로를 다음 tick에서 우선 재시도한다
 global gEarnGuardArmed := false
 global gEarnGuardStartedTick := 0
 global gEarnUserAbort := false
@@ -37,7 +40,7 @@ ToggleEarner(*) {
 }
 
 SetEarner(on, reason := "") {
-    global gEarnOn, gEarnDue, gEarnDone, gEarnFail, gEarnTasks, gEarnNextDue, gEarnSoftFails, gEarnRetryIn, gEarnBusy, gAbort, gEarnGamePID, gEarnBunkerFull, config, afkOn
+    global gEarnOn, gEarnDue, gEarnDone, gEarnFail, gEarnTasks, gEarnNextDue, gEarnSoftFails, gEarnHeld, gEarnFailures, gEarnRecovery, gEarnRetryIn, gEarnBusy, gAbort, gEarnGamePID, gEarnBunkerFull, config, afkOn
     if (on) {
         gEarnGamePID := EarnGamePID()
         if (!gEarnGamePID)
@@ -50,12 +53,20 @@ SetEarner(on, reason := "") {
         gEarnFail := ""
         gEarnTasks := EarnTaskList()
         gEarnDue := Map(), gEarnDone := Map(), gEarnNextDue := Map(), gEarnSoftFails := Map()
+        gEarnHeld := Map(), gEarnFailures := Map()
+        gEarnRecovery := ""
         gEarnRetryIn := 0
         ; 끈 사이에 벙커를 팔았을 수 있다. 첫 확인은 벙커 카드로 새로 읽는다.
         gEarnBunkerFull := false
         now := A_TickCount
         s := config["Settings"]
         for t in gEarnTasks {
+            pending := EarnStateGet("pending_" t.id)
+            if (pending != "") {
+                gEarnHeld[t.id] := pending
+                gEarnFailures[t.id] := {reason: pending, nextTick: 0}
+                EarnLog("보류: " t.id " 이전 요청 결과 확인 필요 (" pending "), 나머지 작업 계속")
+            }
             gEarnDone[t.id] := 0
             ; 창고·벙커·DJ는 즉시 확인. 금고와 파견은 설정한 첫 대기를 따른다.
             first := t.id = "safe" ? s["EarnSafeFirstMin"] * 60000 : t.id = "dispatch" ? s["EarnDispatchFirstMin"] * 60000 : 0
@@ -91,7 +102,7 @@ EarnEnabledText() {
 }
 
 EarnTick() {
-    global gEarnOn, gEarnBusy, gEarnDue, gEarnDone, gEarnTasks, gEarnCurrent, gEarnFail, gEarnNextDue, gEarnSoftFails, gEarnRetryIn, gAbort, gEarnGamePID, gEarnUserAbort, config, afkOn
+    global gEarnOn, gEarnBusy, gEarnDue, gEarnDone, gEarnTasks, gEarnCurrent, gEarnFail, gEarnNextDue, gEarnSoftFails, gEarnHeld, gEarnFailures, gEarnRecovery, gEarnRetryIn, gAbort, gEarnGamePID, gEarnUserAbort, config, afkOn
     if (!gEarnOn || gEarnBusy)
         return
     if (!gEarnGamePID || EarnGamePID() != gEarnGamePID) {
@@ -105,9 +116,16 @@ EarnTick() {
     if (EarnOtherMacroBusy())
         return
     now := A_TickCount
+    recovering := IsObject(gEarnRecovery)
+    if (recovering && now < gEarnRecovery.nextTick)
+        return
     task := ""
+    if (recovering)
+        task := gEarnRecovery.task
     for t in gEarnTasks {
-        if (t.on && gEarnDue[t.id] <= now) {
+        if (recovering)
+            break
+        if (t.on && !gEarnHeld.Has(t.id) && gEarnDue[t.id] <= now) {
             task := t
             break
         }
@@ -116,13 +134,14 @@ EarnTick() {
         return
     ; 시작 시점에 실행할 차례이거나 EarnMCTBatchAheadSec(기본 120초) 안에 차례가 될 MCT 작업을 묶는다. 진행 중 새로 due가 된 작업은 다음 회차다.
     ; 1005 14:10·14:20 에 DJ 가 묶음을 정한 순간보다 몇 초 늦게 due 가 되어, 창고만 하고 나온 뒤 1분 안에 나이트클럽에 다시 들어갔다.
-    mctSession := EarnIsMCTTask(task.id)
-    dueTasks := [task]
-    if (mctSession) {
+    mctSession := recovering ? gEarnRecovery.mct : EarnIsMCTTask(task.id)
+    dueTasks := recovering ? gEarnRecovery.tasks : [task]
+    if (mctSession && !recovering) {
         dueTasks := []
         ahead := config["Settings"].Get("EarnMCTBatchAheadSec", 120) * 1000
         for t in gEarnTasks {
-            if (t.on && EarnIsMCTTask(t.id) && gEarnDue[t.id] <= now + ahead)
+            if (t.on && !gEarnHeld.Has(t.id) && EarnIsMCTTask(t.id)
+                && gEarnDue[t.id] <= now + (gEarnFailures.Has(t.id) ? 0 : ahead))
                 dueTasks.Push(t)
         }
     }
@@ -150,10 +169,16 @@ EarnTick() {
     try {
         EarnInputGuardStart()
         if (EarnInputAllowed()) {
-            if (mctSession)
+            if (recovering) {
+                outcome := gEarnRecovery.outcome
+                outcome.cleanupOK := gEarnRecovery.mct ? EarnTaskMCTEnd() : EarnVinewoodClose()
+            } else if (mctSession)
                 outcome := EarnRunMCTBatch(dueTasks)
-            else
-                outcome.results.Push(EarnRunScheduledTask(task))
+            else {
+                result := EarnRunScheduledTask(task)
+                outcome.results.Push(result)
+                outcome.cleanupOK := result.cleanupOK
+            }
         }
         ; 마지막 단계에서 사용자가 개입한 경우 성공/자동 재시도로 덮지 않는다.
         if (!EarnInputAllowed()) {
@@ -179,9 +204,11 @@ EarnTick() {
     ; (1004 18:36 사용자가 잠깐 만져 자동화가 통째로 꺼졌다. 밤새 켜 두는 용도라 매번 F9 를 다시 눌러야 했다)
     if (gEarnUserAbort) {
         gAbort := false
+        if (!outcome.cleanupOK || recovering)
+            gEarnRecovery := {task: task, tasks: dueTasks, mct: mctSession, outcome: outcome, attempts: 0, nextTick: A_TickCount + 3 * 60000}
         finished := Map()
         for result in outcome.results {
-            if (result.ok) {
+            if (result.ok && outcome.cleanupOK && !recovering) {
                 EarnFinishScheduledTask(result)
                 finished[result.task.id] := true
             }
@@ -189,6 +216,13 @@ EarnTick() {
         for t in dueTasks {
             if (finished.Has(t.id))
                 continue
+            pending := EarnStateGet("pending_" t.id)
+            if (pending != "") {
+                gEarnHeld[t.id] := pending
+                gEarnFailures[t.id] := {reason: pending, nextTick: 0}
+                EarnLog("보류: " t.id " " pending "; 사용자 중단 뒤 재요청 금지")
+                continue
+            }
             if (gEarnNextDue.Has(t.id))
                 gEarnNextDue.Delete(t.id)
             gEarnDue[t.id] := A_TickCount + 3 * 60000
@@ -197,10 +231,20 @@ EarnTick() {
         ShowTooltip("💰 사용자 입력으로 중단 → 3분 뒤 다시", 4000)
         return
     }
-    if (fatalReason != "" || !outcome.cleanupOK) {
-        why := fatalReason != "" ? fatalReason : "MCT 정리 실패: " (gEarnFail = "" ? "종료 또는 CEO 해제 미확인" : gEarnFail)
-        EarnStopAfterFailure(why)
+    if (fatalReason != "") {
+        EarnStopAfterFailure(fatalReason)
         return
+    }
+    if (!outcome.cleanupOK) {
+        attempts := recovering ? gEarnRecovery.attempts + 1 : 1
+        delay := Min(300000, 30000 * 2 ** Min(4, attempts - 1))
+        gEarnRecovery := {task: task, tasks: dueTasks, mct: mctSession, outcome: outcome, attempts: attempts, nextTick: A_TickCount + delay}
+        EarnLog("복구 대기: " task.id " 정리 미확인 (" gEarnFail ") → " Round(delay / 1000) "초 뒤 확인된 정리 경로 재시도; 수익 작업 대기")
+        return
+    }
+    if (recovering) {
+        gEarnRecovery := ""
+        EarnLog("복구 완료: " task.id " 메뉴 종료·보스 해제 확인, 나머지 작업 재개")
     }
     ; 재시도로 미룬 작업이 있어도 묶음의 나머지 결과를 마저 확정한다. 자동화가 꺼졌을 때만 멈춘다.
     for result in outcome.results {
@@ -217,7 +261,7 @@ EarnIsMCTTask(id) {
 ; 각 본문은 자기 예약을 유지한다. 완료 횟수·최종 로그는 공동 MCT 정리가 끝난 뒤 확정한다.
 EarnRunScheduledTask(task, mctSession := false) {
     global gEarnCurrent, gEarnFail, gEarnRetryIn
-    result := {task: task, startTick: A_TickCount, ok: false, retryIn: 0, reason: ""}
+    result := {task: task, startTick: A_TickCount, ok: false, retryIn: 0, reason: "", cleanupOK: true}
     gEarnCurrent := task.label
     gEarnRetryIn := 0
     gEarnFail := ""
@@ -234,6 +278,11 @@ EarnRunScheduledTask(task, mctSession := false) {
     }
     result.reason := gEarnFail
     result.retryIn := result.ok ? 0 : gEarnRetryIn
+    ; 실패한 앱은 확인된 Backspace 경로만으로 닫는다. 정리가 덮어써도 본래 사유는 보존한다.
+    if (!result.ok && !mctSession && (task.id = "safe" || task.id = "staff") && EarnInputAllowed()) {
+        result.cleanupOK := EarnVinewoodClose()
+        gEarnFail := result.reason
+    }
     gEarnRetryIn := 0
     if (result.ok && mctSession)
         EarnLog("본문 완료: " task.label " (MCT 정리 대기)")
@@ -241,7 +290,7 @@ EarnRunScheduledTask(task, mctSession := false) {
 }
 
 EarnRunMCTBatch(tasks) {
-    global gEarnCurrent, gEarnFail, gEarnRetryIn
+    global gEarnCurrent, gEarnFail, gEarnRetryIn, gEarnMCTCleanupOK
     outcome := {results: [], cleanupOK: true}
     opened := false
     currentTask := tasks[1]
@@ -251,6 +300,8 @@ EarnRunMCTBatch(tasks) {
     try {
         ; Begin은 진입 실패·예외를 자체 정리한다. 성공한 세션만 여기서 닫는다.
         opened := EarnTaskMCTBegin()
+        if (!opened && IsSet(gEarnMCTCleanupOK))
+            outcome.cleanupOK := gEarnMCTCleanupOK
         if (opened) {
             for task in tasks {
                 currentTask := task
@@ -282,10 +333,12 @@ EarnRunMCTBatch(tasks) {
 }
 
 EarnFinishScheduledTask(result) {
-    global gEarnDue, gEarnDone, gEarnSoftFails, gEarnNextDue, config
+    global gEarnDue, gEarnDone, gEarnSoftFails, gEarnNextDue, gEarnHeld, gEarnFailures, config
     task := result.task
     if (result.ok) {
         gEarnSoftFails[task.id] := 0
+        if (gEarnFailures.Has(task.id))
+            gEarnFailures.Delete(task.id)
         ; 주기는 확인을 시작한 때부터 잰다. 작업이 현재 화면에서 정한 다음 확인 시각이 있으면 그 값을 쓴다.
         gEarnDue[task.id] := gEarnNextDue.Has(task.id) ? gEarnNextDue.Delete(task.id) : result.startTick + task.every
         gEarnDone[task.id] += 1
@@ -293,20 +346,28 @@ EarnFinishScheduledTask(result) {
         EarnLog("끝: " task.label " (" gEarnDone[task.id] "회째, 다음 " FormatTime(DateAdd(A_Now, secondsUntilDue, "Seconds"), "HH:mm:ss") ")")
         return true
     }
-    ; 위험하지 않은 실패(길을 못 찾음·재접속 자리가 나쁨)는 작업이 gEarnRetryIn 을 채워 두었다 → 끄지 않고 그때 다시 한다. 연속 EarnSoftFailMax 번이면 그때 끈다
+    ; 정리된 화면의 일반 판독 실패는 이 작업만 미룬다. 요청 후 결과가 불명확하면 재결제·재파견하지 않는다.
     if (gEarnNextDue.Has(task.id))
         gEarnNextDue.Delete(task.id)
-    if (result.retryIn) {
+    reason := result.reason = "" ? task.label " 확인 실패" : result.reason
+    pending := EarnStateGet("pending_" task.id)
+    if (pending != "") {
+        reason := reason " (" pending ")"
+        gEarnHeld[task.id] := reason
+        gEarnFailures[task.id] := {reason: reason, nextTick: 0}
+        EarnLog("보류: " task.id " (" task.label ") " reason "; 결과 확인 후 pending 상태 해제 필요, 나머지 작업 계속")
+        return false
+    }
+    {
         n := gEarnSoftFails.Get(task.id, 0) + 1
         gEarnSoftFails[task.id] := n
-        if (n <= config["Settings"]["EarnSoftFailMax"]) {
-            gEarnDue[task.id] := A_TickCount + result.retryIn
-            EarnLog(task.label ": 이번엔 못 함 (" result.reason ") → " Round(result.retryIn / 60000) "분 뒤 다시 (" n "/" config["Settings"]["EarnSoftFailMax"] ")")
-            ShowTooltip("💰 " task.label ": " Round(result.retryIn / 60000) "분 뒤 다시 (" n "/" config["Settings"]["EarnSoftFailMax"] ")", 4000)
-            return false
-        }
+        retryIn := result.retryIn ? result.retryIn : 60000
+        retryIn := Min(30 * 60000, retryIn * 2 ** Min(5, Max(0, n - config["Settings"]["EarnSoftFailMax"])))
+        gEarnDue[task.id] := A_TickCount + retryIn
+        gEarnFailures[task.id] := {reason: reason, nextTick: gEarnDue[task.id]}
+        EarnLog("실패: " task.id " (" task.label ") " reason " → " Round(retryIn / 60000) "분 뒤 다시 (연속 " n "회), 나머지 작업 계속")
+        ShowTooltip("💰 " task.label ": " Round(retryIn / 60000) "분 뒤 다시", 4000)
     }
-    EarnStopAfterFailure(result.reason = "" ? task.label " 확인 실패" : result.reason)
     return false
 }
 
@@ -420,21 +481,23 @@ EarnOtherMacroBusy() {
 
 ; 오버레이·설정 창 한 줄 상태
 EarnStatusText() {
-    global gEarnOn, gEarnDue, gEarnTasks, gEarnCurrent, gEarnFail, config
+    global gEarnOn, gEarnDue, gEarnTasks, gEarnCurrent, gEarnFail, gEarnHeld, gEarnRecovery, config
     if (!gEarnOn)
         return gEarnFail = "" ? "" : "수익 멈춤: " gEarnFail
     if (gEarnCurrent != "")
         return "수익: " gEarnCurrent " 진행 중"
+    if (IsObject(gEarnRecovery))
+        return "수익: " gEarnRecovery.task.label " 정리 복구 대기 " Max(0, Ceil((gEarnRecovery.nextTick - A_TickCount) / 1000)) "초"
     nextLabel := "", nextIn := 0
     for t in gEarnTasks {
-        if (!t.on)
+        if (!t.on || gEarnHeld.Has(t.id))
             continue
         left := gEarnDue[t.id] - A_TickCount
         if (nextLabel = "" || left < nextIn)
             nextLabel := t.label, nextIn := left
     }
     if (nextLabel = "")
-        return "수익: 켜진 작업 없음"
+        return gEarnHeld.Count ? "수익: 결과 확인 필요 " gEarnHeld.Count "개 보류" : "수익: 켜진 작업 없음"
     if (nextIn <= 0) {
         if (!IsGTAActive())
             return "수익: GTA 포커스 대기"

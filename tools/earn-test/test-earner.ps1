@@ -11,6 +11,10 @@ $guards = @('EarnInputGuardStart', 'EarnInputGuardStop', 'EarnInputWatch', 'Earn
     $body
 }
 $production = ($tick + "`n" + ($guards -join "`n")).Replace('A_TimeIdlePhysical', 'idleMs').Replace('A_TickCount', 'fakeTick')
+$core = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnCore.ahk') -Raw -Encoding UTF8
+foreach ($functionName in @('EarnTransactionBegin','EarnTransactionConfirmed')) {
+    $production += "`n" + [regex]::Match($core, ('(?ms)^' + $functionName + '\([^\r\n]*\) \{.*?^\}')).Value
+}
 $driver = @'
 #Requires AutoHotkey v2.0
 #SingleInstance Off
@@ -26,6 +30,18 @@ global calls, releaseCount, stopped, mode, windowExists, focused, otherBusy, act
 global feedTimer := 0
 global gEarnGamePID, fakePID, fakeTick, gEarnGuardStartedTick, gEarnUserAbort, lockAvailable, lockCalls, lockReleases, lockHeld, hooks, checkCount := 0
 global beginCount, endCount, beginCleanupCount, beginOK, endOK, beginThrows, endThrows, mctOpen, events, logs, taskModes, taskDurations, beginDelay, endDelay, endInput
+global gEarnHeld, gEarnFailures, gEarnRecovery, appCloseOK, appCloseCount
+global state := Map(), stateWritable := true
+Reset()
+Check(EarnTransactionBegin("staff", "sent") && state["pending_staff"] = "sent", "request records persistent pending before input")
+EarnTransactionConfirmed("staff")
+Check(state["pending_staff"] = "", "confirmed result clears pending")
+stateWritable := false
+Check(!EarnTransactionBegin("staff", "sent"), "state persistence failure prevents transaction")
+Reset()
+state["pending_staff"] := "unconfirmed before restart"
+SetEarner(true)
+Check(gEarnHeld.Has("staff") && state["pending_staff"] != "", "manual enable preserves unconfirmed transaction across restarts")
 Reset()
 gEarnOn := false
 EarnTick()
@@ -118,16 +134,58 @@ EarnTick()
 Check(gEarnOn && gEarnSoftFails["bunker"] = 1 && gEarnDue["bunker"] > A_TickCount + 59000, "soft retry")
 gEarnDue["bunker"] := A_TickCount - 1
 EarnTick()
-Check(!gEarnOn && stopped = 1, "retry exhausted")
+Check(gEarnOn && stopped = 0 && gEarnSoftFails["bunker"] = 2 && gEarnDue["bunker"] >= fakeTick + 120000, "retry exhaustion increases backoff without stopping")
 Reset()
 mode := "fail"
 EarnTick()
-Check(!gEarnOn && stopped = 1 && releaseCount = 1 && !gEarnBusy, "hard failure")
+Check(gEarnOn && stopped = 0 && releaseCount = 1 && !gEarnBusy && gEarnFailures.Has("bunker"), "individual failure records and continues")
+mode := "ok"
+EarnTick()
+Check(calls.Length = 2 && calls[2] = "dj" && gEarnDone["dj"] = 1, "other due task runs after failure")
+Reset()
+mode := "ambiguous"
+EarnTick()
+Check(gEarnOn && gEarnHeld.Has("bunker") && gEarnFailures["bunker"].nextTick = 0, "ambiguous transaction holds only its task")
+mode := "ok"
+EarnTick()
+fakeTick += 3600000
+EarnTick()
+Check(calls.Length = 3 && calls[2] = "dj" && calls[3] = "dj", "held task never repeats while other task continues")
+Reset()
+endOK := false
+EarnTick()
+Check(gEarnOn && IsObject(gEarnRecovery) && gEarnDone["bunker"] = 0 && !lockHeld, "cleanup failure schedules guarded recovery and releases lock")
+EarnTick()
+Check(calls.Length = 2 && endCount = 1, "recovery backoff sends no business input")
+gEarnTasks.Push({id:"warehouse",label:"warehouse",on:true,every:300000,fn:RunTask.Bind("warehouse")})
+gEarnDue["warehouse"] := 0, gEarnDone["warehouse"] := 0
+endInput := true, fakeTick := gEarnRecovery.nextTick
+EarnTick()
+Check(gEarnRecovery.tasks.Length = 2 && gEarnDue["warehouse"] = 0,
+    "user intervention during recovery preserves original batch without postponing new due task")
+endInput := false, idleMs := 60000
+endOK := true
+fakeTick := gEarnRecovery.nextTick
+EarnTick()
+Check(!IsObject(gEarnRecovery) && endCount = 3 && calls.Length = 2 && gEarnDone["bunker"] = 1, "known cleanup recovery finalizes once without repeating transactions")
+Reset()
+gEarnTasks := [{id:"staff",label:"staff",on:true,every:300000,fn:RunTask.Bind("staff")}]
+gEarnDue := Map("staff",0), gEarnDone := Map("staff",0)
+mode := "fail", appCloseOK := false
+EarnTick()
+Check(gEarnOn && IsObject(gEarnRecovery) && appCloseCount = 1 && calls.Length = 1, "failed app schedules known close recovery")
+appCloseOK := true, fakeTick := gEarnRecovery.nextTick
+EarnTick()
+Check(gEarnOn && !IsObject(gEarnRecovery) && appCloseCount = 2 && calls.Length = 1 && gEarnFailures.Has("staff"), "app recovery does not repeat staff request")
 Reset()
 mode := "throw"
 EarnTick()
-Check(!gEarnOn && releaseCount = 1 && !gEarnBusy && InStr(gEarnFail, "test exception"), "exception releases")
+Check(gEarnOn && stopped = 0 && releaseCount = 1 && !gEarnBusy && InStr(gEarnFail, "test exception")
+    && gEarnFailures.Has("bunker"), "task exception records and retries after cleanup")
 Check(lockReleases = 1 && !lockHeld, "exception releases input lock")
+mode := "ok"
+EarnTick()
+Check(calls.Length = 2 && calls[2] = "dj", "other task continues after task exception")
 Reset()
 mode := "reenter"
 EarnTick()
@@ -141,6 +199,11 @@ mode := "physical"
 EarnTick()
 Check(gEarnOn && !gAbort && stopped = 0 && !gEarnGuardArmed && gEarnDone["bunker"] = 0 && gEarnRetryIn = 0
     && gEarnDue["bunker"] >= A_TickCount + 170000 && gEarnSoftFails.Get("bunker", 0) = 0, "physical input retries in 3 minutes instead of stopping")
+Reset()
+mode := "physical-pending"
+EarnTick()
+Check(gEarnOn && gEarnHeld.Has("bunker") && state.Has("pending_bunker") && !gAbort,
+    "user intervention preserves sent transaction and holds only its task")
 Reset()
 mode := "focus"
 EarnTick()
@@ -244,6 +307,7 @@ Reset() {
     lockAvailable := true, lockCalls := 0, lockReleases := 0, lockHeld := false, hooks := 0
     gEarnOn := true, gEarnBusy := false, gEarnCurrent := "", gEarnFail := "", gEarnRetryIn := 0, gAbort := false, afkOn := false
     gEarnDue := Map("bunker", A_TickCount - 1, "dj", A_TickCount - 1)
+    gEarnHeld := Map(), gEarnFailures := Map(), gEarnRecovery := "", appCloseOK := true, appCloseCount := 0, state := Map(), stateWritable := true
     gEarnDone := Map("bunker", 0, "dj", 0), gEarnNextDue := Map(), gEarnSoftFails := Map()
     gEarnTasks := [{id:"bunker", label:"bunker", on:true, every:300000, fn:RunTask.Bind("bunker")}, {id:"dj", label:"dj", on:true, every:300000, fn:RunTask.Bind("dj")}]
     config := Map("Settings", Map("EarnUserIdleSec", 2, "EarnSoftFailMax", 1, "EarnMCTOnly",1,
@@ -280,7 +344,9 @@ RunTask(id, manageSession := true) {
         EarnInputWatch()
         return true
     }
-    if (taskMode = "physical" || taskMode = "idle-zero") {
+    if (taskMode = "physical-pending")
+        state["pending_" id] := "sent before user intervention"
+    if (taskMode = "physical" || taskMode = "idle-zero" || taskMode = "physical-pending") {
         idleMs := 0
         EarnInputWatch()
         gEarnRetryIn := 60000
@@ -299,6 +365,10 @@ RunTask(id, manageSession := true) {
     }
     if (taskMode = "fail")
         return EarnFail("expected failure")
+    if (taskMode = "ambiguous") {
+        state["pending_" id] := "request sent"
+        return EarnFail("거래 결과 미확인, 재구매 금지")
+    }
     if (taskMode = "throw")
         throw Error("test exception")
     if (taskMode = "reenter")
@@ -379,6 +449,18 @@ EarnBunkerTask(manageSession := true) => RunTask("bunker",manageSession)
 EarnDJTask(manageSession := true) => RunTask("dj",manageSession)
 EarnWarehouseTask(manageSession := true) => RunTask("warehouse",manageSession)
 EarnVinewoodStaffTask() => RunTask("staff")
+EarnStateGet(key, default := "") => state.Get(key, default)
+EarnStateSet(key, value) {
+    if (stateWritable)
+        state[key] := value
+}
+EarnVinewoodClose() {
+    global appCloseCount
+    if (!lockHeld || !gEarnGuardArmed)
+        throw Error("App recovery requires guarded input lock")
+    appCloseCount++
+    return appCloseOK
+}
 EarnDispatchTask() => RunTask("dispatch")
 EarnTaskMCTBegin() {
     global beginCount, beginCleanupCount, mctOpen, fakeTick, idleMs
@@ -439,7 +521,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 57 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 72 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout
@@ -549,3 +631,30 @@ ExitApp(0)
 '@
     Invoke-EarnerMutexCheck ($guiDriver.Replace('@MACRO@', $macroName).Replace('@GUI@', $guiName)) 'PASS EarnerMutex GUI: 2 cases; no game input'
 } finally { $existingGui.Dispose() }
+
+# Production persistence uses a unique offline directory, never the live GTA state file.
+$stateSupport = @('EarnStateGet','EarnStateSet','EarnTransactionBegin','EarnTransactionConfirmed') | ForEach-Object {
+    $body = [regex]::Match($core, ('(?ms)^' + $_ + '\([^\r\n]*\) \{.*?^\}')).Value
+    if (-not $body) { throw "Production state function missing: $_" }
+    $body.Replace('A_Temp', 'stateDirectory')
+}
+$stateDriver = @'
+stateDirectory := A_Temp "\GtaEarnerStateOffline-@ID@"
+EarnFail(*) => false
+if (EarnTransactionBegin("staff", "unconfirmed"))
+    throw Error("Missing state directory must prevent transaction")
+DirCreate(stateDirectory)
+if (!EarnTransactionBegin("staff", "unconfirmed"))
+    throw Error("Persistent pending write must succeed")
+if (EarnStateGet("pending_staff") != "unconfirmed")
+    throw Error("A fresh read must retain the pending transaction")
+EarnStateSet("unrelated", "preserved")
+EarnTransactionConfirmed("staff")
+if (EarnStateGet("pending_staff") != "")
+    throw Error("Confirmed result must clear persistent pending")
+if (EarnStateGet("unrelated") != "preserved")
+    throw Error("Pending update must preserve unrelated state")
+FileAppend("PASS EarnerState persistence: 5 cases; no game input`n", "*")
+ExitApp(0)
+'@
+Invoke-EarnerMutexCheck ($stateDriver.Replace('@ID@', [guid]::NewGuid().ToString('N')) + "`n" + ($stateSupport -join "`n")) 'PASS EarnerState persistence: 5 cases; no game input'
