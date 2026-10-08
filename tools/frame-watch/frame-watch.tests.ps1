@@ -48,11 +48,17 @@ try {
     $env:PSModulePath = Join-Path $dir 'absent-modules'
     $workerDirectory = Join-Path $dir 'worker'
     $workerScript = Join-Path $PSScriptRoot 'frame-watch.ps1'
-    $worker = Start-Process (Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe') `
-        -ArgumentList ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + $workerScript + '" -RunSeconds 1 -OutputDirectory "' + $workerDirectory + '"') `
-        -WindowStyle Hidden -PassThru -RedirectStandardError (Join-Path $dir 'worker.stderr.log')
+    $info = New-Object Diagnostics.ProcessStartInfo
+    $info.FileName = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $info.Arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + $workerScript + '" -RunSeconds 1 -OutputDirectory "' + $workerDirectory + '"'
+    $info.UseShellExecute = $false
+    $info.CreateNoWindow = $true
+    $info.RedirectStandardError = $true
+    $worker = [Diagnostics.Process]::Start($info)
+    $workerError = $worker.StandardError.ReadToEndAsync()
     if (-not $worker.WaitForExit(20000)) { $worker.Kill(); throw 'Hidden worker timed out' }
-    Check ($worker.ExitCode -eq 0) 'hidden worker survives inherited module path'
+    Check ($worker.ExitCode -eq 0) ('hidden worker survives inherited module path: ' + $workerError.GetAwaiter().GetResult())
     Check (Test-Path (Join-Path $workerDirectory 'status.json')) 'hidden worker actually writes heartbeat'
+    $worker.Dispose()
 } finally { $env:PSModulePath = $savedModulePath }
 Write-Output "PASS frame-watch cases=$count evidence=$dir"
