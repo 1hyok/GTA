@@ -31,6 +31,7 @@ $items = @(
  @('mct-sit-hdr-live','mct_sit_hdr',0,0,240,48),
  @('mct-sit-hdr-live-20261008','mct_sit_hdr_alt',0,0,240,48),
  @('mct-sit-hdr-bright-20261008','mct_sit_hdr_bright',0,0,240,48),
+ @('mct-sit-hdr-box-20261008','mct_sit_hdr_box',0,0,270,60),
  @('mct-seated-hdr-current','mct_seated_hdr',0,0,240,24),
  @('mct-title-hdr-current','mct_title_hdr',0,0,536,39)
 )
@@ -40,7 +41,7 @@ foreach ($requested in $Name) {
 $saved = 0
 foreach ($item in $items) {
  if ($Name.Count -and $Name -notcontains $item[1]) { continue }
- $sourceDirectory = if ($item[1] -in @('mct_seated_mansion','mct_sit_hdr','mct_sit_hdr_alt','mct_sit_hdr_bright','mct_seated_hdr','mct_title_hdr')) { $fixtures } else { $CaptureDir }
+ $sourceDirectory = if ($item[1] -in @('mct_seated_mansion','mct_sit_hdr','mct_sit_hdr_alt','mct_sit_hdr_bright','mct_sit_hdr_box','mct_seated_hdr','mct_title_hdr')) { $fixtures } else { $CaptureDir }
  $source = [Drawing.Bitmap]::FromFile((Join-Path $sourceDirectory ($item[0]+'.png')))
  $comparison = $null
  try {
@@ -55,6 +56,27 @@ foreach ($item in $items) {
   $rect = New-Object Drawing.Rectangle ([int]$item[2]),([int]$item[3]),([int]$item[4]),([int]$item[5])
   $crop = $source.Clone($rect, $source.PixelFormat)
   try {
+  if ($item[1] -eq 'mct_sit_hdr_box') {
+   # Recorded 18:21 prompt box spans x29..269, y17..61. Do not preserve
+   # world pixels as glyphs or background. Use glyph interiors and two
+   # separate empty box bands, never antialias fringes beside the glyphs.
+   $background = New-Object Drawing.Bitmap $crop.Width,$crop.Height
+   try {
+    for ($y=0; $y -lt $crop.Height; $y++) {
+     for ($x=0; $x -lt $crop.Width; $x++) {
+      $c=$crop.GetPixel($x,$y)
+      $glyph=$x -ge 40 -and $x -le 248 -and $y -ge 26 -and $y -le 52 -and [Math]::Min($c.R,[Math]::Min($c.G,$c.B)) -ge 220
+      $band=$x -ge 33 -and $x -le 265 -and (($y -ge 19 -and $y -le 22) -or ($y -ge 56 -and $y -le 59))
+      $background.SetPixel($x,$y,$(if ($band) { $c } else { [Drawing.Color]::Magenta }))
+      if (-not $glyph) { $crop.SetPixel($x,$y,[Drawing.Color]::Magenta) }
+     }
+    }
+    $crop.Save((Join-Path $target ($item[1]+'.png')),[Drawing.Imaging.ImageFormat]::Png)
+    $background.Save((Join-Path $target ($item[1]+'_bg.png')),[Drawing.Imaging.ImageFormat]::Png)
+    $saved += 2
+   } finally { $background.Dispose() }
+   continue
+  }
   $threshold = if ($item[1] -eq 'mct_seated_mansion') { 200 } else { 170 }
   if ($item[1] -in @('mct_sit_hdr','mct_sit_hdr_alt','mct_sit_hdr_bright','mct_seated_hdr','mct_title_hdr')) {
    $background = $crop.Clone((New-Object Drawing.Rectangle 0,0,$crop.Width,$crop.Height),$crop.PixelFormat)

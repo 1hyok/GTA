@@ -32,6 +32,63 @@ if ($atBody -notmatch 'return fx = x && fy = y') { throw 'TemplateAt must reject
 $cases++
 Write-Output 'PASS production TemplateAt admits wide backgrounds and keeps exact-origin guard'
 $hdrSitBound = 40
+# 18:21 live HDR prompt: old masks retain world pixels outside the box.
+# This pair must match together at the same origin, without broadening *40.
+if ($core -notmatch 'TemplateSeen\("Earn", "mct_sit_hdr_box", area, &fx, &fy, variation\) && TemplateAt\("Earn", "mct_sit_hdr_box_bg", fx, fy, 40\)') {
+    throw 'Production must consume the bounded HDR box pair at variation 40'
+}
+$boxSource=[Drawing.Bitmap]::FromFile((Join-Path $PSScriptRoot 'mct-template-fixtures\mct-sit-hdr-box-20261008.png'))
+$boxText=[Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_sit_hdr_box.png'))
+$boxBackground=[Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_sit_hdr_box_bg.png'))
+try {
+    $legacy=[Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_sit_hdr_alt.png'))
+    try {
+        $x=0; $y=0
+        $oldDifference=[EarnNightclubTemplateTest]::MinimumVariation($boxSource,$legacy,(New-Object Drawing.Rectangle 0,0,240,48),[ref]$x,[ref]$y)
+        if ($oldDifference -le 40) { throw 'Live HDR fixture no longer reproduces the original prompt miss' }
+        $cases++
+        Write-Output "PASS live HDR fixture reproduces old prompt miss variation=$oldDifference"
+    } finally { $legacy.Dispose() }
+    foreach ($mask in @($boxText,$boxBackground)) {
+        $x=0; $y=0
+        $difference=[EarnNightclubTemplateTest]::MinimumVariation($boxSource,$mask,(New-Object Drawing.Rectangle 0,0,270,60),[ref]$x,[ref]$y)
+        if ($difference -gt 40 -or $x -ne 0 -or $y -ne 0) { throw "Live HDR box pair miss: $difference at $x,$y" }
+        $cases++
+    }
+    foreach ($color in @([Drawing.Color]::White,[Drawing.Color]::FromArgb(140,140,140),[Drawing.Color]::Black)) {
+        $blank=New-Object Drawing.Bitmap 270,60
+        $graphics=[Drawing.Graphics]::FromImage($blank)
+        try {
+            $graphics.Clear($color)
+            $x=0; $y=0
+            $textDifference=[EarnNightclubTemplateTest]::MinimumVariation($blank,$boxText,(New-Object Drawing.Rectangle 0,0,270,60),[ref]$x,[ref]$y)
+            $backgroundDifference=[EarnNightclubTemplateTest]::MinimumVariation($blank,$boxBackground,(New-Object Drawing.Rectangle 0,0,270,60),[ref]$x,[ref]$y)
+            if ($textDifference -le 40 -and $backgroundDifference -le 40) { throw "Blank screen matched live HDR pair: $color" }
+            $cases++
+        } finally { $graphics.Dispose(); $blank.Dispose() }
+    }
+    foreach ($negativeName in @('mct-final-restored.png','mansion-dj-after.png','mansion-bunker-result.png')) {
+        $other=[Drawing.Bitmap]::FromFile((Join-Path $evidence $negativeName))
+        try {
+            $x=0; $y=0
+            $textDifference=[EarnNightclubTemplateTest]::MinimumVariation($other,$boxText,(New-Object Drawing.Rectangle 0,0,576,108),[ref]$x,[ref]$y)
+            $bx=0; $by=0
+            $backgroundDifference=[EarnNightclubTemplateTest]::MinimumVariation($other,$boxBackground,(New-Object Drawing.Rectangle $x,$y,270,60),[ref]$bx,[ref]$by)
+            if ($textDifference -le 40 -and $backgroundDifference -le 40) { throw "Unrelated screen matched live HDR pair: $negativeName" }
+            $cases++
+        } finally { $other.Dispose() }
+    }
+    # Background and glyph masks must not consume the world outside the box.
+    foreach ($mask in @($boxText,$boxBackground)) {
+        for ($y=0; $y -lt $mask.Height; $y++) {
+            for ($x=0; $x -lt $mask.Width; $x++) {
+                if (($x -lt 33 -or $x -gt 265 -or $y -lt 19) -and $mask.GetPixel($x,$y).ToArgb() -ne [Drawing.Color]::Magenta.ToArgb()) { throw "HDR mask retained world pixel $x,$y" }
+            }
+        }
+        $cases++
+    }
+    Write-Output 'PASS live HDR prompt pair, blank/unrelated negatives and bounded box ROI'
+} finally { $boxSource.Dispose(); $boxText.Dispose(); $boxBackground.Dispose() }
 if ($core -match 'mct_sit_hdr_alt"[^\r\n]*Max\(variation,\s*(\d+)\)') { $hdrSitBound = [int]$Matches[1] }
 $hdrPhoneBound = 40
 if ($core -match 'name = "ph_joblist_sel" \? Max\(variation,\s*(\d+)\)') { $hdrPhoneBound = [int]$Matches[1] }
@@ -268,11 +325,11 @@ finally { $template.Dispose() }
 
 $generatedDirectory = Join-Path ([IO.Path]::GetTempPath()) ('gta-mct-template-build-' + [Guid]::NewGuid().ToString('N'))
 $null = [IO.Directory]::CreateDirectory($generatedDirectory)
-$names = @('nc_dj_menu', 'nc_home', 'mct_seated_mansion', 'mct_sit_hdr', 'mct_sit_hdr_alt', 'mct_sit_hdr_bright', 'mct_seated_hdr', 'mct_title_hdr')
+$names = @('nc_dj_menu', 'nc_home', 'mct_seated_mansion', 'mct_sit_hdr', 'mct_sit_hdr_alt', 'mct_sit_hdr_bright','mct_sit_hdr_box', 'mct_seated_hdr', 'mct_title_hdr')
 try {
     & (Join-Path $PSScriptRoot 'build-mct-templates.ps1') -OutputDir $generatedDirectory -Name $names
     foreach ($name in $names) {
-        $outputs = if ($name -in @('mct_sit_hdr','mct_sit_hdr_alt','mct_sit_hdr_bright','mct_seated_hdr','mct_title_hdr')) { @($name,($name+'_bg')) } else { @($name) }
+        $outputs = if ($name -in @('mct_sit_hdr','mct_sit_hdr_alt','mct_sit_hdr_bright','mct_sit_hdr_box','mct_seated_hdr','mct_title_hdr')) { @($name,($name+'_bg')) } else { @($name) }
         foreach ($outputName in $outputs) {
             $diff = Compare-PngPixels (Join-Path $assetDirectory ($outputName + '.png')) (Join-Path $generatedDirectory ($outputName + '.png'))
             if ($diff) { throw "Builder changes the checked-in stable mask: $outputName ($diff)" }
@@ -283,7 +340,7 @@ try {
 }
 finally {
     foreach ($name in $names) {
-        $outputs = if ($name -in @('mct_sit_hdr','mct_sit_hdr_alt','mct_sit_hdr_bright','mct_seated_hdr','mct_title_hdr')) { @($name,($name+'_bg')) } else { @($name) }
+        $outputs = if ($name -in @('mct_sit_hdr','mct_sit_hdr_alt','mct_sit_hdr_bright','mct_sit_hdr_box','mct_seated_hdr','mct_title_hdr')) { @($name,($name+'_bg')) } else { @($name) }
         foreach ($outputName in $outputs) {
             $generated = Join-Path $generatedDirectory ($outputName + '.png')
             if ([IO.File]::Exists($generated)) { [IO.File]::Delete($generated) }
