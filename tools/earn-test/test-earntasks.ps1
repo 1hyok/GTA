@@ -2146,6 +2146,7 @@ EarnLog(*) => true
     Invoke-EarnOfflineCheck 'MCTClose' 'EarnMCTClose' $mctCloseDriver 24
     $turnGuardDriver = @'
 global turnCase := [], moves := 0, movedX := 0, movedY := 0, turnMs := 0, menuChecks := 0, menuAbort := false
+global EARN_PROMPT_AREA := [], goalAfter := -1, goalCost := 0, goalAbort := false, goalMenuOnly := false
 ; Relative mouse calls are intercepted. Run the actual turn loop and input guards.
 for scenario in [[5220,0,-1,-1,true,261,5220,0],
     [5220,0,0,-1,false,0,0,0],[5220,0,1,-1,false,1,20,0],
@@ -2165,7 +2166,19 @@ for scenario in [[5220,0,-1,-1,true,261,5220,0],
     if (scenario.Length >= 11 && scenario[11] = 1200 && (menuChecks != 2 || turnMs > 8500))
         throw Error("Slow menu checks must be throttled while HDR recovery remains bounded")
 }
-FileAppend("PASS TurnGuard cases=13`n", "*")
+; A real arrival must terminate the production loop instead of completing all 261 moves.
+; The late-arrival case makes a slow menu check cross the deadline with the prompt now visible.
+for arrival in [[1,0,false,0,true], [0,0,false,0,true], [0,50,true,0,false],
+    [0,0,false,9500,true,true], [-1,0,false,9500,false], [0,50,true,9500,false,true],
+    [0,9500,false,0,true], [-1,9500,false,0,false], [0,9500,true,0,false]] {
+    goalAfter := arrival[1], goalCost := arrival[2], goalAbort := arrival[3]
+    goalMenuOnly := arrival.Length >= 6 && arrival[6]
+    turnCase := [5220,0,-1,0,false,0,0,0,true,true,arrival[4]]
+    moves := 0, movedX := 0, movedY := 0, turnMs := 0, menuChecks := 0, menuAbort := false
+    if (EarnTurn(5220,0,true) != arrival[5] || moves >= 261 || (goalAfter = 0 && moves != 0))
+        throw Error("MCT prompt arrival must stop movement, including at deadline; moves=" moves)
+}
+FileAppend("PASS TurnGuard cases=22`n", "*")
 ExitApp(0)
 EarnAborted() => menuAbort || (turnCase[3] >= 0 && moves >= turnCase[3])
 EarnHudVisible() => turnCase[4] < 0 || moves < turnCase[4]
@@ -2179,6 +2192,13 @@ EarnMCTRecoveryHud() {
     menuChecks++, turnMs += turnCase.Length >= 11 ? turnCase[11] : 0
     menuAbort := turnCase.Length >= 12 && turnCase[12]
     return turnCase.Length >= 10 && turnCase[10]
+}
+EarnMCTRecoveryArrived() {
+    global turnMs, menuAbort
+    turnMs += goalCost
+    if (goalAbort)
+        menuAbort := true
+    return goalAfter >= 0 && moves >= goalAfter && (!goalMenuOnly || menuChecks > 0)
 }
 TurnClock() => turnMs
 DllCall(name,args*) {
@@ -2197,8 +2217,25 @@ EarnFail(*) => false
 '@
     $turnSource = $sourceText
     $sourceText = $sourceText.Replace('A_TickCount','TurnClock()')
-    try { Invoke-EarnOfflineCheck 'TurnGuard' 'EarnTurn' $turnGuardDriver 13 }
+    try { Invoke-EarnOfflineCheck 'TurnGuard' 'EarnTurn' $turnGuardDriver 22 }
     finally { $sourceText = $turnSource }
+    $recoveryArrivedDriver = @'
+global EARN_PROMPT_AREA := [0,0,0.3,0.1], prompt := false, hud := false
+for scenario in [[true,true,true],[false,true,false],[true,false,false],[false,false,false]] {
+    prompt := scenario[1], hud := scenario[2]
+    if (EarnMCTRecoveryArrived() != scenario[3])
+        throw Error("MCT arrival requires both verified prompt and menu-free HUD")
+}
+FileAppend("PASS MCTRecoveryArrived cases=4`n", "*")
+ExitApp(0)
+EarnSeen(name, area) {
+    if (name != "mct_sit" || area != EARN_PROMPT_AREA)
+        throw Error("MCT recovery must reuse the background-verified prompt in its ROI")
+    return prompt
+}
+EarnMCTRecoveryHud() => hud
+'@
+    Invoke-EarnOfflineCheck 'MCTRecoveryArrived' 'EarnMCTRecoveryArrived' $recoveryArrivedDriver 4
     $recoveryHudDriver = @'
 global EARN_PROMPT_AREA := [], overlay := "", healthColor := 0xAAFFB4
 for scenario in [[0xAAFFB4,"",true],[0x000000,"",false],[0xFFFFFF,"",false],
