@@ -292,6 +292,19 @@ try {
             } finally { $source.Dispose() }
         }
     } finally { $seatedHdr.Dispose(); $seatedHdrBg.Dispose(); $seatedFixture.Dispose() }
+    $sitPromptFixture = [Drawing.Bitmap]::FromFile((Join-Path $root 'docs\evidence\2026-10-09-mct\mct-sit-prompt-runtime-20261009.png'))
+    $sitBox = [Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_sit_hdr_box.png'))
+    $sitBoxBg = [Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_sit_hdr_box_bg.png'))
+    try {
+        $x=0; $y=0
+        $sitTextVariation = [EarnNightclubTemplateTest]::MinimumVariation($sitPromptFixture,$sitBox,(New-Object Drawing.Rectangle 0,0,576,108),[ref]$x,[ref]$y)
+        if ($sitTextVariation -gt 40 -or $x -ne 227 -or $y -ne 0) { throw "Runtime HDR sit text miss reproduction changed: $sitTextVariation at $x,$y" }
+        $bx=$x; $by=$y
+        $sitBackgroundVariation = [EarnNightclubTemplateTest]::MinimumVariation($sitPromptFixture,$sitBoxBg,(New-Object Drawing.Rectangle $x,$y,$sitBoxBg.Width,$sitBoxBg.Height),[ref]$bx,[ref]$by)
+        if ($sitBackgroundVariation -le 40 -or $bx -ne $x -or $by -ne $y) { throw "Runtime HDR sit template unexpectedly passed its paired background: $sitBackgroundVariation at $bx,$by" }
+        $cases += 2
+        Write-Output "PASS runtime HDR sit prompt reproduces paired-template miss text=$sitTextVariation background=$sitBackgroundVariation at=$x,$y"
+    } finally { $sitPromptFixture.Dispose(); $sitBox.Dispose(); $sitBoxBg.Dispose() }
     $titleHdr = [Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_title_hdr.png'))
     $titleHdrBg = [Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_title_hdr_bg.png'))
     $titleFixture = [Drawing.Bitmap]::FromFile((Join-Path $PSScriptRoot 'mct-template-fixtures\mct-title-hdr-current.png'))
