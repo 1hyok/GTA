@@ -28,7 +28,8 @@ $items = @(
  @('mansion-dj-right-after','dj_resident_right',1330,572,116,28),
  @('mansion-dj-after','nc_home',328,582,80,31),
  @('mct-seated-current','mct_seated_mansion',0,0,240,24),
- @('mct-sit-hdr-current','mct_sit_hdr',0,0,240,48)
+ @('mct-sit-hdr-current','mct_sit_hdr',0,0,240,48),
+ @('mct-seated-hdr-current','mct_seated_hdr',0,0,240,24)
 )
 foreach ($requested in $Name) {
  if (-not @($items | Where-Object { $_[1] -eq $requested }).Count) { throw "Unknown template: $requested" }
@@ -36,7 +37,7 @@ foreach ($requested in $Name) {
 $saved = 0
 foreach ($item in $items) {
  if ($Name.Count -and $Name -notcontains $item[1]) { continue }
- $sourceDirectory = if ($item[1] -in @('mct_seated_mansion','mct_sit_hdr')) { $fixtures } else { $CaptureDir }
+ $sourceDirectory = if ($item[1] -in @('mct_seated_mansion','mct_sit_hdr','mct_seated_hdr')) { $fixtures } else { $CaptureDir }
  $source = [Drawing.Bitmap]::FromFile((Join-Path $sourceDirectory ($item[0]+'.png')))
  $comparison = $null
  try {
@@ -52,7 +53,7 @@ foreach ($item in $items) {
   $crop = $source.Clone($rect, $source.PixelFormat)
   try {
   $threshold = if ($item[1] -eq 'mct_seated_mansion') { 200 } else { 170 }
-  if ($item[1] -eq 'mct_sit_hdr') {
+  if ($item[1] -in @('mct_sit_hdr','mct_seated_hdr')) {
    $background = $crop.Clone((New-Object Drawing.Rectangle 0,0,$crop.Width,$crop.Height),$crop.PixelFormat)
    try {
     for ($y=0; $y -lt $crop.Height; $y++) {
@@ -68,8 +69,8 @@ foreach ($item in $items) {
       if ($max -gt 90) { $background.SetPixel($x,$y,[Drawing.Color]::Magenta) }
      }
     }
-    $crop.Save((Join-Path $target 'mct_sit_hdr.png'),[Drawing.Imaging.ImageFormat]::Png)
-    $background.Save((Join-Path $target 'mct_sit_hdr_bg.png'),[Drawing.Imaging.ImageFormat]::Png)
+    $crop.Save((Join-Path $target ($item[1]+'.png')),[Drawing.Imaging.ImageFormat]::Png)
+    $background.Save((Join-Path $target ($item[1]+'_bg.png')),[Drawing.Imaging.ImageFormat]::Png)
     $saved += 2
    } finally { $background.Dispose() }
    continue
