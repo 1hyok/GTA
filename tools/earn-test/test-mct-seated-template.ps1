@@ -295,8 +295,20 @@ try {
     $titleHdr = [Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_title_hdr.png'))
     $titleHdrBg = [Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_title_hdr_bg.png'))
     $titleFixture = [Drawing.Bitmap]::FromFile((Join-Path $PSScriptRoot 'mct-template-fixtures\mct-title-hdr-current.png'))
+    $titleRuntimeFixture = [Drawing.Bitmap]::FromFile((Join-Path $root 'docs\evidence\2026-10-09-mct\mct-title-hdr-runtime-20261009.png'))
     try {
         if ($titleHdr.Width -ne 536 -or $titleHdr.Height -ne 39) { throw 'Unexpected HDR MCT title dimensions' }
+        if ($core -notmatch 'TemplateSeen\("Earn",\s*"mct_title_hdr",\s*area,\s*&fx,\s*&fy,\s*Max\(variation,\s*55\)\)\s*&&\s*TemplateAt\("Earn",\s*"mct_title_hdr_bg",\s*fx,\s*fy\)') {
+            throw 'Production HDR MCT title detection must allow the observed live color difference while retaining the paired background check'
+        }
+        $runtimeX=0; $runtimeY=0
+        $runtimeVariation = [EarnNightclubTemplateTest]::MinimumVariation($titleRuntimeFixture,$titleHdr,(New-Object Drawing.Rectangle 0,0,768,108),[ref]$runtimeX,[ref]$runtimeY)
+        if ($runtimeVariation -gt 55 -or $runtimeX -ne 113 -or $runtimeY -ne 41) { throw "Runtime HDR MCT title missed observed screen: $runtimeVariation at $runtimeX,$runtimeY" }
+        $runtimeBgX=$runtimeX; $runtimeBgY=$runtimeY
+        $runtimeBgVariation = [EarnNightclubTemplateTest]::MinimumVariation($titleRuntimeFixture,$titleHdrBg,(New-Object Drawing.Rectangle $runtimeX,$runtimeY,$titleHdrBg.Width,$titleHdrBg.Height),[ref]$runtimeBgX,[ref]$runtimeBgY)
+        if ($runtimeBgVariation -gt 40 -or $runtimeBgX -ne $runtimeX -or $runtimeBgY -ne $runtimeY) { throw "Runtime HDR MCT title background missed the same origin: $runtimeBgVariation at $runtimeBgX,$runtimeBgY" }
+        $cases += 2
+        Write-Output "PASS runtime HDR MCT title plus paired background variation=$runtimeVariation/$runtimeBgVariation at=$runtimeX,$runtimeY"
         foreach ($pair in @(@($titleHdr,'text'),@($titleHdrBg,'background'))) {
             $x=0; $y=0
             $variation = [EarnNightclubTemplateTest]::MinimumVariation($titleFixture,$pair[0],(New-Object Drawing.Rectangle 0,0,536,39),[ref]$x,[ref]$y)
@@ -310,11 +322,16 @@ try {
                 $x=0; $y=0
                 $variation = [EarnNightclubTemplateTest]::MinimumVariation($source,$titleHdr,(New-Object Drawing.Rectangle 576,0,768,108),[ref]$x,[ref]$y)
                 if ($variation -le 40) { throw "HDR MCT title matched unrelated screen $name at $x,$y" }
+                if ($variation -le 55) {
+                    $bx=$x; $by=$y
+                    $backgroundVariation = [EarnNightclubTemplateTest]::MinimumVariation($source,$titleHdrBg,(New-Object Drawing.Rectangle $x,$y,$titleHdrBg.Width,$titleHdrBg.Height),[ref]$bx,[ref]$by)
+                    if ($backgroundVariation -le 40 -and $bx -eq $x -and $by -eq $y) { throw "HDR MCT title and paired background matched unrelated screen $name at $x,$y" }
+                }
                 $cases++
                 Write-Output "PASS HDR MCT title rejects $name variation=$variation"
             } finally { $source.Dispose() }
         }
-    } finally { $titleHdr.Dispose(); $titleHdrBg.Dispose(); $titleFixture.Dispose() }
+    } finally { $titleHdr.Dispose(); $titleHdrBg.Dispose(); $titleFixture.Dispose(); $titleRuntimeFixture.Dispose() }
     if ($AdditionalSeatedSamplePath) {
         $source = [Drawing.Bitmap]::FromFile([IO.Path]::GetFullPath($AdditionalSeatedSamplePath))
         try { Assert-SeatedMatch $source $true ([IO.Path]::GetFileName($AdditionalSeatedSamplePath)) }

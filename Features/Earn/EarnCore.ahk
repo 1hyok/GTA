@@ -104,7 +104,7 @@ EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
     }
     if (name = "mct_title")
         return TemplateSeen("Earn", "mct_title", area, &fx, &fy, variation)
-            || (TemplateSeen("Earn", "mct_title_hdr", area, &fx, &fy, variation)
+            || (TemplateSeen("Earn", "mct_title_hdr", area, &fx, &fy, Max(variation, 55))
             && TemplateAt("Earn", "mct_title_hdr_bg", fx, fy))
     ; "Press E to sit down" 도 같은 흰 글자 템플릿이라 밝은 벽 앞에서 맞는다(1005 22:55 길가에서 MC 판매를 돕던 중 글자 차이 30~33 으로
     ; 맞아 E 를 누르고 앉기를 기다리다 꺼짐. 그때 글자 밖 바탕 밝기 231, 진짜 안내는 7). 바탕이 어두워야 인정한다.
