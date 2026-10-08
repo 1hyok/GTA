@@ -15,6 +15,52 @@ $cases = 0
 
 # Reuse the existing ImageSearch-compatible per-channel/magenta matcher.
 & (Join-Path $PSScriptRoot 'test-nightclub-templates.ps1') | Out-Null
+# HDR dashboard card titles retain only bright glyph interiors and require
+# the corresponding background at the same origin. Samples exclude overlays.
+if ($core -notmatch 'name = "mct_bunker_card" \|\| name = "mct_nightclub_card"' -or $core -notmatch 'TemplateAt\("Earn", name "_hdr_bg", fx, fy, 40\)') { throw 'HDR card pair is not consumed by production at the original tolerance' }
+foreach ($card in @(@('bunker',830,227,260,26),@('nightclub',470,227,106,25))) {
+    $name='mct_'+$card[0]+'_card'
+    $fixture=[Drawing.Bitmap]::FromFile((Join-Path $PSScriptRoot ('mct-template-fixtures\mct-'+$card[0]+'-card-hdr-20261008.png')))
+    $legacy=[Drawing.Bitmap]::FromFile((Join-Path $assetDirectory ($name+'.png')))
+    $text=[Drawing.Bitmap]::FromFile((Join-Path $assetDirectory ($name+'_hdr.png')))
+    $background=[Drawing.Bitmap]::FromFile((Join-Path $assetDirectory ($name+'_hdr_bg.png')))
+    $area=New-Object Drawing.Rectangle 0,0,$card[3],$card[4]
+    try {
+        $x=0;$y=0
+        $old=[EarnNightclubTemplateTest]::MinimumVariation($fixture,$legacy,$area,[ref]$x,[ref]$y)
+        if ($old -le 40) { throw "$name fixture no longer reproduces the legacy miss" }
+        $cases++
+        foreach ($mask in @($text,$background)) {
+            $difference=[EarnNightclubTemplateTest]::MinimumVariation($fixture,$mask,$area,[ref]$x,[ref]$y)
+            if ($difference -gt 40 -or $x -ne 0 -or $y -ne 0) { throw "$name HDR pair miss $difference at $x,$y" }
+            $cases++
+        }
+        foreach ($color in @([Drawing.Color]::White,[Drawing.Color]::Black,[Drawing.Color]::FromArgb(90,100,110))) {
+            $blank=New-Object Drawing.Bitmap $card[3],$card[4]
+            $g=[Drawing.Graphics]::FromImage($blank)
+            try {
+                $g.Clear($color)
+                $a=[EarnNightclubTemplateTest]::MinimumVariation($blank,$text,$area,[ref]$x,[ref]$y)
+                $b=[EarnNightclubTemplateTest]::MinimumVariation($blank,$background,$area,[ref]$x,[ref]$y)
+                if ($a -le 40 -and $b -le 40) { throw "$name matched blank $color" }
+                $cases++
+            } finally { $g.Dispose();$blank.Dispose() }
+        }
+        foreach ($negative in @('mansion-dj-list.png','mansion-bunker-result.png','mct-final-restored.png')) {
+            $image=[Drawing.Bitmap]::FromFile((Join-Path $evidence $negative))
+            try {
+                $ratios=if($card[0] -eq 'bunker'){@(0.42,0.20,0.58,0.25)}else{@(0.23,0.20,0.32,0.25)}
+                $search=New-Object Drawing.Rectangle ([int][Math]::Round(1920*$ratios[0])),216,([int][Math]::Round(1920*$ratios[2])-[int][Math]::Round(1920*$ratios[0])),54
+                $a=[EarnNightclubTemplateTest]::MinimumVariation($image,$text,$search,[ref]$x,[ref]$y)
+                $bx=0;$by=0
+                $b=[EarnNightclubTemplateTest]::MinimumVariation($image,$background,(New-Object Drawing.Rectangle $x,$y,$card[3],$card[4]),[ref]$bx,[ref]$by)
+                if($a -le 40 -and $b -le 40){throw "$name matched unrelated $negative"}
+                $cases++
+            } finally { $image.Dispose() }
+        }
+        Write-Output "PASS HDR card $name legacy=$old, paired match and blank/unrelated rejection"
+    } finally {$fixture.Dispose();$legacy.Dispose();$text.Dispose();$background.Dispose()}
+}
 $samples = @(
     @('mansion-bunker-result.png', 'bunker_page,bunker_resupply,bunker_buy'),
     @('mansion-bunker-code-fail.png', 'bunker_entry'),
@@ -112,20 +158,24 @@ foreach ($name in @('bunker_page', 'bunker_entry', 'bunker_resupply', 'bunker_bu
 
 $generatedDirectory = Join-Path ([IO.Path]::GetTempPath()) ('gta-bunker-template-build-' + [Guid]::NewGuid().ToString('N'))
 $null = [IO.Directory]::CreateDirectory($generatedDirectory)
-$names = @('bunker_buy', 'bunker_confirm')
+$names = @('bunker_buy', 'bunker_confirm', 'mct_bunker_card_hdr', 'mct_nightclub_card_hdr')
 try {
     & (Join-Path $PSScriptRoot 'build-mct-templates.ps1') -OutputDir $generatedDirectory -Name $names
     foreach ($name in $names) {
+        foreach ($name in $(if ($name.EndsWith('_hdr')) { @($name,($name+'_bg')) } else { @($name) })) {
         $diff = Compare-PngPixels (Join-Path $assetDirectory ($name + '.png')) (Join-Path $generatedDirectory ($name + '.png'))
         if ($diff) { throw "Builder changes the checked-in mask: $name ($diff)" }
         $cases++
         Write-Output "PASS builder reproduces $name"
+        }
     }
 }
 finally {
     foreach ($name in $names) {
+        foreach ($name in $(if ($name.EndsWith('_hdr')) { @($name,($name+'_bg')) } else { @($name) })) {
         $generated = Join-Path $generatedDirectory ($name + '.png')
         if ([IO.File]::Exists($generated)) { [IO.File]::Delete($generated) }
+        }
     }
     [IO.Directory]::Delete($generatedDirectory, $false)
 }
