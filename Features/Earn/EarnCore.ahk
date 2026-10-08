@@ -537,10 +537,28 @@ EarnTurn(units, pitchUnits := 0, hdrMCTRecovery := false) {
         return false
     n := Max(1, Round(Max(Abs(units), Abs(pitchUnits)) / 20))
     step := Round(units / n), pitchStep := Round(pitchUnits / n)
+    recoveryDeadline := A_TickCount + 9000, nextMenuCheck := 0
     Loop n {
         if (EarnAborted())
             return false
-        if (!EarnHudVisible() && !(hdrMCTRecovery && EarnMCTRecoveryHud()))
+        if (hdrMCTRecovery) {
+            if (A_TickCount >= recoveryDeadline)
+                return EarnFail("MCT 복귀 회전: 9초 제한 초과")
+            if (!HealthHudVisible())
+                return EarnFail("카메라: 게임 HUD를 확인하지 못함")
+            ; HDR 판독 실측은 전체 배치 약 1초다. 매 이동 조각마다 반복하지 않는다.
+            if (A_TickCount >= nextMenuCheck) {
+                if (!EarnMCTRecoveryHud())
+                    return EarnFail("MCT 복귀 회전: 메뉴 없는 게임 HUD 미확인")
+                nextMenuCheck := A_TickCount + 2000
+            }
+            ; 느린 판독 중 들어온 사용자 입력·포커스 이탈과 시간 초과를 입력 전에 다시 확인한다.
+            if (EarnAborted())
+                return false
+            if (A_TickCount >= recoveryDeadline)
+                return EarnFail("MCT 복귀 회전: 9초 제한 초과")
+        }
+        else if (!EarnHudVisible())
             return EarnFail("카메라: 게임 HUD를 확인하지 못함")
         DllCall("mouse_event", "uint", 1, "int", step, "int", pitchStep, "uint", 0, "uptr", 0)
         Sleep(15)

@@ -2103,25 +2103,37 @@ EarnLog(*) => true
     $mctCloseDriver += "`n" + (Get-EarnFunctionBody $sourceText 'EarnWaitCallEnd')
     Invoke-EarnOfflineCheck 'MCTClose' 'EarnMCTClose' $mctCloseDriver 24
     $turnGuardDriver = @'
-global turnCase := [], moves := 0, movedX := 0, movedY := 0
+global turnCase := [], moves := 0, movedX := 0, movedY := 0, turnMs := 0, menuChecks := 0, menuAbort := false
 ; Relative mouse calls are intercepted. Run the actual turn loop and input guards.
 for scenario in [[5220,0,-1,-1,true,261,5220,0],
     [5220,0,0,-1,false,0,0,0],[5220,0,1,-1,false,1,20,0],
     [5220,0,-1,0,false,0,0,0],[5220,0,-1,1,false,1,20,0],
-    [5220,0,-1,0,true,261,5220,0,true,true],
+    [5220,0,-1,0,true,261,5220,0,true,true,1200],
     [5220,0,1,0,false,1,20,0,true,true],
     [5220,0,-1,0,false,0,0,0,true,false],
-    [5220,0,-1,0,false,0,0,0,false,true]] {
-    turnCase := scenario, moves := 0, movedX := 0, movedY := 0
+    [5220,0,-1,0,false,0,0,0,false,true],
+    [5220,0,-1,0,false,0,0,0,true,true,9500],
+    [5220,0,-1,0,false,134,2680,0,true,true,5000],
+    [5220,0,-1,0,false,0,0,0,true,true,100,true]] {
+    turnCase := scenario, moves := 0, movedX := 0, movedY := 0, turnMs := 0, menuChecks := 0, menuAbort := false
     if (EarnTurn(scenario[1],0,scenario.Length >= 9 ? scenario[9] : false) != scenario[5] || moves != scenario[6]
         || movedX != scenario[7] || movedY != scenario[8])
         throw Error("Camera recovery must preserve abort/HUD guards and bounded movement")
+    if (scenario.Length >= 11 && scenario[11] = 1200 && (menuChecks != 2 || turnMs > 6500))
+        throw Error("Slow menu checks must be throttled while HDR recovery remains bounded")
 }
-FileAppend("PASS TurnGuard cases=9`n", "*")
+FileAppend("PASS TurnGuard cases=12`n", "*")
 ExitApp(0)
-EarnAborted() => turnCase[3] >= 0 && moves >= turnCase[3]
+EarnAborted() => menuAbort || (turnCase[3] >= 0 && moves >= turnCase[3])
 EarnHudVisible() => turnCase[4] < 0 || moves < turnCase[4]
-EarnMCTRecoveryHud() => turnCase.Length >= 10 && turnCase[10]
+HealthHudVisible() => turnCase.Length >= 10 && turnCase[10]
+EarnMCTRecoveryHud() {
+    global turnMs, menuChecks, menuAbort
+    menuChecks++, turnMs += turnCase.Length >= 11 ? turnCase[11] : 0
+    menuAbort := turnCase.Length >= 12 && turnCase[12]
+    return turnCase.Length >= 10 && turnCase[10]
+}
+TurnClock() => turnMs
 DllCall(name,args*) {
     global moves, movedX, movedY
     if (name != "mouse_event" || args[2] != 1 || Abs(args[4]) > 20 || Abs(args[6]) > 20)
@@ -2129,10 +2141,17 @@ DllCall(name,args*) {
     moves++, movedX += args[4], movedY += args[6]
     return 0
 }
-Sleep(*) => true
+Sleep(ms) {
+    global turnMs
+    turnMs += ms
+    return true
+}
 EarnFail(*) => false
 '@
-    Invoke-EarnOfflineCheck 'TurnGuard' 'EarnTurn' $turnGuardDriver 9
+    $turnSource = $sourceText
+    $sourceText = $sourceText.Replace('A_TickCount','TurnClock()')
+    try { Invoke-EarnOfflineCheck 'TurnGuard' 'EarnTurn' $turnGuardDriver 12 }
+    finally { $sourceText = $turnSource }
     $recoveryHudDriver = @'
 global EARN_PROMPT_AREA := [], overlay := "", healthColor := 0xAAFFB4
 for scenario in [[0xAAFFB4,"",true],[0x000000,"",false],[0xFFFFFF,"",false],
