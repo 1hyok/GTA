@@ -52,6 +52,7 @@ function Get-CiCheckPlan {
             continue
         }
         if ($path -match '^tools/tests/gta-perf-watch\.tests\.ps1$') { $selected.Add('test-perf-watch'); continue }
+        if ($path -match '^tools/frame-watch/' -or $path -match '^tools/gta-perf-watch\.(ps1|vbs)$') { $selected.Add('test-perf-watch'); continue }
         if ($path -match '^tools/tests/fps-helper\.tests\.ps1$') { $selected.Add('test-fps-helper'); continue }
         if ($path -match '^tools/tests/screen-capture\.tests\.ps1$') { $selected.Add('test-screen-capture'); continue }
         if ($path -match '^Features/AntiAFK\.ahk$') {
