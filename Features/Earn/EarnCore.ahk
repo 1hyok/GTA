@@ -542,11 +542,20 @@ EarnTurn(units, pitchUnits := 0, hdrMCTRecovery := false) {
         return false
     n := Max(1, Round(Max(Abs(units), Abs(pitchUnits)) / 20))
     step := Round(units / n), pitchStep := Round(pitchUnits / n)
-    recoveryDeadline := A_TickCount + 9000, nextMenuCheck := 0, nextHealthCheck := 0
+    recoveryDeadline := A_TickCount + 9000, nextMenuCheck := 0, nextHealthCheck := 0, nextGoalCheck := 0
     Loop n {
         if (EarnAborted())
             return false
         if (hdrMCTRecovery) {
+            ; 목표 안내가 보이면 고정 각도를 채우려고 계속 돌지 않는다. 판독 지연도 간격에 포함한다.
+            if (A_TickCount >= nextGoalCheck || A_TickCount >= recoveryDeadline) {
+                arrived := EarnMCTRecoveryArrived()
+                if (EarnAborted())
+                    return false
+                if (arrived)
+                    return true
+                nextGoalCheck := A_TickCount + 500
+            }
             if (A_TickCount >= recoveryDeadline)
                 return EarnFail("MCT 복귀 회전: 9초 제한 초과")
             ; 16개 PixelGetColor 판독도 실측 109~125ms다. 최근 판독은 250ms 동안 재사용한다.
@@ -570,8 +579,13 @@ EarnTurn(units, pitchUnits := 0, hdrMCTRecovery := false) {
             ; 느린 판독 중 들어온 사용자 입력·포커스 이탈과 시간 초과를 입력 전에 다시 확인한다.
             if (EarnAborted())
                 return false
-            if (A_TickCount >= recoveryDeadline)
-                return EarnFail("MCT 복귀 회전: 9초 제한 초과")
+            if (A_TickCount >= recoveryDeadline) {
+                ; 느린 메뉴 판독 중 제한에 닿아도 이미 도달한 목표를 실패로 덮지 않는다.
+                arrived := EarnMCTRecoveryArrived()
+                if (EarnAborted())
+                    return false
+                return arrived ? true : EarnFail("MCT 복귀 회전: 9초 제한 초과")
+            }
         }
         else if (!EarnHudVisible())
             return EarnFail("카메라: 게임 HUD를 확인하지 못함")
@@ -579,6 +593,12 @@ EarnTurn(units, pitchUnits := 0, hdrMCTRecovery := false) {
         Sleep(15)
     }
     return true
+}
+
+EarnMCTRecoveryArrived() {
+    global EARN_PROMPT_AREA
+    ; 기존 안내 글자+어두운 배경 검증과 메뉴 없는 HUD 조건을 모두 유지한다.
+    return EarnSeen("mct_sit", EARN_PROMPT_AREA) && EarnMCTRecoveryHud()
 }
 
 ; MCT에서 일어선 뒤 제자리 복귀 회전만 HDR 체력 막대 판정을 사용한다.
