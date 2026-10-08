@@ -125,10 +125,11 @@ EarnHdrRestore(reason := "작업 종료") {
 
 EarnHdrRetryRestore() => EarnHdrRestore("복원 재확인")
 EarnHdrExit(*) {
-    global gEarnHdrPreparing
+    global gEarnHdrPreparing, gEarnHdrRestoring
     ReleaseHeldKeys()
     ; OnExit로 끊긴 준비 스레드는 돌아오지 않으므로 종료 callback이 복원 소유권을 인계받는다.
     gEarnHdrPreparing := false
+    gEarnHdrRestoring := false
     EarnHdrRestore("프로세스 종료")
     return 0
 }

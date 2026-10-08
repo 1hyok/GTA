@@ -251,7 +251,7 @@ EarnTestExit(*) {
     global gTestArmed, gTestInputMutex
     if (gTestArmed) {
         ReleaseHeldKeys()
-        EarnHdrRestore("단발 시험 종료")
+        EarnHdrExit()
     }
     if (gTestInputMutex) {
         DllCall("ReleaseMutex", "ptr",gTestInputMutex)

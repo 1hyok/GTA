@@ -77,8 +77,8 @@ try {
     Reset(true)
     Check(EarnHdrBegin(),"setup exit key ordering")
     requireKeyRelease := true
-    gEarnHdrPreparing := true
-    Check(EarnHdrExit() = 0 && enabled && keyReleased,"OnExit releases keys before synchronous HDR restore")
+    gEarnHdrPreparing := true, gEarnHdrRestoring := true
+    Check(EarnHdrExit() = 0 && enabled && keyReleased && !gEarnHdrPreparing && !gEarnHdrRestoring,"OnExit inherits interrupted preparation/restore and releases keys first")
     Reset(true)
     restoreDuringRead := true
     Check(EarnHdrBegin() && hdrLockHeld && store != "", "preparation retry cannot unlock owner before durable OFF")
@@ -353,6 +353,7 @@ try {
 # The real one-shot input consumer uses the same lease, while readonly invocations never consume it.
 $standaloneSource = Get-Content (Join-Path $PSScriptRoot 'earntest.ahk') -Raw -Encoding UTF8
 $standaloneProduction = ''
+$standaloneProduction += [regex]::Match($source, '(?ms)^EarnHdrExit\([^\r\n]*\) \{.*?^\}').Value
 foreach ($name in @('EarnTestPrepare','EarnTestInputAllowed','EarnTestExit','StopAll')) {
     $body = [regex]::Match($standaloneSource, ('(?ms)^' + $name + '\([^\r\n]*\) \{.*?^\}')).Value
     if (-not $body) { throw "Standalone consumer missing: $name" }
@@ -365,14 +366,16 @@ $standaloneDriver = @'
 #Warn All, StdOut
 global GTA_WIN := "fake GTA", gAbort := false, gTestArmed := false, gTestIdleMs := 8000, gTestInputMutex := 0
 global testIdle := 60000, hdrStarts := 0, hdrRestores := 0, beginOK := true, checks := 0
+global gEarnHdrPreparing := false, gEarnHdrRestoring := false
 try {
     EarnTestExit()
     Check(hdrStarts = 0 && hdrRestores = 0,"readonly exit never consumes HDR journal")
     Check(EarnTestPrepare() && hdrStarts = 1 && gTestArmed,"one-shot prepare acquires HDR after input owner")
     testIdle := 0
     Check(!EarnTestInputAllowed() && gAbort && hdrRestores = 1,"one-shot physical input abort restores HDR")
+    gEarnHdrPreparing := true, gEarnHdrRestoring := true
     EarnTestExit()
-    Check(hdrRestores = 2,"one-shot exit restores HDR")
+    Check(hdrRestores = 2 && !gEarnHdrPreparing && !gEarnHdrRestoring,"one-shot exit inherits interrupted preparation and restore")
     gAbort := false, testIdle := 60000, beginOK := false
     Check(!EarnTestPrepare(),"failed HDR preparation prevents one-shot task")
     StopAll()
@@ -410,6 +413,8 @@ EarnHdrBegin() {
 }
 EarnHdrRestore(*) {
     global hdrRestores
+    if (gEarnHdrPreparing || gEarnHdrRestoring)
+        return false
     hdrRestores++
     return true
 }
