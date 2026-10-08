@@ -286,6 +286,8 @@ Franklin 선택을 확인한 뒤 별도 `tap -Key Enter`로 전화를 건다. �
 & .\tools\earn-test\gui-input.ps1 -SessionDir $guiSession -Action stop
 ```
 
+밝은 HDR의 MCT 벙커·나이트클럽 카드 제목은 기존 템플릿과 별도로 글자 내부만 비교하고, 같은 위치의 카드 배경도 확인한다. 글자 가장자리 때문에 전체 허용 오차를 늘리지 않는다.
+
 ## 전체 멈춤 (End) · 종료 (Pause 두 번)
 
 End 는 도는 것을 전부 멈추고(카요 타이머 포함) 누른 키를 뗀다. AFK 방지만 남긴다. 게임 밖에서 End 가 안 잡히면 트레이 메뉴. Pause 는 전역 키라 노트북 Fn 오타로 꺼지지 않게 두 번 눌러야 한다.
