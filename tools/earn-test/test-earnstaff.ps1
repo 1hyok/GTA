@@ -36,7 +36,7 @@ global mode, screenState, selected, statuses, requests, keys, reads, failure, ch
 global config, cargoNames, cargoStatuses, cargoRequests, cargoReads, activeCount, opens, postReads
 global fixtureData := Map(), fixtureKey := ""
 global observedDeadlines := []
-global menuReads := 0, mainNames := []
+global menuReads := 0, mainNames := [], bailMenuReads := 0, bailMenuReadsAtFirstKey := 0
 global hangarState := "ready", hangarRequests := 0, hangarReads := 0
 global greyText := "", greyMissing := 0, flickerReads := 0
 OnError(TestUnhandledError)
@@ -205,7 +205,7 @@ RunDeadlineTests() {
 }
 
 RunMenuTests() {
-    global mode, screenState, selected, keys
+    global mode, screenState, selected, keys, bailMenuReadsAtFirstKey
     for nextMode in ["truncated_menu_raw","missing_selected_menu_row","missing_menu_target","wrong_menu_heading","duplicate_menu_target","misplaced_menu_target","menu_changes_before_enter","menu_selection_before_enter"] {
         Reset(nextMode,["busy","busy"])
         screenState := "main", selected := "Claim Business Earnings"
@@ -249,6 +249,15 @@ RunMenuTests() {
         Check(EarnStaffSelectText("i)^" c[3] "$",3) && selected = c[3], c[1] " reaches observed target")
         Check(keys.Length = 1 && keys[1] = c[4], c[1] " uses actual three-row selection positions")
     }
+    Reset("empty_bail_menu",["ready","ready"])
+    screenState := "bail", selected := "Agent 1"
+    Check(!EarnStaffSelectText("i)^Agent 2$",2) && keys.Length = 0,
+        "empty Bail Office OCR retries without ungrounded navigation")
+    Reset("transient_empty_bail_menu",["ready","ready"])
+    screenState := "bail", selected := "Agent 1"
+    Check(EarnStaffSelectText("i)^Agent 2$",2) && selected = "Agent 2" && keys.Length = 1
+        && keys[1] = "Down" && bailMenuReadsAtFirstKey >= 3,
+        "transient empty Bail Office OCR is reread before the verified Agent 2 step")
     Reset("missing_hangar_row",["busy","busy"])
     screenState := "staff", selected := "Warehouse"
     Check(!EarnStaffSelectText(EarnStaffHangarPattern(),3), "missing target text cannot be accepted from known slots")
@@ -472,6 +481,7 @@ Reset(nextMode, initial) {
     global config, cargoNames, cargoStatuses, cargoRequests, cargoReads, activeCount, opens, postReads
     global observedDeadlines
     global menuReads, mainNames, hangarState, hangarRequests, hangarReads, greyMissing, flickerReads
+    global bailMenuReads, bailMenuReadsAtFirstKey
     greyMissing := 0, flickerReads := 0
     mode := nextMode, screenState := "staff", selected := "Hangar"
     hangarState := "ready", hangarRequests := 0, hangarReads := 0
@@ -482,6 +492,7 @@ Reset(nextMode, initial) {
     cargoReads := 0, activeCount := 5, opens := 0, postReads := 0
     observedDeadlines := []
     menuReads := 0
+    bailMenuReads := 0, bailMenuReadsAtFirstKey := 0
     mainNames := ["Claim Business Earnings","Purchase Ammo","Request Car Club Vehicle","Purchase Car Club Vehicles","Claim Destroyed Vehicles","Manage Staff Members"]
 }
 EarnReadScreen(area, whiteText := false, deadline := 0) {
@@ -509,6 +520,7 @@ MockReadScreen(area, whiteText) {
     global mode, screenState, selected, statuses, reads, requests
     global cargoNames, cargoStatuses, cargoRequests, cargoReads, postReads
     global menuReads, mainNames, hangarReads, greyText, greyMissing, flickerReads, keys
+    global bailMenuReads
     if (screenState = "main") {
         if (area[4] = 263 || area[4] = 300)
             menuReads += 1
@@ -644,6 +656,8 @@ MockReadScreen(area, whiteText) {
     }
     if (screenState != "bail")
         return []
+    if (area[4] = 300)
+        bailMenuReads += 1
     if (area[4] = 115)
         reads += 1
     if (mode = "unreadable")
@@ -653,6 +667,10 @@ MockReadScreen(area, whiteText) {
     if (mode = "selection_before" && reads >= 2)
         selected := "Agent 2"
     lines := BailFrame()
+    if (area[4] = 300 && mode = "empty_bail_menu")
+        lines := [lines[1]]
+    else if (area[4] = 300 && mode = "transient_empty_bail_menu" && bailMenuReads <= 2)
+        lines := [lines[1]]
     if (mode = "duplicate_agent")
         lines.Push(TextLine("Agent 1",200))
     if (mode = "no_heading")
@@ -750,8 +768,10 @@ EarnMenuRowSelected(row) {
 EarnPress(key) {
     global mode, screenState, selected, statuses, requests, keys, hangarState, hangarRequests, hangarReads
     global cargoNames, cargoStatuses, cargoRequests, activeCount
-    global mainNames
+    global mainNames, bailMenuReads, bailMenuReadsAtFirstKey
     keys.Push(key)
+    if (screenState = "bail" && keys.Length = 1)
+        bailMenuReadsAtFirstKey := bailMenuReads
     global flickerReads
     if (mode = "heading_flicker" && (key = "Up" || key = "Down"))
         flickerReads := 2
