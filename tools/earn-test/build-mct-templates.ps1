@@ -28,7 +28,7 @@ $items = @(
  @('mansion-dj-right-after','dj_resident_right',1330,572,116,28),
  @('mansion-dj-after','nc_home',328,582,80,31),
  @('mct-seated-current','mct_seated_mansion',0,0,240,24),
- @('mct-sit-hdr-current','mct_sit_hdr',0,0,240,48),
+ @('mct-sit-hdr-live','mct_sit_hdr',0,0,240,48),
  @('mct-seated-hdr-current','mct_seated_hdr',0,0,240,24),
  @('mct-title-hdr-current','mct_title_hdr',0,0,536,39)
 )
