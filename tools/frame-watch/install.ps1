@@ -12,5 +12,9 @@ $shortcut.WorkingDirectory = $PSScriptRoot
 $shortcut.WindowStyle = 7
 $shortcut.Description = 'Read-only GTA frame-drop evidence recorder'
 $shortcut.Save()
-Start-Process -FilePath $powershell -ArgumentList $arguments -WindowStyle Hidden
+$logDirectory = Join-Path $env:USERPROFILE 'gta-perf\frame-watch'
+$null = New-Item -ItemType Directory -Force -Path $logDirectory
+Start-Process -FilePath $powershell -ArgumentList $arguments -WindowStyle Hidden `
+    -RedirectStandardOutput (Join-Path $logDirectory 'launch.stdout.log') `
+    -RedirectStandardError (Join-Path $logDirectory 'launch.stderr.log')
 Write-Output ('Installed logon shortcut: ' + (Join-Path $startup 'GTA Frame Evidence.lnk'))

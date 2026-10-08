@@ -42,4 +42,17 @@ Check ((Read-LatestPerf $dir $now).Fps -eq 89.5) 'partial CSV row tolerated'
 Check ($null -eq (Read-LatestPerf $dir $now.AddMinutes(2))) 'stale file unavailable'
 Save-Json @{ state = 'verified' } (Join-Path $dir 'result.json')
 Check ((Get-Content (Join-Path $dir 'result.json') -Raw | ConvertFrom-Json).state -eq 'verified') 'atomic evidence write'
+# Reproduce a hidden child inheriting a host's incompatible module search path.
+$savedModulePath = $env:PSModulePath
+try {
+    $env:PSModulePath = Join-Path $dir 'absent-modules'
+    $workerDirectory = Join-Path $dir 'worker'
+    $workerScript = Join-Path $PSScriptRoot 'frame-watch.ps1'
+    $worker = Start-Process (Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe') `
+        -ArgumentList ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + $workerScript + '" -RunSeconds 1 -OutputDirectory "' + $workerDirectory + '"') `
+        -WindowStyle Hidden -PassThru -RedirectStandardError (Join-Path $dir 'worker.stderr.log')
+    if (-not $worker.WaitForExit(20000)) { $worker.Kill(); throw 'Hidden worker timed out' }
+    Check ($worker.ExitCode -eq 0) 'hidden worker survives inherited module path'
+    Check (Test-Path (Join-Path $workerDirectory 'status.json')) 'hidden worker actually writes heartbeat'
+} finally { $env:PSModulePath = $savedModulePath }
 Write-Output "PASS frame-watch cases=$count evidence=$dir"
