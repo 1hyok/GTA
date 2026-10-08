@@ -527,6 +527,18 @@ EarnStaffReadBail(agent, &identityValid := false, deadline := 0, &identityReject
             identityValid := true
             return "busy"
         }
+        ; HDR에서 선택된 회색 요원명은 사라지고 일반 OCR의 작업 중 설명도 잘릴 수 있다.
+        ; 같은 전체 영역을 흰 글자로 다시 읽어 작업 중 결과만 확인한다. 준비 상태로 추정하지 않는다.
+        if (deadline && A_TickCount >= deadline)
+            return "invalid"
+        fullWhite := EarnReadScreen([25,125,450,180], true, deadline)
+        identityRejected := EarnStaffBailOtherSelected(fullWhite, agent)
+        if (identityRejected || (deadline && A_TickCount >= deadline))
+            return "invalid"
+        if (EarnStaffBailBusyFrame(fullWhite, agent)) {
+            identityValid := true
+            return "busy"
+        }
         return "invalid"
     }
     identityValid := true

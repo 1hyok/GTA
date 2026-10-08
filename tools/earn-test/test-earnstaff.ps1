@@ -6,7 +6,8 @@ No game input, screen capture, window activation, or Main.ahk execution.
 [CmdletBinding()]
 param(
     [string]$AhkPath = "$env:LOCALAPPDATA\Programs\AutoHotkey\v2\AutoHotkey64.exe",
-    [string]$FixtureDirectory = ''
+    [string]$FixtureDirectory = '',
+    [string]$BailBusyImage = ''
 )
 $ErrorActionPreference = 'Stop'
 $production = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnStaff.ahk') -Raw -Encoding UTF8
@@ -60,7 +61,7 @@ TestUnhandledError(error, *) {
 }
 
 RunFixtureTests() {
-    global mode, fixtureData, fixtureKey
+    global mode, fixtureData, fixtureKey, keys
     for key, fixture in fixtureData {
         mode := "fixture", fixtureKey := key
         if (fixture.kind = "menu") {
@@ -69,8 +70,11 @@ RunFixtureTests() {
             Check(Abs(target.y-366) <= 8, "actual OCR menu row position " key)
             Check(EarnMenuRowSelected(target) = (fixture.state = "selected"), "actual OCR menu selected state " key)
         } else if (fixture.kind = "bail") {
+            keys := []
             Check(EarnStaffReadBail(fixture.index) = fixture.state, "actual OCR " key)
-            Check(EarnStaffReadBail(fixture.index = 1 ? 2 : 1) = "invalid", "actual OCR wrong agent " key)
+            Check(EarnStaffReadBail(fixture.index = 1 ? 2 : 1, &valid, 0, &rejected) = "invalid" && rejected,
+                "actual OCR wrong selected agent rejects " key)
+            Check(keys.Length = 0, "actual OCR result reads send no input " key)
         } else {
             actual := EarnStaffReadCargo()
             Check(IsObject(actual), "actual OCR readable " key)
@@ -208,6 +212,10 @@ RunDeadlineTests() {
     screenState := "bail", selected := "Agent 2", requests[1] := 1
     Check(!EarnStaffWaitBusy("bail",1,A_TickCount+60000) && reads <= 3 && keys.Length = 0,
         "observed other agent selection rejects immediately without input")
+    Reset("hdr_bail_busy",["busy","busy"])
+    screenState := "bail", selected := "Agent 1", requests[1] := 1
+    Check(EarnStaffWaitBusy("bail",1,A_TickCount+60000) && keys.Length = 0,
+        "missing gray agent and truncated normal footer confirm busy through white full reread without input")
 }
 
 RunMenuTests() {
@@ -508,6 +516,8 @@ EarnReadScreen(area, whiteText := false, deadline := 0) {
         observedDeadlines.Push(deadline)
     if (mode = "fixture") {
         fixture := fixtureData[fixtureKey]
+        if (fixture.kind = "bail" && area[4] = 180)
+            return (whiteText ? fixture.fullWhite : fixture.full).Clone()
         if (whiteText)
             return fixture.detail.Clone()
         return (area[4] = 35 ? fixture.label : fixture.heading).Clone()
@@ -697,6 +707,11 @@ MockReadScreen(area, whiteText) {
     if (mode = "garbled_busy_root" && !whiteText)
         lines[selected = "Agent 1" ? 2 : 3].text := "I " selected
     if (requests[1]) {
+        if (mode = "hdr_bail_busy") {
+            lines.RemoveAt(2)
+            if (!whiteText && area[4] = 180)
+                lines[4].text := "a job."
+        }
         if (mode = "transient_bail_identity" && ++postReads <= 4)
             return false
         if (mode = "lost_bail_identity")
@@ -967,7 +982,7 @@ $testProcess = $null
 $fixtureFiles = New-Object Collections.Generic.List[string]
 try {
     $fixtureInit = ''
-    if ($FixtureDirectory) {
+    if ($FixtureDirectory -or $BailBusyImage) {
         Add-Type -AssemblyName System.Drawing
         $ocrPath = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\Core\EarnOcr.ps1'))
         $fixtureSpecs = @(
@@ -980,11 +995,15 @@ try {
             @('earn-staff-final','menu',1,'unselected','Manage Staff Members',-1),
             @('earn-staff-select','menu',6,'selected','Manage Staff Members',-1)
         )
-        if (Test-Path -LiteralPath (Join-Path $FixtureDirectory 'staff-frame-07.png')) {
+        if ($FixtureDirectory -and (Test-Path -LiteralPath (Join-Path $FixtureDirectory 'staff-frame-07.png'))) {
             $fixtureSpecs = @(
                 @('staff-frame-07','bail',1,'ready','',-1),
                 @('staff-frame-14','bail',1,'busy','',-1)
             )
+        }
+        if ($BailBusyImage) {
+            $FixtureDirectory = Split-Path -Parent $BailBusyImage
+            $fixtureSpecs = @(,@([IO.Path]::GetFileNameWithoutExtension($BailBusyImage),'bail',1,'busy','',-1))
         }
         foreach ($spec in $fixtureSpecs) {
             $imagePath = [IO.Path]::GetFullPath((Join-Path $FixtureDirectory ($spec[0] + '.png')))
@@ -993,9 +1012,13 @@ try {
             $headingPath = $fixtureBase + '-heading.tsv'
             $detailPath = $fixtureBase + '-detail.tsv'
             $labelPath = $fixtureBase + '-label.tsv'
+            $fullPath = $fixtureBase + '-full.tsv'
+            $fullWhitePath = $fixtureBase + '-full-white.tsv'
             $fixtureFiles.Add($headingPath)
             $fixtureFiles.Add($detailPath)
             $fixtureFiles.Add($labelPath)
+            $fixtureFiles.Add($fullPath)
+            $fixtureFiles.Add($fullWhitePath)
             $headingHeight = if ($spec[1] -eq 'bail') {115} elseif ($spec[1] -eq 'menu') {263} else {40}
             $ocrResult = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ocrPath -ImagePath $imagePath -X 25 -Y 125 -W 450 -H $headingHeight -OutputPath $headingPath
             if ($LASTEXITCODE -ne 0) { throw "Fixture title OCR failed: $ocrResult" }
@@ -1014,11 +1037,18 @@ try {
                 $detailHeight = 263
                 $labelExpression = '[]'
             } elseif ($spec[1] -eq 'bail') {
-                $secondAgent = @($headingRows | Where-Object { $_.text -eq 'Agent 2' })
-                if ($secondAgent.Count -ne 1) { throw "Fixture second agent missing: $imagePath" }
-                $detailY = [int]$secondAgent[0].y + 22
+                $detailY = $headingY + 74 + 22
                 $detailHeight = 75
                 $labelExpression = '[]'
+                foreach ($white in @($false,$true)) {
+                    $fullOutput = if ($white) {$fullWhitePath} else {$fullPath}
+                    if ($white) {
+                        $ocrResult = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ocrPath -ImagePath $imagePath -X 25 -Y 125 -W 450 -H 180 -WhiteText -OutputPath $fullOutput
+                    } else {
+                        $ocrResult = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ocrPath -ImagePath $imagePath -X 25 -Y 125 -W 450 -H 180 -OutputPath $fullOutput
+                    }
+                    if ($LASTEXITCODE -ne 0) { throw "Fixture full Bail OCR failed: $ocrResult" }
+                }
             } else {
                 $detailY = $headingY + 56
                 $detailHeight = 229
@@ -1029,6 +1059,10 @@ try {
             $ocrResult = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ocrPath -ImagePath $imagePath -X 28 -Y $detailY -W 434 -H $detailHeight -WhiteText -OutputPath $detailPath
             if ($LASTEXITCODE -ne 0) { throw "Fixture footer OCR failed: $ocrResult" }
             $fixtureInit += 'fixtureData[' + (ConvertTo-AhkString $spec[0]) + '] := {kind:' + (ConvertTo-AhkString $spec[1]) + ',index:' + $spec[2] + ',state:' + (ConvertTo-AhkString $spec[3]) + ',name:' + (ConvertTo-AhkString $spec[4]) + ',price:' + $spec[5] + ',selectedY:' + $selectedY + ',heading:ReadFixture(' + (ConvertTo-AhkString $headingPath) + '),detail:ReadFixture(' + (ConvertTo-AhkString $detailPath) + '),label:' + $labelExpression + '}' + "`n"
+            if ($spec[1] -eq 'bail') {
+                $fixtureInit += 'fixtureData[' + (ConvertTo-AhkString $spec[0]) + '].full := ReadFixture(' + (ConvertTo-AhkString $fullPath) + ')'+ "`n"
+                $fixtureInit += 'fixtureData[' + (ConvertTo-AhkString $spec[0]) + '].fullWhite := ReadFixture(' + (ConvertTo-AhkString $fullWhitePath) + ')' + "`n"
+            }
         }
     }
     $driver = $driver.Replace('__FIXTURE_INIT__',$fixtureInit)
