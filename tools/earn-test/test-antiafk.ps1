@@ -2,9 +2,11 @@
 param([string]$AhkPath = "$env:LOCALAPPDATA\Programs\AutoHotkey\v2\AutoHotkey64.exe")
 $ErrorActionPreference = 'Stop'
 $source = Get-Content (Join-Path $PSScriptRoot '..\..\Features\AntiAFK.ahk') -Raw -Encoding UTF8
+$screenSource = Get-Content (Join-Path $PSScriptRoot '..\..\Core\Screen.ahk') -Raw -Encoding UTF8
+$source += "`n" + $screenSource
 $functions = @('AntiAFKTick', 'AFKInputAllowed', 'AFKMCTPulse', 'AFKKeysHeld', 'AFKMenuSeen', 'AFKMenuTap', 'AFKWaitMenu', 'AFKMCTBlocked', 'AFKFreeHud', 'AFKPhoneOrAppOpen', 'AFKHudVisible',
     'AFKRefocusGTA', 'AFKRefocusFailed', 'AFKForegroundLabel', 'AFKPhysicalIdleMs', 'AFKOthersIdleMs', 'AFKSelfInput',
-    'AFKRefocusAllowed', 'AFKRefocusCanceled') | ForEach-Object {
+    'AFKRefocusAllowed', 'AFKRefocusCanceled', 'HealthHudVisible', 'HealthHudColors') | ForEach-Object {
     $body = [regex]::Match($source, ('(?ms)^' + $_ + '\([^)\r\n]*\) \{.*?^\}')).Value
     if (-not $body) { throw "$_ missing" }
     $body
@@ -427,14 +429,13 @@ CoordMode(kind, mode) {
     if (kind != "Pixel" || mode != "Screen")
         throw Error("Unexpected coordinate-mode mutation")
 }
-PixelSearch(&x, &y, x1, y1, x2, y2, color, tolerance) {
+PixelGetColor(x, y) {
     global hudReads
-    if (x1 != hudOriginX+40 || y1 != hudOriginY+1050 || x2 != hudOriginX+96 || y2 != hudOriginY+1056
-        || color != 0x4C8F4C || tolerance != 30)
-        throw Error("HUD search does not use the physical health-bar rectangle")
-    hudReads++
-    x := x1, y := y1
-    return hudVisible && (!hideHudAfter || hudReads <= hideHudAfter)
+    if (x < hudOriginX+40 || x > hudOriginX+85 || Mod(x-hudOriginX-40,3) || y != hudOriginY+1053)
+        throw Error("HUD samples leave the physical health-bar line")
+    if (x = hudOriginX+40)
+        hudReads++
+    return hudVisible && (!hideHudAfter || hudReads <= hideHudAfter) ? 0xA5FFAC : 0
 }
 FileExist(path) => guardAssetMissing ? "" : "A"
 AFKWait(ms) {

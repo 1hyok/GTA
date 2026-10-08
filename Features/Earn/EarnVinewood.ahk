@@ -317,36 +317,11 @@ EarnVinewoodFreeHud() {
 ; 앱 진입용 HUD 확인. 밝기가 바뀌어도 체력 막대의 녹색 우세와 가로 연속성을 본다.
 ; 전역 이동·로딩 판정의 색 허용치는 바꾸지 않는다.
 EarnVinewoodHealthHud() {
-    hwnd := IsGTAActive()
-    if (!hwnd)
-        return false
-    previous := DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
-    try {
-        WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
-        if (cw != 1920 || ch != 1080)
-            return false
-        CoordMode("Pixel", "Screen")
-        colors := []
-        Loop 16
-            colors.Push(PixelGetColor(cx + 40 + (A_Index-1)*3, cy + 1053))
-        return EarnVinewoodHealthColors(colors)
-    } catch {
-        return false
-    } finally {
-        if (previous)
-            DllCall("SetThreadDpiAwarenessContext", "ptr", previous, "ptr")
-    }
+    return HealthHudVisible()
 }
 
 EarnVinewoodHealthColors(colors) {
-    if (colors.Length != 16)
-        return false
-    green := 0
-    for color in colors {
-        r := (color >> 16) & 255, g := (color >> 8) & 255, b := color & 255
-        green += g >= 100 && g-r >= 40 && g-b >= 40 && Abs(r-b) <= 25
-    }
-    return green >= 12
+    return HealthHudColors(colors)
 }
 
 EarnVinewoodOpen(manageMCT := true) {

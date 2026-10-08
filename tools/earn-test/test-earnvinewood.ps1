@@ -8,6 +8,12 @@ param([string]$AhkPath = "$env:LOCALAPPDATA\Programs\AutoHotkey\v2\AutoHotkey64.
 $ErrorActionPreference = 'Stop'
 $production = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnVinewood.ahk') -Raw -Encoding UTF8
 $screen = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnScreen.ahk') -Raw -Encoding UTF8
+$commonScreen = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\..\Core\Screen.ahk') -Raw -Encoding UTF8
+foreach ($helper in @('HealthHudVisible', 'HealthHudColors')) {
+    $match = [regex]::Match($commonScreen, ('(?ms)^' + $helper + '\([^\r\n]*\) \{.*?^\}'))
+    if (-not $match.Success) { throw "Missing common HUD helper: $helper" }
+    $production += "`n" + $match.Value
+}
 foreach ($functionName in @('EarnFindText', 'EarnReadDollars', 'EarnSelectText', 'EarnMenuStepKey')) {
     $match = [regex]::Matches($screen, ('(?ms)^' + $functionName + '\([^\r\n]*\) \{.*?^\}'))
     if ($match.Count -ne 1) { throw "Expected exactly one screen helper: $functionName" }
@@ -134,14 +140,20 @@ RunTests() {
     Reset("hud_menu", "hud")
     Check(!EarnVinewoodOpen() && gKeys.Length = 0, "free HUD with an open menu sends no keys")
     Check(!EarnVinewoodOpen(false) && gKeys.Length = 0, "staff also blocks an open menu")
-    for color in [0x4C8F4C, 0x9BFF9F, 0x000000, 0xFFFFFF, 0xFF3333, 0x3399FF] {
+    for color in [0x4C8F4C, 0x9BFF9F, 0xA5FFAC, 0xACFFB2, 0x000000, 0xFFFFFF, 0xFF3333, 0x3399FF] {
         samples := []
         Loop 16
             samples.Push(color)
-        Check(EarnVinewoodHealthColors(samples) = (color = 0x4C8F4C || color = 0x9BFF9F),
+        Check(EarnVinewoodHealthColors(samples) = (color = 0x4C8F4C || color = 0x9BFF9F || color = 0xA5FFAC || color = 0xACFFB2),
             "health bar accepts recorded normal/bright green and rejects other colors " color)
     }
     Check(!EarnVinewoodHealthColors([0x9BFF9F]), "one green pixel is not a health bar")
+    sparse := []
+    Loop 16
+        sparse.Push(A_Index <= 11 ? 0xA5FFAC : 0xFFFFFF)
+    Check(!EarnVinewoodHealthColors(sparse), "eleven HDR green samples do not establish the health bar")
+    sparse[12] := 0xA5FFAC
+    Check(EarnVinewoodHealthColors(sparse), "twelve HDR green samples establish the health bar")
     Reset("normal", "hud")
     Check(EarnVinewoodOpen() && gState = "main" && gKeys[1] = "Up" && gCEOCalls = 0, "free HUD opens the phone without CEO setup")
     Reset("normal", "hud")

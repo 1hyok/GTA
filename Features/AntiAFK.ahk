@@ -578,20 +578,7 @@ AFKFreeHud() {
 AFKHudVisible() {
     if (!AFKInputAllowed())
         return false
-    hwnd := IsGTAActive()
-    if (!hwnd)
-        return false
-    previous := DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
-    try {
-        WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
-        if (cw != 1920 || ch != 1080)
-            return false
-        CoordMode("Pixel", "Screen")
-        return PixelSearch(&x, &y, cx+Round(cw*0.021), cy+Round(ch*0.972),
-            cx+Round(cw*0.05), cy+Round(ch*0.978), 0x4C8F4C, 30)
-    } catch {
-        return false
-    } finally DllCall("SetThreadDpiAwarenessContext", "ptr", previous, "ptr")
+    return HealthHudVisible()
 }
 
 AFKMenuTap(key) {
