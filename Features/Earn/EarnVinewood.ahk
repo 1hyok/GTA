@@ -352,6 +352,18 @@ EarnVinewoodOpen(manageMCT := true) {
     ; 휴대폰이 다 올라오기까지 1초 넘게 걸릴 때가 있다(1004 14:20 녹화). 홈의 선택 제목이 보일 때까지 기다린다.
     deadline := A_TickCount + 4000
     while (!EarnSeen("ph_joblist_sel", [0.83,0.66,0.98,0.73]) && !EarnSeen("ph_vinewood_sel", [0.83,0.66,0.98,0.73])) {
+        ; Up opens the phone on the previously selected home icon. In the Mansion recording
+        ; it opened on Texts, so the two expected app templates never appeared. Recover only
+        ; when both the phone frame and exact Texts heading are visible, then verify Job List.
+        if (EarnSeen("afk_phone_frame", [0.83,0.58,0.98,0.78])) {
+            phoneLines := EarnReadScreen([1580,710,300,100], false, deadline)
+            if (IsObject(phoneLines) && EarnFindText(phoneLines, "i)^Texts$")) {
+                EarnLog("Vinewood 앱: 전화 홈 Texts 선택 확인 → Job List로 이동")
+                if (!EarnPress("Down") || !EarnWaitSeen("ph_joblist_sel", [0.83,0.66,0.98,0.73], 1500))
+                    return EarnFail("금고: Texts에서 Job List 이동 미확인")
+                break
+            }
+        }
         if (A_TickCount >= deadline || !EarnSleep(200))
             return EarnFail("금고: 전화 홈 화면 미확인")
     }
