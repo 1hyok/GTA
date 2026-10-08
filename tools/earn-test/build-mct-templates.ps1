@@ -27,7 +27,8 @@ $items = @(
  @('mansion-dj-after','dj_resident',886,572,114,28),
  @('mansion-dj-right-after','dj_resident_right',1330,572,116,28),
  @('mansion-dj-after','nc_home',328,582,80,31),
- @('mct-seated-current','mct_seated_mansion',0,0,240,24)
+ @('mct-seated-current','mct_seated_mansion',0,0,240,24),
+ @('mct-sit-hdr-current','mct_sit_hdr',0,0,240,48)
 )
 foreach ($requested in $Name) {
  if (-not @($items | Where-Object { $_[1] -eq $requested }).Count) { throw "Unknown template: $requested" }
@@ -35,7 +36,7 @@ foreach ($requested in $Name) {
 $saved = 0
 foreach ($item in $items) {
  if ($Name.Count -and $Name -notcontains $item[1]) { continue }
- $sourceDirectory = if ($item[1] -eq 'mct_seated_mansion') { $fixtures } else { $CaptureDir }
+ $sourceDirectory = if ($item[1] -in @('mct_seated_mansion','mct_sit_hdr')) { $fixtures } else { $CaptureDir }
  $source = [Drawing.Bitmap]::FromFile((Join-Path $sourceDirectory ($item[0]+'.png')))
  $comparison = $null
  try {
@@ -50,8 +51,30 @@ foreach ($item in $items) {
   $rect = New-Object Drawing.Rectangle ([int]$item[2]),([int]$item[3]),([int]$item[4]),([int]$item[5])
   $crop = $source.Clone($rect, $source.PixelFormat)
   try {
-   $threshold = if ($item[1] -eq 'mct_seated_mansion') { 200 } else { 170 }
-   if ($item[1] -ne 'bunker_page') {
+  $threshold = if ($item[1] -eq 'mct_seated_mansion') { 200 } else { 170 }
+  if ($item[1] -eq 'mct_sit_hdr') {
+   $background = $crop.Clone((New-Object Drawing.Rectangle 0,0,$crop.Width,$crop.Height),$crop.PixelFormat)
+   try {
+    for ($y=0; $y -lt $crop.Height; $y++) {
+     for ($x=0; $x -lt $crop.Width; $x++) {
+      $c = $crop.GetPixel($x,$y)
+      $max = [Math]::Max($c.R,[Math]::Max($c.G,$c.B))
+      $min = [Math]::Min($c.R,[Math]::Min($c.G,$c.B))
+      if ($min -ge 175 -and ($max-$min) -le 90) {
+       $background.SetPixel($x,$y,[Drawing.Color]::Magenta)
+      } else {
+       $crop.SetPixel($x,$y,[Drawing.Color]::Magenta)
+      }
+      if ($max -gt 90) { $background.SetPixel($x,$y,[Drawing.Color]::Magenta) }
+     }
+    }
+    $crop.Save((Join-Path $target 'mct_sit_hdr.png'),[Drawing.Imaging.ImageFormat]::Png)
+    $background.Save((Join-Path $target 'mct_sit_hdr_bg.png'),[Drawing.Imaging.ImageFormat]::Png)
+    $saved += 2
+   } finally { $background.Dispose() }
+   continue
+  }
+  if ($item[1] -ne 'bunker_page') {
     for ($y=0; $y -lt $crop.Height; $y++) {
      for ($x=0; $x -lt $crop.Width; $x++) {
       $c = $crop.GetPixel($x,$y)
