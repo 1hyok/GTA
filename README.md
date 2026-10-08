@@ -324,6 +324,8 @@ F11 작텔은 작업 시작과 종료창의 마지막 대기까지 End와 게임
 
 ## 로그
 
+프레임 급락 감시는 `tools\frame-watch\install.ps1`로 설치한다. 기존 FPS 기록에 전면 상태와 GPU 메모리를 붙이고 급락 전후 자료를 보존한다. [감지 기준과 기록 확인](tools/frame-watch/README.md)을 따른다.
+
 | 파일 | 내용 |
 |---|---|
 | `%TEMP%\gta-macro.log` | 공통. `[jobwarp]` `[botwarp]` `[session]` `[menu]` `[hotkey]` `[config]` `[stop]` `[panel]` `[screen]` `[error]` |

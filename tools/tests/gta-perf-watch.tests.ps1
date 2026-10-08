@@ -5,6 +5,7 @@
     [string]$RealLadderJson = (Join-Path $env:USERPROFILE 'gta-perf\ladder.json')
 )
 $ErrorActionPreference = 'Stop'
+& (Join-Path $PSScriptRoot '..\frame-watch\frame-watch.tests.ps1')
 $source = Join-Path $PSScriptRoot '..\gta-perf-watch.ps1'
 $tokens = $null; $parseErrors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile($source, [ref]$tokens, [ref]$parseErrors)
