@@ -75,6 +75,12 @@ RunFixtureTests() {
             Check(EarnStaffReadBail(fixture.index = 1 ? 2 : 1, &valid, 0, &rejected) = "invalid" && rejected,
                 "actual OCR wrong selected agent rejects " key)
             Check(keys.Length = 0, "actual OCR result reads send no input " key)
+            if (fixture.state = "busy" && fixture.index = 1) {
+                Check(EarnStaffSelectText("i)^Agent [1Il]$",2) && keys.Length = 0,
+                    "actual busy Agent 1 is identified without redispatch " key)
+                Check(EarnStaffSelectText("i)^Agent 2$",2) && keys.Length = 1 && keys[1] = "Down",
+                    "actual busy Agent 1 moves to verified Agent 2 with one Down " key)
+            }
         } else {
             actual := EarnStaffReadCargo()
             Check(IsObject(actual), "actual OCR readable " key)
@@ -119,6 +125,7 @@ RunTests() {
         ["cancel_wait", ["ready","ready"], false, 1],
         ["transient_bail_footer", ["ready","busy"], true, 1],
         ["transient_bail_identity", ["ready","busy"], true, 1],
+        ["hdr_bail_busy", ["ready","busy"], true, 1],
         ["unknown_bail_footer", ["ready","busy"], false, 1],
         ["lost_bail_identity", ["ready","busy"], false, 1],
         ["cancel_bail_retry", ["ready","busy"], false, 1],
@@ -518,6 +525,8 @@ EarnReadScreen(area, whiteText := false, deadline := 0) {
         fixture := fixtureData[fixtureKey]
         if (fixture.kind = "bail" && area[4] = 180)
             return (whiteText ? fixture.fullWhite : fixture.full).Clone()
+        if (fixture.kind = "bail" && whiteText && (area[4] = 115 || area[4] = 300))
+            return fixture.fullWhite.Clone()
         if (whiteText)
             return fixture.detail.Clone()
         return (area[4] = 35 ? fixture.label : fixture.heading).Clone()
@@ -793,6 +802,13 @@ EarnPress(key) {
     global cargoNames, cargoStatuses, cargoRequests, activeCount
     global mainNames, bailMenuReads, bailMenuReadsAtFirstKey
     keys.Push(key)
+    if (mode = "fixture") {
+        global fixtureData, fixtureKey
+        if (key != "Down" || keys.Length != 1)
+            throw Error("Recorded Bail navigation permits exactly one Down and no transaction input")
+        fixtureData[fixtureKey].selectedY += 37
+        return true
+    }
     if (screenState = "bail" && keys.Length = 1)
         bailMenuReadsAtFirstKey := bailMenuReads
     global flickerReads

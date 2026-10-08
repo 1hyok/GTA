@@ -794,6 +794,25 @@ EarnStaffSelectText(pattern, maxPress) {
         }
         agent := pattern = "i)^Agent [1Il]$" ? 1 : pattern = "i)^Agent 2$" ? 2 : 0
         verifiedBusyFrame := false
+        verifiedBailRows := false
+        if (validMenu && agent && !selectedVisible) {
+            ; 파견된 현재 요원 글자는 HDR에서 사라질 수 있다. 현재 선택 슬롯의 작업 중 화면과
+            ; 이동할 다른 요원의 실제 이름·고정 행 위치를 함께 확인한 뒤에만 두 행 탐색을 허용한다.
+            for whiteText in [false,true] {
+                full := EarnReadScreen([25,125,450,180], whiteText)
+                fullHeading := EarnStaffUniqueRow(full, "i)^THE VINEWOOD CLUB APP$")
+                currentAgent := EarnStaffBailBusyFrame(full, 1) ? 1 : EarnStaffBailBusyFrame(full, 2) ? 2 : 0
+                if (!currentAgent || !fullHeading)
+                    continue
+                targetRow := EarnStaffUniqueRow(full, pattern)
+                if (currentAgent != agent && (!targetRow || Abs(targetRow.y-fullHeading.y-37*agent) > 8))
+                    continue
+                lines := full, heading := fullHeading, row := targetRow
+                verifiedBusyFrame := currentAgent = agent
+                verifiedBailRows := true, selectedVisible := true
+                break
+            }
+        }
         if (validMenu && !row && agent)
             verifiedBusyFrame := EarnStaffBailBusyFrame(lines, agent)
         if (validMenu && !row && !verifiedBusyFrame && pattern = EarnStaffHangarPattern())
@@ -815,6 +834,8 @@ EarnStaffSelectText(pattern, maxPress) {
         if (!row && pattern = EarnStaffHangarPattern() && EarnStaffHangarBusyFrame(lines))
             return {y:heading.y+37}
         stepLines := lines
+        if (verifiedBailRows)
+            stepLines := [{y:heading.y+37},{y:heading.y+74}]
         if (row && EarnStaffListSeen(lines)) {
             ; 확인된 직원 목록은 Hangar·Warehouse·Bail Office 3줄이다. 회색 행 OCR 누락을 목록 끝으로
             ; 계산하면 Warehouse에서 Hangar로 가려 Down을 눌러 Bail Office로 간다(1007 13:08:41).
