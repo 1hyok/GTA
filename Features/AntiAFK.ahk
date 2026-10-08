@@ -134,7 +134,7 @@ AntiAFKTick() {
         }
         jitter := config["Settings"]["AFKJitterSec"]
         afkNextDue := A_TickCount + (config["Settings"]["AFKIntervalSec"] + Random(-jitter, jitter)) * 1000
-        AFKLog(action " idle=" idleSec "s")
+        AFKLog(action " idle=" idleSec "s gameIdle=unverified")
         afkRefocusFails := 0
         afkRefocusLastErr := ""
     } finally {
@@ -462,7 +462,11 @@ AFKMCTPulse() {
     } else if (AFKMenuSeen("mct_seated")) {
         start := "mct_seated", middle := "mct_title", openKey := "Enter", closeKey := "Backspace"
     } else if (AFKMenuSeen("mct_sit")) {
-        start := "mct_sit", middle := "m_title", openKey := "m", closeKey := "m"
+        ; Arcade와 Mansion의 같은 MCT 착석 안내에서 먼저 앉는다. 앉은 화면은 mct_seated / mct_seated_mansion
+        ; 둘 다 AFKMenuSeen("mct_seated")가 인식하며, 이후 Enter/Backspace 왕복으로 실제 UI 전환을 확인한다.
+        if (!AFKMenuTap("e") || !AFKWaitMenu("mct_seated", 8000))
+            return AFKMCTBlocked("MCT 착석 미확인: mct_sit → mct_seated")
+        start := "mct_seated", middle := "mct_title", openKey := "Enter", closeKey := "Backspace"
     } else if (AFKFreeHud()) {
         ; MCT 앞이 아닌 빈 HUD 에서는 사람이 조작 중일 때 끼어들지 않는다. 1004 23:26 헬기 호송 중 M 메뉴 → 추락. 키보드 훅이
         ; 입력을 놓쳐(같은 날 23:01 플레이 중 idle=2668s) 물리 유휴만으로는 조작 중을 못 가린다. 그래서 주입까지 세는 전체 입력
@@ -495,9 +499,8 @@ AFKMCTPulse() {
     } else {
         return AFKMCTBlocked("전화/앱/미확인 화면. MCT 또는 메뉴 없는 HUD에서만 입력")
     }
-    if (start = "mct_sit" || start = "mct_terrorbyte") {
-        ; MCT 앞에 서 있을 때는 M 메뉴 대신 Z(미니맵 확대)를 두 번 눌러 원래 크기로 돌린다(1005 사용자 요청).
-        ; 캐릭터·카메라를 움직이지 않고 메뉴도 열지 않는다. 그 뒤 MCT 앞 안내가 그대로인지 본다.
+    if (start = "mct_terrorbyte") {
+        ; 테러바이트 터치스크린 앞은 착석 프롬프트가 없으므로 Z 두 번만 눌러 원래 상태로 돌린다.
         if (!AFKMenuSeen(start) || !AFKMenuTap("z") || !AFKWait(1500) || !AFKMenuTap("z") || !AFKWait(900))
             return AFKMCTBlocked("Z 입력 중단: " start)
         if (!AFKMenuSeen(start))
