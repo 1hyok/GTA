@@ -730,12 +730,37 @@ EarnStaffSelectText(pattern, maxPress) {
     Loop maxPress+1 {
         ; 키를 누른 직후 판독에서 앱 제목이 한 번 빠지면 메뉴가 아닌 것으로 보고 곧바로 꺼졌다(1007 04:00:49 「격납고 줄 선택 실패」,
         ; 녹화 1초 간격 프레임에는 제목이 다 보였다). 입력 없이 두 번 더 읽는다.
+        row := false, lines := [], heading := false, validMenu := false, selectedVisible := false
         Loop 3 {
             row := EarnStaffMenuTarget(pattern, &validMenu, &lines, &heading)
-            if (validMenu || A_Index = 3 || !EarnSleep(400))
+            if (validMenu) {
+                if (row && EarnMenuRowSelected(row))
+                    return row
+                if (IsObject(lines)) {
+                    for candidate in lines {
+                        if (EarnMenuRowSelected(candidate)) {
+                            selectedVisible := true
+                            break
+                        }
+                    }
+                }
+                ; 1008 04:37:55 Bail Office에서 제목은 읽혔지만 행이 0줄인데 Down이 전송됐다.
+                ; 현재 선택 막대를 읽기 전에는 기본 Down을 보내지 말고 짧게 재판독한다.
+                if (selectedVisible || A_Index = 3)
+                    break
+            }
+            if (A_Index = 3 || !EarnSleep(400))
                 break
         }
-        if (!validMenu)
+        agent := pattern = "i)^Agent [1Il]$" ? 1 : pattern = "i)^Agent 2$" ? 2 : 0
+        verifiedBusyFrame := false
+        if (validMenu && !row && agent)
+            verifiedBusyFrame := EarnStaffBailBusyFrame(lines, agent)
+        if (validMenu && !row && !verifiedBusyFrame && pattern = EarnStaffHangarPattern())
+            verifiedBusyFrame := EarnStaffHangarBusyFrame(lines)
+        knownInitialRoot := row && pattern = "i)^Manage Staff Members$"
+            && EarnStaffTextMatch(row.text, pattern)
+        if (!validMenu || (!selectedVisible && !verifiedBusyFrame && !knownInitialRoot))
             return false
         ; 회색 직원 관리 행이 사라져도 전체 작업 중 설명을 발견한 자리에서 멈춘다.
         ; 다음 행으로 이동하면 설명도 사라져 Root의 작업 중 재확인이 실패한다(1008 실측).
@@ -745,7 +770,6 @@ EarnStaffSelectText(pattern, maxPress) {
         if (row && EarnMenuRowSelected(row))
             return row
         ; 파견 후 글자가 사라진 선택 행은 작업 중 문구로만 유지한다. 이 결과로 결제하지 않는다.
-        agent := pattern = "i)^Agent [1Il]$" ? 1 : pattern = "i)^Agent 2$" ? 2 : 0
         if (!row && agent && EarnStaffBailBusyFrame(lines, agent))
             return {y:heading.y+37*agent}
         if (!row && pattern = EarnStaffHangarPattern() && EarnStaffHangarBusyFrame(lines))
