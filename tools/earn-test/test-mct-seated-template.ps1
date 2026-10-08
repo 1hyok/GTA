@@ -64,14 +64,14 @@ try {
         finally { $source.Dispose() }
     }
     $sitTemplate = [Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_sit_hdr.png'))
-    $sitFixture = [Drawing.Bitmap]::FromFile((Join-Path $PSScriptRoot 'mct-template-fixtures\mct-sit-hdr-current.png'))
+    $sitFixture = [Drawing.Bitmap]::FromFile((Join-Path $PSScriptRoot 'mct-template-fixtures\mct-sit-hdr-live.png'))
     try {
         if ($sitTemplate.Width -ne 240 -or $sitTemplate.Height -ne 48) { throw 'Unexpected HDR stand-at-MCT prompt dimensions' }
         $x=0; $y=0
         $positiveVariation = [EarnNightclubTemplateTest]::MinimumVariation($sitFixture,$sitTemplate,(New-Object Drawing.Rectangle 0,0,240,48),[ref]$x,[ref]$y)
-        if ($positiveVariation -gt 40 -or $x -ne 0 -or $y -ne 0) { throw "HDR sit prompt did not match observed crop at expected offset: $positiveVariation at $x,$y" }
+        if ($positiveVariation -gt 40 -or $x -ne 0 -or $y -ne 0) { throw "Live HDR sit prompt did not match at expected offset: $positiveVariation at $x,$y" }
         $cases++
-        Write-Output "PASS HDR stand-at-MCT prompt positive variation=$positiveVariation at $x,$y"
+        Write-Output "PASS live HDR stand-at-MCT prompt variation=$positiveVariation at $x,$y"
         $sitBackground = [Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_sit_hdr_bg.png'))
         try {
             $x=0; $y=0
