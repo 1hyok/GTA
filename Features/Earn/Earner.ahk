@@ -85,8 +85,11 @@ SetEarner(on, reason := "") {
         if (reason != "")
             gEarnFail := reason
         ; 작업이 도는 중이면 그 자리에서 멈추게 한다 (End 와 같게). 안 그러면 F9 로 꺼도 하던 작업이 끝까지 키를 보낸다
-        if (gEarnBusy)
+        if (gEarnBusy) {
             gAbort := true
+            ReleaseHeldKeys()
+        }
+        EarnHdrRestore("F9 또는 전체 중단")
         ShowTooltip("💰 수익 자동화 꺼짐" (reason = "" ? "" : ": " reason), 3000)
         EarnLog("꺼짐" (reason = "" ? "" : ": " reason))
     }
@@ -168,7 +171,7 @@ EarnTick() {
     fatalReason := ""
     try {
         EarnInputGuardStart()
-        if (EarnInputAllowed()) {
+        if (EarnInputAllowed() && EarnHdrBegin() && EarnInputAllowed()) {
             if (recovering) {
                 outcome := gEarnRecovery.outcome
                 outcome.cleanupOK := gEarnRecovery.mct ? EarnTaskMCTEnd() : EarnVinewoodClose()
@@ -192,6 +195,7 @@ EarnTick() {
         try {
             EarnInputGuardStop()
             ReleaseHeldKeys()
+            EarnHdrRestore("수익 작업 반환")
         } finally {
             try %"AFKSelfInput"%(false)
             gEarnBusy := false
@@ -408,6 +412,7 @@ EarnInputAllowed() {
         gEarnRetryIn := 0
         EarnFail("GTA 종료 또는 재시작으로 중단. 현재 화면을 확인하고 다시 켜기")
         ReleaseHeldKeys()
+        EarnHdrRestore("GTA 종료 또는 재시작")
     } else if (!gAbort && (A_TimeIdlePhysical < Max(1, A_TickCount - gEarnGuardStartedTick) || !IsGTAActive())) {
         ; 긴 OCR 호출 중 발생한 입력도 시작 이후 경과 시간과 비교해 감지한다.
         ; 끄지 않는다. EarnTick 이 3분 뒤로 미룬다.
@@ -416,6 +421,7 @@ EarnInputAllowed() {
         gEarnRetryIn := 0
         EarnFail("사용자 입력 또는 GTA 포커스 이탈로 중단")
         ReleaseHeldKeys()
+        EarnHdrRestore("사용자 조작 또는 포커스 이탈")
     }
     return !gAbort
 }
