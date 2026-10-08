@@ -50,6 +50,8 @@ EarnTransactionBegin(id, reason) {
     return true
 }
 EarnTransactionConfirmed(id) => transactionPending.Delete(id)
+; EarnTasks tests extract individual task functions, not EarnCore's screen helpers.
+EarnMCTSitOcrSeen() => false
 OnError(EarnOfflineFailure)
 EarnOfflineFailure(failure, *) {
     FileAppend("FAIL offline runtime: " failure.Message "`n", "**")
