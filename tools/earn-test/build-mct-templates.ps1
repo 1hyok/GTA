@@ -12,6 +12,8 @@ $fixtures = Join-Path $PSScriptRoot 'mct-template-fixtures'
 $items = @(
  @('mansion-mct-return2','mct_bunker_card',830,228,260,26),
  @('mansion-mct-return2','mct_nightclub_card',470,228,106,25),
+ @('mct-bunker-card-hdr-20261008','mct_bunker_card_hdr',0,0,260,26),
+ @('mct-nightclub-card-hdr-20261008','mct_nightclub_card_hdr',0,0,106,25),
  @('mansion-bunker-result','bunker_page',305,24,345,87),
  @('mansion-bunker-code-fail','bunker_entry',818,619,237,33),
  @('mansion-bunker-result','bunker_resupply',318,477,135,33),
@@ -41,7 +43,7 @@ foreach ($requested in $Name) {
 $saved = 0
 foreach ($item in $items) {
  if ($Name.Count -and $Name -notcontains $item[1]) { continue }
- $sourceDirectory = if ($item[1] -in @('mct_seated_mansion','mct_sit_hdr','mct_sit_hdr_alt','mct_sit_hdr_bright','mct_sit_hdr_box','mct_seated_hdr','mct_title_hdr')) { $fixtures } else { $CaptureDir }
+ $sourceDirectory = if ($item[1] -in @('mct_bunker_card_hdr','mct_nightclub_card_hdr','mct_seated_mansion','mct_sit_hdr','mct_sit_hdr_alt','mct_sit_hdr_bright','mct_sit_hdr_box','mct_seated_hdr','mct_title_hdr')) { $fixtures } else { $CaptureDir }
  $source = [Drawing.Bitmap]::FromFile((Join-Path $sourceDirectory ($item[0]+'.png')))
  $comparison = $null
  try {
@@ -56,6 +58,25 @@ foreach ($item in $items) {
   $rect = New-Object Drawing.Rectangle ([int]$item[2]),([int]$item[3]),([int]$item[4]),([int]$item[5])
   $crop = $source.Clone($rect, $source.PixelFormat)
   try {
+  if ($item[1] -in @('mct_bunker_card_hdr','mct_nightclub_card_hdr')) {
+   $background=$crop.Clone((New-Object Drawing.Rectangle 0,0,$crop.Width,$crop.Height),$crop.PixelFormat)
+   $legacy=[Drawing.Bitmap]::FromFile((Join-Path $PSScriptRoot ('..\..\Images\Earn\1920x1080\'+$item[1].Replace('_hdr','')+'.png')))
+   try {
+    for ($y=0; $y -lt $crop.Height; $y++) {
+     for ($x=0; $x -lt $crop.Width; $x++) {
+      $c=$legacy.GetPixel($x,$y)
+      # Keep bright glyph interiors, not HDR antialias fringes. A separate
+      # empty top/bottom band rejects white scenery at the matched origin.
+      $crop.SetPixel($x,$y,$(if ([Math]::Min($c.R,[Math]::Min($c.G,$c.B)) -ge 220) { $c } else { [Drawing.Color]::Magenta }))
+      if ($y -gt 1 -and $y -lt $crop.Height-2) { $background.SetPixel($x,$y,[Drawing.Color]::Magenta) }
+     }
+    }
+    $crop.Save((Join-Path $target ($item[1]+'.png')),[Drawing.Imaging.ImageFormat]::Png)
+    $background.Save((Join-Path $target ($item[1]+'_bg.png')),[Drawing.Imaging.ImageFormat]::Png)
+    $saved += 2
+   } finally { $background.Dispose(); $legacy.Dispose() }
+   continue
+  }
   if ($item[1] -eq 'mct_sit_hdr_box') {
    # Recorded 18:21 prompt box spans x29..269, y17..61. Do not preserve
    # world pixels as glyphs or background. Use glyph interiors and two
