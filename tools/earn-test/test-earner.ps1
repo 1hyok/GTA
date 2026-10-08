@@ -80,6 +80,7 @@ mode := "long-physical"
 EarnTick()
 Check(gEarnOn && !gAbort && idleMs > 2000 && gEarnDone["bunker"] = 0 && lockReleases = 1 && gEarnDue["bunker"] >= A_TickCount + 170000,
     "input during blocked work aborts even when newer idle exceeds start wait")
+Check(!hdrActive, "physical input restores HDR before returning to the user")
 Reset()
 idleMs := 0
 Check(EarnStatusText() = "수익: 입력 안정 대기 2초", "overlay shows two-second input countdown")
@@ -112,6 +113,7 @@ EarnTick()
 EarnTick()
 Check(calls.Length = 2 && calls[1] = "bunker" && calls[2] = "dj", "serial and no immediate repeat")
 Check(selfMarks = "SE", "earner marks its own input span for idle detection")
+Check(!hdrActive, "successful work restores HDR while F9 remains enabled")
 Check(gEarnDone["bunker"] = 1 && gEarnDone["dj"] = 1 && releaseCount = 1, "counts and one grouped release")
 gEarnDue["bunker"] := A_TickCount - 1
 EarnTick()
@@ -209,6 +211,7 @@ mode := "focus"
 EarnTick()
 Check(gEarnOn && !gAbort && !gEarnGuardArmed && gEarnDone["bunker"] = 0 && gEarnDue["bunker"] >= A_TickCount + 170000,
     "focus loss retries in 3 minutes instead of stopping")
+Check(!hdrActive, "focus loss restores HDR")
 Reset()
 config["Settings"]["EarnUserIdleSec"] := 0
 mode := "idle-zero"
@@ -289,6 +292,10 @@ EarnTick()
 EarnTick()
 Check(calls.Length = 5 && calls[1] = "bunker" && calls[2] = "dj" && calls[3] = "warehouse"
     && calls[4] = "safe" && calls[5] = "staff" && lockReleases = 3, "real task list consumes MCT group then two app tasks")
+Reset()
+gEarnBusy := true, hdrActive := true
+SetEarner(false)
+Check(gAbort && releaseCount > 0 && !hdrActive, "busy F9 off releases keys before HDR restore")
 FileAppend("PASS Earner: " checkCount " cases; no game input`n", "*")
 ExitApp(0)
 
@@ -296,9 +303,24 @@ AFKSelfInput(start) {
     global selfMarks
     selfMarks .= start ? "S" : "E"
 }
+EarnHdrBegin() {
+    global hdrActive
+    if (!lockHeld || !gEarnBusy || !gEarnGuardArmed)
+        throw Error("HDR OFF may only follow the live lock and input guard")
+    hdrActive := true
+    return true
+}
+EarnHdrRestore(*) {
+    global hdrActive
+    if (gEarnBusy && gAbort && releaseCount = 0)
+        throw Error("busy OFF HDR restore preceded key release")
+    hdrActive := false
+    return true
+}
 Reset() {
     global
     selfMarks := ""
+    hdrActive := false
     fakeTick := 100000, idleMs := 60000, gEarnGuardArmed := false, gEarnGuardStartedTick := 0, gEarnUserAbort := false
     timers := [], fakePID := 101, gEarnGamePID := 101
     beginCount := 0, endCount := 0, beginCleanupCount := 0, beginOK := true, endOK := true,
@@ -318,7 +340,7 @@ Reset() {
 }
 RunTask(id, manageSession := true) {
     global calls, mode, gEarnNextDue, gEarnRetryIn, idleMs, focused, fakePID, fakeTick
-    if (!lockHeld || !gEarnBusy || !gEarnGuardArmed)
+    if (!lockHeld || !gEarnBusy || !gEarnGuardArmed || !hdrActive)
         throw Error("Every body must share the live input lock and guard")
     if (EarnIsMCTTask(id) ? manageSession || !mctOpen : mctOpen)
         throw Error("MCT bodies require the shared session; apps require it closed")
@@ -521,7 +543,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 72 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 76 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout

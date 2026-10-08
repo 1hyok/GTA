@@ -20,12 +20,15 @@ InstallMouseHook()
 #Include %A_ScriptDir%\..\..\Features\Earn\EarnStaff.ahk
 #Include %A_ScriptDir%\..\..\Features\Earn\EarnWarehouseRead.ahk
 #Include %A_ScriptDir%\..\..\Features\Earn\EarnWarehouse.ahk
+#Include %A_ScriptDir%\..\..\Features\Earn\EarnHdr.ahk
 StopAll(*) {
     global gAbort, gTestArmed
     gAbort := true
     EarnLog("시험 중단: End")
-    if (gTestArmed)
+    if (gTestArmed) {
         ReleaseHeldKeys()
+        EarnHdrRestore("단발 시험 End")
+    }
 }
 global gAbort := false
 global gEarnNextDue := Map()
@@ -210,6 +213,8 @@ EarnTestPrepare() {
     if (gAbort || A_TimeIdlePhysical < gTestIdleMs || Idle() < gTestIdleMs)
         return EarnFail("시험 준비: 사용자 입력 재개, 키를 보내지 않음")
     SetTimer(EarnTestWatch, 25)
+    if (!EarnHdrBegin() || !EarnTestInputAllowed())
+        return false
     EarnLog("시험 시작: pid=" WinGetPID(GTA_WIN) " idleMs=" A_TimeIdlePhysical)
     return true
 }
@@ -227,6 +232,7 @@ EarnTestInputAllowed() {
         gAbort := true
         EarnFail("시험 중단: 사용자 입력 또는 GTA 포커스 이탈")
         ReleaseHeldKeys()
+        EarnHdrRestore("단발 시험 사용자 조작 또는 포커스 이탈")
     }
     return !gAbort
 }
@@ -243,8 +249,10 @@ EarnTestTimeout() {
 
 EarnTestExit(*) {
     global gTestArmed, gTestInputMutex
-    if (gTestArmed)
+    if (gTestArmed) {
         ReleaseHeldKeys()
+        EarnHdrExit()
+    }
     if (gTestInputMutex) {
         DllCall("ReleaseMutex", "ptr",gTestInputMutex)
         DllCall("CloseHandle", "ptr",gTestInputMutex)
