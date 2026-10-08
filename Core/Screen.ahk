@@ -89,7 +89,9 @@ TemplateAt(folder, name, x, y, variation := 90) {
         CoordMode("Pixel", "Screen")
         ; 검색은 한 줄씩 왼쪽부터라, 같은 자리에서 맞으면 첫 결과가 바로 (x, y)다.
         try {
-            if (ImageSearch(&fx, &fy, x, y, Min(x + 400, cx + cw - 1), Min(y + 60, cy + ch - 1),
+            ; HDR MCT title backgrounds are 536px wide. The old 401px search
+            ; rectangle could never contain them. Keep the exact-origin check.
+            if (ImageSearch(&fx, &fy, x, y, Min(x + cw - 1, cx + cw - 1), Min(y + 60, cy + ch - 1),
                 "*" variation " *Trans0xFF00FF " img))
                 return fx = x && fy = y
         } catch as e {
