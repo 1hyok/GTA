@@ -233,11 +233,16 @@ menuState := "mct_seated"
 AntiAFKTick()
 Check(events.Length = 4 && events[1] = "{Enter down}" && events[4] = "{Backspace up}" && menuState = "mct_seated",
     "seated terminal returns to seated state without standing or camera movement")
-Reset()
-menuState := "mct_sit"
-AntiAFKTick()
-Check(events.Length = 4 && events[1] = "{z down}" && events[3] = "{z down}" && menuState = "mct_sit"
-    && LogHas("mct_sit → Z 두 번 → mct_sit"), "standing at MCT taps Z twice without menu or movement")
+for targetScreen in ["mct_seated", "mct_seated_mansion"] {
+    Reset()
+    menuState := "mct_sit"
+    seatedTarget := targetScreen
+    AntiAFKTick()
+    Check(events.Length = 6 && events[1] = "{e down}" && events[3] = "{Enter down}"
+        && events[5] = "{Backspace down}" && menuState = seatedTarget
+        && LogHas("MCT 메뉴 왕복 확인") && LogHas("gameIdle=unverified"),
+        "MCT sit prompt seats and returns through the correct " targetScreen " screen")
+}
 Reset()
 menuState := "phone"
 AntiAFKTick()
@@ -337,6 +342,7 @@ Reset() {
     externalNotificationInput := false
     lockAvailable := true, lockError := false, releases := 0
     menuState := "mct_title", menuReads := 0, hideBeforeMenuKey := false, menuOpenWorks := true, menuCloseWorks := true, menuChanges := 0, failMenuWaitAt := 0
+    seatedTarget := "mct_seated", seatedReturnState := "mct_seated"
     hudVisible := false, hudReads := 0, hideHudAfter := 0, hideHudOnClose := false, hudOriginX := 0, hudOriginY := 0,
         hudWidth := 1920, hudHeight := 1080, hudWindowError := false, visibleOverlay := "", guardAssetMissing := false, menuReturnState := "", gImageRoot := "fake",
         phonePresses := 0, phoneCloseAfter := 2
@@ -371,7 +377,7 @@ IsTeleportRunning() => teleportBusy
 AnyInputToggleOn() => false
 GetKeyState(*) => false
 Send(value) {
-    global events, anyInjectedAt, altSent, menuState, menuChanges, menuReturnState, hudVisible, visibleOverlay, phonePresses, phoneCloseAfter
+    global events, anyInjectedAt, altSent, menuState, menuChanges, menuReturnState, seatedTarget, seatedReturnState, hudVisible, visibleOverlay, phonePresses, phoneCloseAfter
     if (!gAFKBusy)
         throw Error("input without ownership")
     events.Push(value)
@@ -386,14 +392,16 @@ Send(value) {
             visibleOverlay := ""
         return
     }
-    if (value = "{Backspace down}" || value = "{Enter down}" || value = "{m down}") {
+    if (value = "{Backspace down}" || value = "{Enter down}" || value = "{m down}" || value = "{e down}") {
         menuChanges++
         if ((menuChanges = 1 && !menuOpenWorks) || (menuChanges > 1 && !menuCloseWorks))
             return
         if (value = "{Backspace down}" && menuState = "mct_title")
-            menuState := "mct_seated"
-        else if (value = "{Enter down}" && menuState = "mct_seated")
-            menuState := "mct_title"
+            menuState := seatedReturnState
+        else if (value = "{Enter down}" && (menuState = "mct_seated" || menuState = "mct_seated_mansion"))
+            seatedReturnState := menuState, menuState := "mct_title"
+        else if (value = "{e down}" && menuState = "mct_sit")
+            menuState := seatedTarget
         else if (value = "{m down}" && (menuState = "mct_sit" || menuState = "ground"))
             menuReturnState := menuState, menuState := "m_title"
         else if (value = "{m down}" && menuState = "m_title") {
@@ -516,11 +524,19 @@ try {
     $info.RedirectStandardError = $true
     $p = [Diagnostics.Process]::Start($info)
     try {
+        $stdoutTask = $p.StandardOutput.ReadToEndAsync()
+        $stderrTask = $p.StandardError.ReadToEndAsync()
         $p.StandardInput.WriteLine($driver + "`n" + $production)
         $p.StandardInput.Close()
-        if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'AFK test timed out' }
-        $stdout = $p.StandardOutput.ReadToEnd().Trim()
-        $stderr = $p.StandardError.ReadToEnd().Trim()
+        if (-not $p.WaitForExit(10000)) {
+            $p.Kill()
+            $p.WaitForExit()
+            $timeoutOut = $stdoutTask.GetAwaiter().GetResult().Trim()
+            $timeoutErr = $stderrTask.GetAwaiter().GetResult().Trim()
+            throw "AFK test timed out. stdout=$timeoutOut stderr=$timeoutErr"
+        }
+        $stdout = $stdoutTask.GetAwaiter().GetResult().Trim()
+        $stderr = $stderrTask.GetAwaiter().GetResult().Trim()
         if ($p.ExitCode -ne 0 -or $stderr -or $stdout -notmatch '^PASS AntiAFK: [0-9]+ cases; no game input$') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
