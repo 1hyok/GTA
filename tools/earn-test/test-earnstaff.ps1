@@ -7,9 +7,13 @@ No game input, screen capture, window activation, or Main.ahk execution.
 param(
     [string]$AhkPath = "$env:LOCALAPPDATA\Programs\AutoHotkey\v2\AutoHotkey64.exe",
     [string]$FixtureDirectory = '',
-    [string]$BailBusyImage = ''
+    [string]$BailBusyImage = '',
+    [string]$StaffRootImage = ''
 )
 $ErrorActionPreference = 'Stop'
+if (-not $FixtureDirectory -and -not $BailBusyImage -and -not $StaffRootImage) {
+    $StaffRootImage = Join-Path $PSScriptRoot 'mct-template-fixtures\staff-root-selected-bail-hdr-20261008.png'
+}
 $production = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnStaff.ahk') -Raw -Encoding UTF8
 $screen = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnScreen.ahk') -Raw -Encoding UTF8
 foreach ($functionName in @('EarnFindText', 'EarnReadDollars', 'EarnMenuStepKey')) {
@@ -69,6 +73,11 @@ RunFixtureTests() {
             Check(IsObject(target) && target.text = fixture.name, "actual OCR exact menu target " key)
             Check(Abs(target.y-366) <= 8, "actual OCR menu row position " key)
             Check(EarnMenuRowSelected(target) = (fixture.state = "selected"), "actual OCR menu selected state " key)
+        } else if (fixture.kind = "root") {
+            keys := []
+            Check(!EarnStaffUniqueRow(fixture.heading,"i)^Bail Office$"), "actual selected Bail label is absent " key)
+            Check(EarnStaffSelectText("i)^Warehouse$",3) && keys.Length = 1 && keys[1] = "Up",
+                "actual root OCR and selected slot navigate once without Enter " key)
         } else if (fixture.kind = "bail") {
             keys := []
             Check(EarnStaffReadBail(fixture.index) = fixture.state, "actual OCR " key)
@@ -270,6 +279,22 @@ RunMenuTests() {
         Check(EarnStaffSelectText("i)^" c[3] "$",3) && selected = c[3], c[1] " reaches observed target")
         Check(keys.Length = 1 && keys[1] = c[4], c[1] " uses actual three-row selection positions")
     }
+    Reset("empty_bail_menu",["ready","ready"])
+    Reset("missing_bail_row",["busy","busy"])
+    screenState := "staff", selected := "Bail Office"
+    Check(EarnStaffSelectText("i)^Warehouse$",3) && selected = "Warehouse"
+        && keys.Length = 1 && keys[1] = "Up", "missing selected Bail label uses verified root slots to reach Warehouse")
+    for bad in ["root_no_selection","root_double_selection"] {
+        Reset(bad,["busy","busy"])
+        screenState := "staff", selected := "Bail Office"
+        proof := [TextLine("THE VINEWOOD CLUB APP",144),TextLine("Hangar",181),TextLine("Warehouse",218)]
+        Check(!EarnStaffRootSlots(proof,proof[1]),bad " rejects slot recovery")
+    }
+    Reset("normal",["busy","busy"])
+    screenState := "staff", selected := "Bail Office"
+    for proof in [[TextLine("THE VINEWOOD CLUB APP",144),TextLine("Hangar",181)],
+        [TextLine("THE VINEWOOD CLUB APP",144),TextLine("Hangar",218),TextLine("Warehouse",181)]]
+        Check(!EarnStaffRootSlots(proof,proof[1]),"missing or misaligned root names reject recovery")
     Reset("empty_bail_menu",["ready","ready"])
     screenState := "bail", selected := "Agent 1"
     Check(!EarnStaffSelectText("i)^Agent 2$",2) && keys.Length = 0,
@@ -778,6 +803,10 @@ EarnMenuRowSelected(row) {
         return mode = "bail_double_selection" || Abs(row.y-(selected = "Agent 1" ? 181 : 218)) < 8
     if (!row.HasOwnProp("text")) {
         if (screenState = "staff") {
+            if (mode = "root_no_selection")
+                return false
+            if (mode = "root_double_selection")
+                return row.y = 181 || row.y = 255
             names := ["Hangar","Warehouse","Bail Office"]
             for index, name in names {
                 if (selected = name && Abs(row.y-144-37*index) < 8)
@@ -804,6 +833,12 @@ EarnPress(key) {
     keys.Push(key)
     if (mode = "fixture") {
         global fixtureData, fixtureKey
+        if (fixtureData[fixtureKey].kind = "root") {
+            if (key != "Up" || keys.Length != 1)
+                throw Error("Recorded root navigation permits one Up and no Enter")
+            fixtureData[fixtureKey].selectedY -= 37
+            return true
+        }
         if (key != "Down" || keys.Length != 1)
             throw Error("Recorded Bail navigation permits exactly one Down and no transaction input")
         fixtureData[fixtureKey].selectedY += 37
@@ -998,7 +1033,7 @@ $testProcess = $null
 $fixtureFiles = New-Object Collections.Generic.List[string]
 try {
     $fixtureInit = ''
-    if ($FixtureDirectory -or $BailBusyImage) {
+    if ($FixtureDirectory -or $BailBusyImage -or $StaffRootImage) {
         Add-Type -AssemblyName System.Drawing
         $ocrPath = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\Core\EarnOcr.ps1'))
         $fixtureSpecs = @(
@@ -1021,6 +1056,10 @@ try {
             $FixtureDirectory = Split-Path -Parent $BailBusyImage
             $fixtureSpecs = @(,@([IO.Path]::GetFileNameWithoutExtension($BailBusyImage),'bail',1,'busy','',-1))
         }
+        if ($StaffRootImage) {
+            $FixtureDirectory = Split-Path -Parent $StaffRootImage
+            $fixtureSpecs = @(,@([IO.Path]::GetFileNameWithoutExtension($StaffRootImage),'root',3,'busy','Warehouse',-1))
+        }
         foreach ($spec in $fixtureSpecs) {
             $imagePath = [IO.Path]::GetFullPath((Join-Path $FixtureDirectory ($spec[0] + '.png')))
             if (-not (Test-Path -LiteralPath $imagePath -PathType Leaf)) { throw "Fixture missing: $imagePath" }
@@ -1035,7 +1074,7 @@ try {
             $fixtureFiles.Add($labelPath)
             $fixtureFiles.Add($fullPath)
             $fixtureFiles.Add($fullWhitePath)
-            $headingHeight = if ($spec[1] -eq 'bail') {115} elseif ($spec[1] -eq 'menu') {263} else {40}
+            $headingHeight = if ($spec[1] -eq 'root') {300} elseif ($spec[1] -eq 'bail') {115} elseif ($spec[1] -eq 'menu') {263} else {40}
             $ocrResult = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ocrPath -ImagePath $imagePath -X 25 -Y 125 -W 450 -H $headingHeight -OutputPath $headingPath
             if ($LASTEXITCODE -ne 0) { throw "Fixture title OCR failed: $ocrResult" }
             $headingRows = @(Import-Csv -LiteralPath $headingPath -Delimiter "`t")
@@ -1047,10 +1086,16 @@ try {
             try {
                 $pixel = $sourceBitmap.GetPixel(32,$selectedY)
                 if ($pixel.R -le 170 -or $pixel.G -le 170 -or $pixel.B -le 170) { throw "Fixture selected row not highlighted: $imagePath" }
+                if ($spec[1] -eq 'root') {
+                    foreach ($slot in 1..2) {
+                        $other = $sourceBitmap.GetPixel(32,($headingY+37*$slot))
+                        if ($other.R -gt 170 -and $other.G -gt 170 -and $other.B -gt 170) { throw 'Root fixture has ambiguous selection' }
+                    }
+                }
             } finally { $sourceBitmap.Dispose() }
-            if ($spec[1] -eq 'menu') {
+            if ($spec[1] -eq 'menu' -or $spec[1] -eq 'root') {
                 $detailY = 125
-                $detailHeight = 263
+                $detailHeight = if ($spec[1] -eq 'root') {300} else {263}
                 $labelExpression = '[]'
             } elseif ($spec[1] -eq 'bail') {
                 $detailY = $headingY + 74 + 22
