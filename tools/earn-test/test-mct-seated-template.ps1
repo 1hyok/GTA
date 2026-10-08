@@ -1,9 +1,8 @@
 #Requires -Version 5.1
 <#
 Static regression for the mansion MCT prompt and the template builder.
-The saved fixture contains only the observed 240x24 "Master Control Terminal"
-label at 72,28, cropped from earn-warehouse-done.png on 2026-10-03. No account
-name, desktop notification or game balance is included. No windows or input.
+The saved fixtures contain only MCT prompt/title crops. No account name,
+desktop notification or game balance is included. No windows or input.
 #>
 [CmdletBinding()]
 param([string]$AdditionalSeatedSamplePath = '')
@@ -13,6 +12,13 @@ $assetDirectory = Join-Path $root 'Images\Earn\1920x1080'
 $evidence = Join-Path $root 'docs\evidence\2026-09-27-mct'
 $cases = 0
 . (Join-Path $PSScriptRoot 'compare-png-pixels.ps1')
+
+$core = [IO.File]::ReadAllText((Join-Path $root 'Features\Earn\EarnCore.ahk'))
+if ($core -notmatch 'TemplateSeen\("Earn",\s*"mct_sit_hdr_alt"[^\r\n]*TemplateAt\("Earn",\s*"mct_sit_hdr_alt_bg"') {
+    throw 'Production mct_sit detection does not consume the alternate HDR text/background pair'
+}
+$cases++
+Write-Output 'PASS production mct_sit detection consumes alternate HDR text/background pair'
 
 # Also runs the existing nightclub positive/negative regression. Its public
 # pixel matcher implements the same per-channel ImageSearch comparison.
@@ -110,6 +116,41 @@ try {
             } finally { $source.Dispose() }
         }
     } finally { $sitTemplate.Dispose(); $sitFixture.Dispose() }
+    $sitAltTemplate = [Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_sit_hdr_alt.png'))
+    $sitAltFixture = [Drawing.Bitmap]::FromFile((Join-Path $PSScriptRoot 'mct-template-fixtures\mct-sit-hdr-live-20261008.png'))
+    try {
+        if ($sitAltTemplate.Width -ne 240 -or $sitAltTemplate.Height -ne 48) { throw 'Unexpected alternate HDR stand-at-MCT prompt dimensions' }
+        $x=0; $y=0
+        $variation = [EarnNightclubTemplateTest]::MinimumVariation($sitAltFixture,$sitAltTemplate,(New-Object Drawing.Rectangle 0,0,240,48),[ref]$x,[ref]$y)
+        if ($variation -gt 40 -or $x -ne 0 -or $y -ne 0) { throw "Alternate HDR sit prompt missed current live sample: $variation at $x,$y" }
+        $cases++
+        Write-Output "PASS alternate live HDR stand-at-MCT prompt variation=$variation at $x,$y"
+        $legacyTemplate = [Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_sit_hdr.png'))
+        try {
+            $legacyVariation = [EarnNightclubTemplateTest]::MinimumVariation($sitAltFixture,$legacyTemplate,(New-Object Drawing.Rectangle 0,0,240,48),[ref]$x,[ref]$y)
+            if ($legacyVariation -le 40) { throw "Current live sample no longer reproduces legacy HDR template miss: $legacyVariation" }
+            $cases++
+            Write-Output "PASS current live sample reproduces legacy HDR template miss variation=$legacyVariation"
+        } finally { $legacyTemplate.Dispose() }
+        $sitAltBackground = [Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_sit_hdr_alt_bg.png'))
+        try {
+            $x=0; $y=0
+            $variation = [EarnNightclubTemplateTest]::MinimumVariation($sitAltFixture,$sitAltBackground,(New-Object Drawing.Rectangle 0,0,240,48),[ref]$x,[ref]$y)
+            if ($variation -gt 40 -or $x -ne 0 -or $y -ne 0) { throw "Alternate HDR sit background missed current live sample: $variation at $x,$y" }
+            $cases++
+            Write-Output "PASS alternate HDR MCT prompt background variation=$variation at $x,$y"
+        } finally { $sitAltBackground.Dispose() }
+        foreach ($name in @('mct-final-restored.png','mansion-dj-after.png','mansion-bunker-result.png')) {
+            $source = [Drawing.Bitmap]::FromFile((Join-Path $evidence $name))
+            try {
+                $x=0; $y=0
+                $variation = [EarnNightclubTemplateTest]::MinimumVariation($source,$sitAltTemplate,(New-Object Drawing.Rectangle 0,0,576,108),[ref]$x,[ref]$y)
+                if ($variation -le 40) { throw "Alternate HDR sit prompt matched unrelated MCT screen $name at $x,$y" }
+                $cases++
+                Write-Output "PASS alternate HDR sit prompt rejects $name variation=$variation"
+            } finally { $source.Dispose() }
+        }
+    } finally { $sitAltTemplate.Dispose(); $sitAltFixture.Dispose() }
     $seatedHdr = [Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_seated_hdr.png'))
     $seatedHdrBg = [Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_seated_hdr_bg.png'))
     $seatedFixture = [Drawing.Bitmap]::FromFile((Join-Path $PSScriptRoot 'mct-template-fixtures\mct-seated-hdr-current.png'))
@@ -166,11 +207,11 @@ finally { $template.Dispose() }
 
 $generatedDirectory = Join-Path ([IO.Path]::GetTempPath()) ('gta-mct-template-build-' + [Guid]::NewGuid().ToString('N'))
 $null = [IO.Directory]::CreateDirectory($generatedDirectory)
-$names = @('nc_dj_menu', 'nc_home', 'mct_seated_mansion', 'mct_sit_hdr', 'mct_seated_hdr', 'mct_title_hdr')
+$names = @('nc_dj_menu', 'nc_home', 'mct_seated_mansion', 'mct_sit_hdr', 'mct_sit_hdr_alt', 'mct_seated_hdr', 'mct_title_hdr')
 try {
     & (Join-Path $PSScriptRoot 'build-mct-templates.ps1') -OutputDir $generatedDirectory -Name $names
     foreach ($name in $names) {
-        $outputs = if ($name -in @('mct_sit_hdr','mct_seated_hdr','mct_title_hdr')) { @($name,($name+'_bg')) } else { @($name) }
+        $outputs = if ($name -in @('mct_sit_hdr','mct_sit_hdr_alt','mct_seated_hdr','mct_title_hdr')) { @($name,($name+'_bg')) } else { @($name) }
         foreach ($outputName in $outputs) {
             $diff = Compare-PngPixels (Join-Path $assetDirectory ($outputName + '.png')) (Join-Path $generatedDirectory ($outputName + '.png'))
             if ($diff) { throw "Builder changes the checked-in stable mask: $outputName ($diff)" }
@@ -181,7 +222,7 @@ try {
 }
 finally {
     foreach ($name in $names) {
-        $outputs = if ($name -in @('mct_sit_hdr','mct_seated_hdr','mct_title_hdr')) { @($name,($name+'_bg')) } else { @($name) }
+        $outputs = if ($name -in @('mct_sit_hdr','mct_sit_hdr_alt','mct_seated_hdr','mct_title_hdr')) { @($name,($name+'_bg')) } else { @($name) }
         foreach ($outputName in $outputs) {
             $generated = Join-Path $generatedDirectory ($outputName + '.png')
             if ([IO.File]::Exists($generated)) { [IO.File]::Delete($generated) }

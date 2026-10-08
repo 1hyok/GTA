@@ -111,6 +111,7 @@ EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
     if (name = "mct_sit")
         return (TemplateSeen("Earn", "mct_sit", area, &fx, &fy, variation) && TemplateAt("Earn", "mct_sit_bg", fx, fy))
             || (TemplateSeen("Earn", "mct_sit_hdr", area, &fx, &fy, variation) && TemplateAt("Earn", "mct_sit_hdr_bg", fx, fy))
+            || (TemplateSeen("Earn", "mct_sit_hdr_alt", area, &fx, &fy, variation) && TemplateAt("Earn", "mct_sit_hdr_alt_bg", fx, fy))
     ; 테러바이트 안내는 CEO 여부에 따라 두 모양이다. CEO 일 때는 'Touchscreen computer / Master Control Terminal'.
     ; 반투명 상자라 뒤 배경에 따라 픽셀이 바뀌고, 남은 커서가 한 줄을 가릴 수 있다(1003 17:15 실측).
     ; 그래서 세 줄 중 하나만 맞아도 인정하고 허용 오차를 60으로 둔다.
