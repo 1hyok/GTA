@@ -4,7 +4,7 @@
 ; 템플릿은 1920x1080 테두리 없는 창에서 뜬 것이다. 해상도가 다르면 그 해상도 폴더에 같은 이름으로 떠 넣어야 동작한다(없으면 멈춘다).
 global gEarnBusy := false        ; 수익 자동화가 게임에 키를 보내는 중. AFK 방지가 이 동안 쉰다
 global gEarnFail := ""           ; 마지막으로 멈춘 까닭 (오버레이·설정 창·로그에 보인다)
-global gEarnRetryIn := 0          ; 작업이 "이번엔 못 했으니 N ms 뒤에 다시" 로 끝낼 때 채운다. 0 이면 스케줄러가 꺼진다
+global gEarnRetryIn := 0          ; 작업이 지정한 재시도 간격. 0이면 스케줄러의 기본 backoff를 쓴다
 
 ; 상호작용 메뉴가 차지하는 영역(클라이언트 비율). 제목·줄 템플릿은 여기서만 찾는다
 global EARN_MENU_AREA := [0, 0, 0.27, 0.55]
@@ -51,6 +51,16 @@ EarnStateSet(key, value) {
 }
 
 EarnUnixNow() => DateDiff(A_NowUTC, "19700101000000", "Seconds")
+
+; 거래 입력 전에 지속 상태를 확인한다. 저장 실패면 요청 자체를 보내지 않는다.
+EarnTransactionBegin(id, reason) {
+    EarnStateSet("pending_" id, reason)
+    return EarnStateGet("pending_" id) = reason || EarnFail("거래 대기 상태 저장 실패: " id)
+}
+
+EarnTransactionConfirmed(id) {
+    EarnStateSet("pending_" id, "")
+}
 
 ; 작업이 화면에서 읽은 상태로 다음 확인까지의 시간을 정한다. 작업이 성공으로 끝날 때만 스케줄러가 이 값을 쓴다.
 EarnScheduleNext(id, ms) {

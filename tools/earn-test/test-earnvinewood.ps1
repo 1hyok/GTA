@@ -23,6 +23,12 @@ $driver = @'
 #SingleInstance Off
 #NoTrayIcon
 #Warn All, StdOut
+global transactionPending := Map()
+EarnTransactionBegin(id, reason) {
+    transactionPending[id] := reason
+    return true
+}
+EarnTransactionConfirmed(id) => transactionPending.Delete(id)
 global gMode, gState, gSelected, gBiz, gIdx, gReads, gClaims, gClaimAttempts, gKeys, gStandWaits, gMctCloses, gCEOCalls, gFailure, gScheduled, gTests := 0
 ; 입금 알림 감시(EarnSafeFeedWatch)는 스케줄러 전역을 쓴다. 이 시험은 파서만 부른다.
 global gEarnRetryIn := 0, gEarnOn := false, gEarnBusy := false, gEarnDue := Map(), gEarnNextDue := Map()
@@ -83,6 +89,10 @@ RunTests() {
         if (c[7])
             Check(gScheduled = c[7] * 60000, label " scheduled " Round(gScheduled / 60000) " min, expected " c[7])
         Check(gClaimAttempts <= gClaims.Length + 1, label " never replays collection")
+        if (c[1] = "post_unconfirmed" && !transactionPending.Has("safe"))
+            throw Error("Unconfirmed collection must retain pending state")
+        if (result && gClaims.Length && transactionPending.Has("safe"))
+            throw Error("Confirmed collection must clear pending state")
         for key in gKeys
             Check(key != "Esc", label " never sends Esc")
         if (c[2] = "hud")
@@ -218,6 +228,7 @@ RunTests() {
 }
 
 Reset(mode, state, amounts := "") {
+    global transactionPending := Map()
     global gMode, gState, gSelected, gBiz, gIdx, gReads, gClaims, gClaimAttempts, gKeys, gStandWaits, gMctCloses, gCEOCalls, gFailure, gScheduled, gPhysIdle, gOthersIdle
     gMode := mode, gState := state = "earnings_mid" ? "earnings" : state, gBiz := DefaultBiz(), gIdx := state = "earnings_mid" ? 4 : 1
     if (mode = "unknown_business")

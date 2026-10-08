@@ -26,6 +26,12 @@ $driver = @'
 #SingleInstance Off
 #NoTrayIcon
 #Warn All, StdOut
+global transactionPending := Map()
+EarnTransactionBegin(id, reason) {
+    transactionPending[id] := reason
+    return true
+}
+EarnTransactionConfirmed(id) => transactionPending.Delete(id)
 global mode, screenState, selected, statuses, requests, keys, reads, failure, checks := 0
 global config, cargoNames, cargoStatuses, cargoRequests, cargoReads, activeCount, opens, postReads
 global fixtureData := Map(), fixtureKey := ""
@@ -123,6 +129,10 @@ RunTests() {
         Check(result = c[3], c[1] " success=" result)
         Check(requests[1] + requests[2] = c[4], c[1] " request count")
         Check(requests[1] <= 1 && requests[2] <= 1, c[1] " no repeated request")
+        if (c[1] = "unconfirmed" || c[1] = "normal") {
+            if (transactionPending.Has("staff") != !result)
+                throw Error("Staff pending state must reflect confirmed result")
+        }
         for key in keys
             Check(key != "Esc", c[1] " no Esc")
     }
@@ -466,6 +476,7 @@ Sum(values) {
 }
 
 Reset(nextMode, initial) {
+    global transactionPending := Map()
     global mode, screenState, selected, statuses, requests, keys, reads, failure
     global config, cargoNames, cargoStatuses, cargoRequests, cargoReads, activeCount, opens, postReads
     global observedDeadlines
