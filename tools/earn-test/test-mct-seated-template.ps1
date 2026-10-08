@@ -63,6 +63,53 @@ try {
         try { Assert-SeatedMatch $source $false $name }
         finally { $source.Dispose() }
     }
+    $sitTemplate = [Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_sit_hdr.png'))
+    $sitFixture = [Drawing.Bitmap]::FromFile((Join-Path $PSScriptRoot 'mct-template-fixtures\mct-sit-hdr-current.png'))
+    try {
+        if ($sitTemplate.Width -ne 240 -or $sitTemplate.Height -ne 48) { throw 'Unexpected HDR stand-at-MCT prompt dimensions' }
+        $x=0; $y=0
+        $positiveVariation = [EarnNightclubTemplateTest]::MinimumVariation($sitFixture,$sitTemplate,(New-Object Drawing.Rectangle 0,0,240,48),[ref]$x,[ref]$y)
+        if ($positiveVariation -gt 40 -or $x -ne 0 -or $y -ne 0) { throw "HDR sit prompt did not match observed crop at expected offset: $positiveVariation at $x,$y" }
+        $cases++
+        Write-Output "PASS HDR stand-at-MCT prompt positive variation=$positiveVariation at $x,$y"
+        $sitBackground = [Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_sit_hdr_bg.png'))
+        try {
+            $x=0; $y=0
+            $backgroundVariation = [EarnNightclubTemplateTest]::MinimumVariation($sitFixture,$sitBackground,(New-Object Drawing.Rectangle 0,0,240,48),[ref]$x,[ref]$y)
+            if ($backgroundVariation -gt 40 -or $x -ne 0 -or $y -ne 0) { throw "HDR MCT prompt background did not match at expected offset: $backgroundVariation at $x,$y" }
+            $cases++
+            Write-Output "PASS HDR MCT prompt background positive variation=$backgroundVariation at $x,$y"
+            $glyphs = 0; $backgroundPixels = 0
+            for ($y=0; $y -lt 48; $y++) {
+                for ($x=0; $x -lt 240; $x++) {
+                    $p = $sitTemplate.GetPixel($x,$y)
+                    if ($p.R -ne 255 -or $p.G -ne 0 -or $p.B -ne 255) {
+                        $observed = $sitFixture.GetPixel($x,$y)
+                        $redDiff = [Math]::Abs([int]$p.R - [int]$observed.R)
+                        $greenDiff = [Math]::Abs([int]$p.G - [int]$observed.G)
+                        $blueDiff = [Math]::Abs([int]$p.B - [int]$observed.B)
+                        if ($redDiff -gt 1 -or $greenDiff -gt 1 -or $blueDiff -gt 1) { throw 'HDR prompt mask differs from observed glyph pixels' }
+                        $glyphs++
+                    }
+                    $b = $sitBackground.GetPixel($x,$y)
+                    if ($b.R -ne 255 -or $b.G -ne 0 -or $b.B -ne 255) { $backgroundPixels++ }
+                }
+            }
+            if ($glyphs -lt 200 -or $backgroundPixels -lt 200) { throw "Insufficient HDR prompt evidence glyphs=$glyphs background=$backgroundPixels" }
+            $cases++
+            Write-Output "PASS HDR stand-at-MCT prompt masks glyphs=$glyphs background=$backgroundPixels"
+        } finally { $sitBackground.Dispose() }
+        foreach ($name in @('mct-final-restored.png','mansion-dj-after.png','mansion-bunker-result.png')) {
+            $source = [Drawing.Bitmap]::FromFile((Join-Path $evidence $name))
+            try {
+                $x=0; $y=0
+                $variation = [EarnNightclubTemplateTest]::MinimumVariation($source,$sitTemplate,(New-Object Drawing.Rectangle 0,0,576,108),[ref]$x,[ref]$y)
+                if ($variation -le 40) { throw "HDR sit prompt matched unrelated MCT screen $name at $x,$y" }
+                $cases++
+                Write-Output "PASS HDR sit prompt rejects $name variation=$variation"
+            } finally { $source.Dispose() }
+        }
+    } finally { $sitTemplate.Dispose(); $sitFixture.Dispose() }
     if ($AdditionalSeatedSamplePath) {
         $source = [Drawing.Bitmap]::FromFile([IO.Path]::GetFullPath($AdditionalSeatedSamplePath))
         try { Assert-SeatedMatch $source $true ([IO.Path]::GetFileName($AdditionalSeatedSamplePath)) }
@@ -73,20 +120,26 @@ finally { $template.Dispose() }
 
 $generatedDirectory = Join-Path ([IO.Path]::GetTempPath()) ('gta-mct-template-build-' + [Guid]::NewGuid().ToString('N'))
 $null = [IO.Directory]::CreateDirectory($generatedDirectory)
-$names = @('nc_dj_menu', 'nc_home', 'mct_seated_mansion')
+$names = @('nc_dj_menu', 'nc_home', 'mct_seated_mansion', 'mct_sit_hdr')
 try {
     & (Join-Path $PSScriptRoot 'build-mct-templates.ps1') -OutputDir $generatedDirectory -Name $names
     foreach ($name in $names) {
-        $diff = Compare-PngPixels (Join-Path $assetDirectory ($name + '.png')) (Join-Path $generatedDirectory ($name + '.png'))
-        if ($diff) { throw "Builder changes the checked-in stable mask: $name ($diff)" }
-        $cases++
-        Write-Output "PASS builder reproduces $name"
+        $outputs = if ($name -eq 'mct_sit_hdr') { @('mct_sit_hdr','mct_sit_hdr_bg') } else { @($name) }
+        foreach ($outputName in $outputs) {
+            $diff = Compare-PngPixels (Join-Path $assetDirectory ($outputName + '.png')) (Join-Path $generatedDirectory ($outputName + '.png'))
+            if ($diff) { throw "Builder changes the checked-in stable mask: $outputName ($diff)" }
+            $cases++
+            Write-Output "PASS builder reproduces $outputName"
+        }
     }
 }
 finally {
     foreach ($name in $names) {
-        $generated = Join-Path $generatedDirectory ($name + '.png')
-        if ([IO.File]::Exists($generated)) { [IO.File]::Delete($generated) }
+        $outputs = if ($name -eq 'mct_sit_hdr') { @('mct_sit_hdr','mct_sit_hdr_bg') } else { @($name) }
+        foreach ($outputName in $outputs) {
+            $generated = Join-Path $generatedDirectory ($outputName + '.png')
+            if ([IO.File]::Exists($generated)) { [IO.File]::Delete($generated) }
+        }
     }
     [IO.Directory]::Delete($generatedDirectory, $false)
 }
