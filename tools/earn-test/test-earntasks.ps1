@@ -2127,8 +2127,10 @@ EarnWalk(path) {
     steps.Push(path)
     return true
 }
-EarnTurn(units) {
+EarnTurn(units, pitchUnits := 0, hdrMCTRecovery := false) {
     global closeCase, aborted, turns, turnUnits, turnList
+    if (pitchUnits != 0 || !hdrMCTRecovery)
+        throw Error("MCT close recovery must explicitly enable the guarded HDR path")
     if (aborted || !closeCase.Get("turn",true))
         return false
     turns++, turnUnits := units, turnList.Push(units)
@@ -2143,20 +2145,42 @@ EarnLog(*) => true
     $mctCloseDriver += "`n" + (Get-EarnFunctionBody $sourceText 'EarnWaitCallEnd')
     Invoke-EarnOfflineCheck 'MCTClose' 'EarnMCTClose' $mctCloseDriver 24
     $turnGuardDriver = @'
-global turnCase := [], moves := 0, movedX := 0, movedY := 0
+global turnCase := [], moves := 0, movedX := 0, movedY := 0, turnMs := 0, menuChecks := 0, menuAbort := false
 ; Relative mouse calls are intercepted. Run the actual turn loop and input guards.
 for scenario in [[5220,0,-1,-1,true,261,5220,0],
     [5220,0,0,-1,false,0,0,0],[5220,0,1,-1,false,1,20,0],
-    [5220,0,-1,0,false,0,0,0],[5220,0,-1,1,false,1,20,0]] {
-    turnCase := scenario, moves := 0, movedX := 0, movedY := 0
-    if (EarnTurn(scenario[1]) != scenario[5] || moves != scenario[6]
+    [5220,0,-1,0,false,0,0,0],[5220,0,-1,1,false,1,20,0],
+    [5220,0,-1,0,true,261,5220,0,true,true,1200,false,125],
+    [5220,0,1,0,false,1,20,0,true,true],
+    [5220,0,-1,0,false,0,0,0,true,false],
+    [5220,0,-1,0,false,0,0,0,false,true],
+    [5220,0,-1,0,false,0,0,0,true,true,9500],
+    [5220,0,-1,0,false,200,4000,0,true,true,5000],
+    [5220,0,-1,0,false,0,0,0,true,true,100,true],
+    [5220,0,-1,0,false,17,340,0,true,true,0,false,0,1]] {
+    turnCase := scenario, moves := 0, movedX := 0, movedY := 0, turnMs := 0, menuChecks := 0, menuAbort := false
+    if (EarnTurn(scenario[1],0,scenario.Length >= 9 ? scenario[9] : false) != scenario[5] || moves != scenario[6]
         || movedX != scenario[7] || movedY != scenario[8])
-        throw Error("Camera recovery must preserve abort/HUD guards and bounded movement")
+        throw Error("Camera recovery must preserve abort/HUD guards and bounded movement: moves=" moves " time=" turnMs " expected=" scenario[6])
+    if (scenario.Length >= 11 && scenario[11] = 1200 && (menuChecks != 2 || turnMs > 8500))
+        throw Error("Slow menu checks must be throttled while HDR recovery remains bounded")
 }
-FileAppend("PASS TurnGuard cases=5`n", "*")
+FileAppend("PASS TurnGuard cases=13`n", "*")
 ExitApp(0)
-EarnAborted() => turnCase[3] >= 0 && moves >= turnCase[3]
+EarnAborted() => menuAbort || (turnCase[3] >= 0 && moves >= turnCase[3])
 EarnHudVisible() => turnCase[4] < 0 || moves < turnCase[4]
+HealthHudVisible() {
+    global turnMs
+    turnMs += turnCase.Length >= 13 ? turnCase[13] : 0
+    return turnCase.Length >= 10 && turnCase[10] && (turnCase.Length < 14 || moves < turnCase[14])
+}
+EarnMCTRecoveryHud() {
+    global turnMs, menuChecks, menuAbort
+    menuChecks++, turnMs += turnCase.Length >= 11 ? turnCase[11] : 0
+    menuAbort := turnCase.Length >= 12 && turnCase[12]
+    return turnCase.Length >= 10 && turnCase[10]
+}
+TurnClock() => turnMs
 DllCall(name,args*) {
     global moves, movedX, movedY
     if (name != "mouse_event" || args[2] != 1 || Abs(args[4]) > 20 || Abs(args[6]) > 20)
@@ -2164,10 +2188,41 @@ DllCall(name,args*) {
     moves++, movedX += args[4], movedY += args[6]
     return 0
 }
-Sleep(*) => true
+Sleep(ms) {
+    global turnMs
+    turnMs += ms
+    return true
+}
 EarnFail(*) => false
 '@
-    Invoke-EarnOfflineCheck 'TurnGuard' 'EarnTurn' $turnGuardDriver 5
+    $turnSource = $sourceText
+    $sourceText = $sourceText.Replace('A_TickCount','TurnClock()')
+    try { Invoke-EarnOfflineCheck 'TurnGuard' 'EarnTurn' $turnGuardDriver 13 }
+    finally { $sourceText = $turnSource }
+    $recoveryHudDriver = @'
+global EARN_PROMPT_AREA := [], overlay := "", healthColor := 0xAAFFB4
+for scenario in [[0xAAFFB4,"",true],[0x000000,"",false],[0xFFFFFF,"",false],
+    [0xAAFFB4,"interaction",false],[0xAAFFB4,"afk_phone_frame",false],
+    [0xAAFFB4,"ph_joblist_sel",false],[0xAAFFB4,"ph_vinewood_sel",false],
+    [0xAAFFB4,"afk_vinewood_title",false],[0xAAFFB4,"mct_title",false],[0xAAFFB4,"mct_seated",false]] {
+    healthColor := scenario[1], overlay := scenario[2]
+    if (EarnMCTRecoveryHud() != scenario[3])
+        throw Error("HDR recovery HUD must exclude menus/phone/terminal despite visible health bar: " overlay)
+}
+FileAppend("PASS MCTRecoveryHud cases=10`n","*")
+ExitApp(0)
+HealthHudVisible() {
+    samples := []
+    Loop 16
+        samples.Push(healthColor)
+    return HealthHudColors(samples)
+}
+EarnMenuIsOpen() => overlay = "interaction"
+EarnSeen(name,*) => name = overlay
+'@
+    $commonScreen = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\..\Core\Screen.ahk') -Raw -Encoding UTF8
+    $recoveryHudDriver += "`n" + (Get-EarnFunctionBody $commonScreen 'HealthHudColors')
+    Invoke-EarnOfflineCheck 'MCTRecoveryHud' 'EarnMCTRecoveryHud' $recoveryHudDriver 10
     $safeNavDriver = @'
 global EARN_PROMPT_AREA := [], config := Map("Settings", Map("EarnTurnUnitsPerDeg",29))
 ; Open-safe prompt succeeds before navigation and at the final arrival check.
