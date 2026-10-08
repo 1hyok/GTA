@@ -37,4 +37,6 @@ Check ($unknown.Full -and $unknown.Suites.Count -eq 34) 'unknown production path
 $hdr = Get-CiCheckPlan @('Features/Earn/EarnHdr.ahk')
 Check (-not $hdr.Full -and ($hdr.Suites -join ',') -eq 'test-earner,test-earnhdr') 'HDR controller selects lease and scheduler consumers'
 
+$frameWatch = Get-CiCheckPlan @('tools/frame-watch/frame-watch.ps1')
+Check (-not $frameWatch.Full -and ($frameWatch.Suites -join ',') -eq 'test-perf-watch') 'frame watcher selects performance regressions'
 Write-Output "PASS CI check selection cases=$checks"
