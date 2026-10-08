@@ -163,7 +163,7 @@ endInput := true, fakeTick := gEarnRecovery.nextTick
 EarnTick()
 Check(gEarnRecovery.tasks.Length = 2 && gEarnDue["warehouse"] = 0,
     "user intervention during recovery preserves original batch without postponing new due task")
-endInput := false
+endInput := false, idleMs := 60000
 endOK := true
 fakeTick := gEarnRecovery.nextTick
 EarnTick()
