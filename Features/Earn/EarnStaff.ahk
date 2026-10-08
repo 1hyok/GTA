@@ -766,6 +766,36 @@ EarnStaffMenuTarget(pattern, &validMenu := false, &menuLines := "", &menuHeading
     return false
 }
 
+; 선택된 회색 행 글자가 사라진 직원 목록은 두 다른 이름·고정 위치와 유일 선택 막대로만 탐색한다.
+; 목표 행 자체는 합성하지 않는다. Enter 직전에는 실제 목표 OCR과 선택을 다시 확인한다.
+EarnStaffRootSlots(lines, heading) {
+    if (!heading || !EarnStaffUniqueRow(lines, "i)^THE VINEWOOD CLUB APP$"))
+        return false
+    observed := 0, selectedSlot := 0, slots := []
+    for index, name in ["Hangar", "Warehouse", "Bail Office"] {
+        matches := 0
+        for candidate in lines
+            if (EarnStaffTextMatch(candidate.text, "i)^" name "$"))
+                matches++
+        if (matches > 1)
+            return false
+        row := EarnStaffUniqueRow(lines, "i)^" name "$")
+        if (row) {
+            if (Abs(row.y-heading.y-37*index) > 8)
+                return false
+            observed++
+        }
+        slot := {y:heading.y+37*index}
+        if (EarnMenuRowSelected(slot)) {
+            if (selectedSlot)
+                return false
+            selectedSlot := index
+        }
+        slots.Push(slot)
+    }
+    return observed >= 2 && selectedSlot ? slots : false
+}
+
 EarnStaffSelectText(pattern, maxPress) {
     Loop maxPress+1 {
         ; 키를 누른 직후 판독에서 앱 제목이 한 번 빠지면 메뉴가 아닌 것으로 보고 곧바로 꺼졌다(1007 04:00:49 「격납고 줄 선택 실패」,
@@ -817,6 +847,9 @@ EarnStaffSelectText(pattern, maxPress) {
             verifiedBusyFrame := EarnStaffBailBusyFrame(lines, agent)
         if (validMenu && !row && !verifiedBusyFrame && pattern = EarnStaffHangarPattern())
             verifiedBusyFrame := EarnStaffHangarBusyFrame(lines)
+        verifiedRootSlots := validMenu && row ? EarnStaffRootSlots(lines, heading) : false
+        if (verifiedRootSlots)
+            selectedVisible := true
         knownInitialRoot := row && pattern = "i)^Manage Staff Members$"
             && EarnStaffTextMatch(row.text, pattern)
         if (!validMenu || (!selectedVisible && !verifiedBusyFrame && !knownInitialRoot))
@@ -834,6 +867,8 @@ EarnStaffSelectText(pattern, maxPress) {
         if (!row && pattern = EarnStaffHangarPattern() && EarnStaffHangarBusyFrame(lines))
             return {y:heading.y+37}
         stepLines := lines
+        if (verifiedRootSlots)
+            stepLines := verifiedRootSlots
         if (verifiedBailRows)
             stepLines := [{y:heading.y+37},{y:heading.y+74}]
         if (row && EarnStaffListSeen(lines)) {
