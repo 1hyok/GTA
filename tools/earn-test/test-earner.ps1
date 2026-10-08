@@ -15,6 +15,21 @@ $core = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnCore.ahk')
 foreach ($functionName in @('EarnTransactionBegin','EarnTransactionConfirmed')) {
     $production += "`n" + [regex]::Match($core, ('(?ms)^' + $functionName + '\([^\r\n]*\) \{.*?^\}')).Value
 }
+$mctSitMatcher = [regex]::Match($core, '(?ms)^EarnMCTSitOcrMatches\([^\r\n]*\) \{.*?^\}').Value
+if (-not $mctSitMatcher -or $core -notmatch '(?s)if \(name = "mct_sit"\).*?EarnMCTSitOcrSeen\(\)') {
+    throw 'Production MCT sit detection must consume its exact OCR fallback'
+}
+$production += "`n" + $mctSitMatcher
+$mctPromptRows = @(Import-Csv (Join-Path $PSScriptRoot '..\..\docs\evidence\2026-10-09-mct\mct-sit-prompt-runtime-20261009.tsv') -Delimiter "`t")
+if ($mctPromptRows.Count -ne 2 -or $mctPromptRows[0].text -ne 'Press' -or $mctPromptRows[1].text -ne 'to sit down.') {
+    throw 'Recorded live MCT prompt OCR fixture is incomplete'
+}
+$mctPromptLiteral = '[' + (($mctPromptRows | ForEach-Object {
+    if ($_.x -notmatch '^\d+$' -or $_.y -notmatch '^\d+$' -or $_.w -notmatch '^\d+$' -or $_.h -notmatch '^\d+$') {
+        throw 'Recorded MCT prompt OCR coordinates must be integers'
+    }
+    '{x:' + $_.x + ',y:' + $_.y + ',w:' + $_.w + ',h:' + $_.h + ',text:"' + $_.text.Replace('"','""') + '"}'
+}) -join ',') + ']'
 $driver = @'
 #Requires AutoHotkey v2.0
 #SingleInstance Off
@@ -292,6 +307,12 @@ EarnTick()
 EarnTick()
 Check(calls.Length = 5 && calls[1] = "bunker" && calls[2] = "dj" && calls[3] = "warehouse"
     && calls[4] = "safe" && calls[5] = "staff" && lockReleases = 3, "real task list consumes MCT group then two app tasks")
+Check(EarnMCTSitOcrMatches(@MCT_PROMPT_LINES@), "recorded HDR MCT prompt OCR fragments are accepted")
+Check(!EarnMCTSitOcrMatches([{x:70,y:40,w:55,h:18,text:"Press"},{x:191,y:39,w:114,h:20,text:"to access terminal."}]),
+    "different interaction prompt is rejected")
+Check(!EarnMCTSitOcrMatches([{x:70,y:40,w:55,h:18,text:"Press"},{x:191,y:62,w:114,h:20,text:"to sit down."}]),
+    "prompt fragments at different vertical positions are rejected")
+Check(!EarnMCTSitOcrMatches([]), "empty OCR is rejected")
 Reset()
 gEarnBusy := true, hdrActive := true
 SetEarner(false)
@@ -524,6 +545,7 @@ EarnLog(message) {
 ShowTooltip(*) {
 }
 '@
+$driver = $driver.Replace('@MCT_PROMPT_LINES@', $mctPromptLiteral)
 $driver = $driver.Replace('A_TickCount', 'fakeTick')
 $previous = [Console]::InputEncoding
 [Console]::InputEncoding = New-Object Text.UTF8Encoding($false)
@@ -543,7 +565,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 76 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 80 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout

@@ -114,6 +114,7 @@ EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
             || (TemplateSeen("Earn", "mct_sit_hdr_alt", area, &fx, &fy, variation) && TemplateAt("Earn", "mct_sit_hdr_alt_bg", fx, fy))
             || (TemplateSeen("Earn", "mct_sit_hdr_bright", area, &fx, &fy, variation) && TemplateAt("Earn", "mct_sit_hdr_bright_bg", fx, fy))
             || (TemplateSeen("Earn", "mct_sit_hdr_box", area, &fx, &fy, variation) && TemplateAt("Earn", "mct_sit_hdr_box_bg", fx, fy, 40))
+            || EarnMCTSitOcrSeen()
     ; 테러바이트 안내는 CEO 여부에 따라 두 모양이다. CEO 일 때는 'Touchscreen computer / Master Control Terminal'.
     ; 반투명 상자라 뒤 배경에 따라 픽셀이 바뀌고, 남은 커서가 한 줄을 가릴 수 있다(1003 17:15 실측).
     ; 그래서 세 줄 중 하나만 맞아도 인정하고 허용 오차를 60으로 둔다.
@@ -165,6 +166,35 @@ EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
             || TemplateSeen("Earn", "phone_call_end_live", area, &fx, &fy, variation)
     }
     return TemplateSeen("Earn", name, area, &fx, &fy, variation)
+}
+
+; HDR 실화면에서는 창틀이 반투명 안내의 E 키 문자를 가려 OCR이 "Press"와 "to sit down"으로 나눈다.
+; 두 조각의 위치와 문구를 함께 확인하고, 반복 화면 확인에서는 OCR 프로세스를 짧게 제한한다.
+EarnMCTSitOcrSeen() {
+    static lastRead := 0, lastResult := false
+    age := A_TickCount - lastRead
+    if (lastRead && age < (lastResult ? 150 : 2200))
+        return lastResult
+    lastRead := A_TickCount
+    lines := EarnReadScreen([0, 0, 576, 108], true)
+    lastResult := EarnMCTSitOcrMatches(lines)
+    return lastResult
+}
+
+EarnMCTSitOcrMatches(lines) {
+    if (!IsObject(lines))
+        return false
+    press := false, sit := false, pressY := 0, sitY := 0
+    for row in lines {
+        if (!IsObject(row) || !row.HasOwnProp("text") || !row.HasOwnProp("x") || !row.HasOwnProp("y"))
+            continue
+        if (row.x < 180 && row.y < 70 && RegExMatch(row.text, "i)^\h*Press\h*$"))
+            press := true, pressY := row.y
+        else if (row.x >= 80 && row.x < 320 && row.y < 70
+            && RegExMatch(row.text, "i)^\h*to\h+sit\h+down[.!]?\h*$"))
+            sit := true, sitY := row.y
+    }
+    return press && sit && Abs(pressY - sitY) <= 16
 }
 ; timeoutMs 안에 name 이 보이면 true. 전체 멈춤·포커스 이탈이면 바로 false.
 EarnWaitSeen(name, area, timeoutMs) {
