@@ -574,6 +574,10 @@ EarnTaskMCTEnd() {
             if (!EarnSleep(Min(200, deadline - A_TickCount)))
                 return false
         }
+        if (EarnAborted())
+            return false
+        if (A_TickCount >= deadline)
+            return EarnFail("MCT 정리: 알려진 화면 확인 시간 초과")
         if (EarnUIReady("bunker_confirm")) {
             if (!EarnUIClick("bunker_confirm", 850, 619)
                 || !EarnWaitGone("bunker_confirm", "", 3000)
