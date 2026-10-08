@@ -29,7 +29,8 @@ $items = @(
  @('mansion-dj-after','nc_home',328,582,80,31),
  @('mct-seated-current','mct_seated_mansion',0,0,240,24),
  @('mct-sit-hdr-current','mct_sit_hdr',0,0,240,48),
- @('mct-seated-hdr-current','mct_seated_hdr',0,0,240,24)
+ @('mct-seated-hdr-current','mct_seated_hdr',0,0,240,24),
+ @('mct-title-hdr-current','mct_title_hdr',0,0,536,39)
 )
 foreach ($requested in $Name) {
  if (-not @($items | Where-Object { $_[1] -eq $requested }).Count) { throw "Unknown template: $requested" }
@@ -37,7 +38,7 @@ foreach ($requested in $Name) {
 $saved = 0
 foreach ($item in $items) {
  if ($Name.Count -and $Name -notcontains $item[1]) { continue }
- $sourceDirectory = if ($item[1] -in @('mct_seated_mansion','mct_sit_hdr','mct_seated_hdr')) { $fixtures } else { $CaptureDir }
+ $sourceDirectory = if ($item[1] -in @('mct_seated_mansion','mct_sit_hdr','mct_seated_hdr','mct_title_hdr')) { $fixtures } else { $CaptureDir }
  $source = [Drawing.Bitmap]::FromFile((Join-Path $sourceDirectory ($item[0]+'.png')))
  $comparison = $null
  try {
@@ -53,7 +54,7 @@ foreach ($item in $items) {
   $crop = $source.Clone($rect, $source.PixelFormat)
   try {
   $threshold = if ($item[1] -eq 'mct_seated_mansion') { 200 } else { 170 }
-  if ($item[1] -in @('mct_sit_hdr','mct_seated_hdr')) {
+  if ($item[1] -in @('mct_sit_hdr','mct_seated_hdr','mct_title_hdr')) {
    $background = $crop.Clone((New-Object Drawing.Rectangle 0,0,$crop.Width,$crop.Height),$crop.PixelFormat)
    try {
     for ($y=0; $y -lt $crop.Height; $y++) {
@@ -61,7 +62,12 @@ foreach ($item in $items) {
       $c = $crop.GetPixel($x,$y)
       $max = [Math]::Max($c.R,[Math]::Max($c.G,$c.B))
       $min = [Math]::Min($c.R,[Math]::Min($c.G,$c.B))
-      if ($min -ge 175 -and ($max-$min) -le 90) {
+      $glyph = if ($item[1] -eq 'mct_title_hdr') {
+       $max -ge 180 -and ($min -ge 130 -or ($max-$min) -ge 100)
+      } else {
+       $min -ge 175 -and ($max-$min) -le 90
+      }
+      if ($glyph) {
        $background.SetPixel($x,$y,[Drawing.Color]::Magenta)
       } else {
        $crop.SetPixel($x,$y,[Drawing.Color]::Magenta)
