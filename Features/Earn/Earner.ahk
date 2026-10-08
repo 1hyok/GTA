@@ -134,9 +134,9 @@ EarnTick() {
         return
     ; 시작 시점에 실행할 차례이거나 EarnMCTBatchAheadSec(기본 120초) 안에 차례가 될 MCT 작업을 묶는다. 진행 중 새로 due가 된 작업은 다음 회차다.
     ; 1005 14:10·14:20 에 DJ 가 묶음을 정한 순간보다 몇 초 늦게 due 가 되어, 창고만 하고 나온 뒤 1분 안에 나이트클럽에 다시 들어갔다.
-    mctSession := EarnIsMCTTask(task.id)
-    dueTasks := [task]
-    if (mctSession) {
+    mctSession := recovering ? gEarnRecovery.mct : EarnIsMCTTask(task.id)
+    dueTasks := recovering ? gEarnRecovery.tasks : [task]
+    if (mctSession && !recovering) {
         dueTasks := []
         ahead := config["Settings"].Get("EarnMCTBatchAheadSec", 120) * 1000
         for t in gEarnTasks {
@@ -205,7 +205,7 @@ EarnTick() {
     if (gEarnUserAbort) {
         gAbort := false
         if (!outcome.cleanupOK || recovering)
-            gEarnRecovery := {task: task, mct: mctSession, outcome: outcome, attempts: 0, nextTick: A_TickCount + 3 * 60000}
+            gEarnRecovery := {task: task, tasks: dueTasks, mct: mctSession, outcome: outcome, attempts: 0, nextTick: A_TickCount + 3 * 60000}
         finished := Map()
         for result in outcome.results {
             if (result.ok && outcome.cleanupOK && !recovering) {
@@ -238,7 +238,7 @@ EarnTick() {
     if (!outcome.cleanupOK) {
         attempts := recovering ? gEarnRecovery.attempts + 1 : 1
         delay := Min(300000, 30000 * 2 ** Min(4, attempts - 1))
-        gEarnRecovery := {task: task, mct: mctSession, outcome: outcome, attempts: attempts, nextTick: A_TickCount + delay}
+        gEarnRecovery := {task: task, tasks: dueTasks, mct: mctSession, outcome: outcome, attempts: attempts, nextTick: A_TickCount + delay}
         EarnLog("복구 대기: " task.id " 정리 미확인 (" gEarnFail ") → " Round(delay / 1000) "초 뒤 확인된 정리 경로 재시도; 수익 작업 대기")
         return
     }

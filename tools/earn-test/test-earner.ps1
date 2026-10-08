@@ -157,10 +157,17 @@ EarnTick()
 Check(gEarnOn && IsObject(gEarnRecovery) && gEarnDone["bunker"] = 0 && !lockHeld, "cleanup failure schedules guarded recovery and releases lock")
 EarnTick()
 Check(calls.Length = 2 && endCount = 1, "recovery backoff sends no business input")
+gEarnTasks.Push({id:"warehouse",label:"warehouse",on:true,every:300000,fn:RunTask.Bind("warehouse")})
+gEarnDue["warehouse"] := 0, gEarnDone["warehouse"] := 0
+endInput := true, fakeTick := gEarnRecovery.nextTick
+EarnTick()
+Check(gEarnRecovery.tasks.Length = 2 && gEarnDue["warehouse"] = 0,
+    "user intervention during recovery preserves original batch without postponing new due task")
+endInput := false
 endOK := true
 fakeTick := gEarnRecovery.nextTick
 EarnTick()
-Check(!IsObject(gEarnRecovery) && endCount = 2 && calls.Length = 2 && gEarnDone["bunker"] = 1, "known cleanup recovery finalizes once without repeating transactions")
+Check(!IsObject(gEarnRecovery) && endCount = 3 && calls.Length = 2 && gEarnDone["bunker"] = 1, "known cleanup recovery finalizes once without repeating transactions")
 Reset()
 gEarnTasks := [{id:"staff",label:"staff",on:true,every:300000,fn:RunTask.Bind("staff")}]
 gEarnDue := Map("staff",0), gEarnDone := Map("staff",0)
@@ -514,7 +521,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 71 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 72 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout
