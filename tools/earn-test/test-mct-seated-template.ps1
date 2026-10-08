@@ -110,6 +110,29 @@ try {
             } finally { $source.Dispose() }
         }
     } finally { $sitTemplate.Dispose(); $sitFixture.Dispose() }
+    $seatedHdr = [Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_seated_hdr.png'))
+    $seatedHdrBg = [Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_seated_hdr_bg.png'))
+    $seatedFixture = [Drawing.Bitmap]::FromFile((Join-Path $PSScriptRoot 'mct-template-fixtures\mct-seated-hdr-current.png'))
+    try {
+        if ($seatedHdr.Width -ne 240 -or $seatedHdr.Height -ne 24) { throw 'Unexpected HDR seated MCT prompt dimensions' }
+        foreach ($pair in @(@($seatedHdr,'text'),@($seatedHdrBg,'background'))) {
+            $x=0; $y=0
+            $variation = [EarnNightclubTemplateTest]::MinimumVariation($seatedFixture,$pair[0],(New-Object Drawing.Rectangle 0,0,240,24),[ref]$x,[ref]$y)
+            if ($variation -gt 40 -or $x -ne 0 -or $y -ne 0) { throw "HDR seated MCT $($pair[1]) missed observed prompt: $variation at $x,$y" }
+            $cases++
+            Write-Output "PASS HDR seated MCT $($pair[1]) variation=$variation"
+        }
+        foreach ($name in @('mct-final-restored.png','mansion-dj-after.png','mansion-bunker-result.png')) {
+            $source = [Drawing.Bitmap]::FromFile((Join-Path $evidence $name))
+            try {
+                $x=0; $y=0
+                $variation = [EarnNightclubTemplateTest]::MinimumVariation($source,$seatedHdr,(New-Object Drawing.Rectangle 0,0,576,108),[ref]$x,[ref]$y)
+                if ($variation -le 40) { throw "HDR seated MCT matched unrelated screen $name at $x,$y" }
+                $cases++
+                Write-Output "PASS HDR seated MCT rejects $name variation=$variation"
+            } finally { $source.Dispose() }
+        }
+    } finally { $seatedHdr.Dispose(); $seatedHdrBg.Dispose(); $seatedFixture.Dispose() }
     if ($AdditionalSeatedSamplePath) {
         $source = [Drawing.Bitmap]::FromFile([IO.Path]::GetFullPath($AdditionalSeatedSamplePath))
         try { Assert-SeatedMatch $source $true ([IO.Path]::GetFileName($AdditionalSeatedSamplePath)) }
@@ -120,11 +143,11 @@ finally { $template.Dispose() }
 
 $generatedDirectory = Join-Path ([IO.Path]::GetTempPath()) ('gta-mct-template-build-' + [Guid]::NewGuid().ToString('N'))
 $null = [IO.Directory]::CreateDirectory($generatedDirectory)
-$names = @('nc_dj_menu', 'nc_home', 'mct_seated_mansion', 'mct_sit_hdr')
+$names = @('nc_dj_menu', 'nc_home', 'mct_seated_mansion', 'mct_sit_hdr', 'mct_seated_hdr')
 try {
     & (Join-Path $PSScriptRoot 'build-mct-templates.ps1') -OutputDir $generatedDirectory -Name $names
     foreach ($name in $names) {
-        $outputs = if ($name -eq 'mct_sit_hdr') { @('mct_sit_hdr','mct_sit_hdr_bg') } else { @($name) }
+        $outputs = if ($name -in @('mct_sit_hdr','mct_seated_hdr')) { @($name,($name+'_bg')) } else { @($name) }
         foreach ($outputName in $outputs) {
             $diff = Compare-PngPixels (Join-Path $assetDirectory ($outputName + '.png')) (Join-Path $generatedDirectory ($outputName + '.png'))
             if ($diff) { throw "Builder changes the checked-in stable mask: $outputName ($diff)" }
@@ -135,7 +158,7 @@ try {
 }
 finally {
     foreach ($name in $names) {
-        $outputs = if ($name -eq 'mct_sit_hdr') { @('mct_sit_hdr','mct_sit_hdr_bg') } else { @($name) }
+        $outputs = if ($name -in @('mct_sit_hdr','mct_seated_hdr')) { @($name,($name+'_bg')) } else { @($name) }
         foreach ($outputName in $outputs) {
             $generated = Join-Path $generatedDirectory ($outputName + '.png')
             if ([IO.File]::Exists($generated)) { [IO.File]::Delete($generated) }
