@@ -210,6 +210,8 @@ DJ 기본 목표는 95%다. 직원 업그레이드·일반 수입 배수에서 �
 
 금고 수거·직원 파견·벙커 결제·DJ 재고용은 요청 전에 `%TEMP%\gta-earn-state.txt`에 `pending_safe`, `pending_staff`, `pending_bunker`, `pending_dj`를 저장하고 결과 확인 뒤 비운다. 저장을 확인하지 못하면 요청하지 않는다. 요청 결과가 미확인이거나 요청 후 사용자가 개입하면 해당 작업만 `보류`하고 나머지는 계속한다. Main 재시작이나 F9 재활성화도 이 기록을 지우지 않는다. 해당 거래의 게임 결과를 확인한 뒤 해당 `pending_작업id` 값을 비우고 F9를 다시 켜야 보류가 풀린다. 실패 기록은 성공 증거가 아니며 AFK 보호의 실제 입력·게임 idle 상태도 따로 확인한다.
 
+보석 집행 요원 파견 후 요원 행이나 앱 제목 OCR이 잠깐 빠지면 Enter를 다시 보내지 않고 최대 6회 읽기만 재시도한다. 실제 다른 요원 선택을 관측하면 즉시 해당 결과 확인을 중단한다. 전체 60초 기한과 사용자 입력·포커스 중단 조건을 유지한다. `tools/earn-test/test-earnstaff.ps1 -FixtureDirectory <경로>`는 `staff-frame-07.png` 준비 화면과 `staff-frame-14.png` 작업 중 화면이 있는 실측 폴더도 production OCR·선택행·상태 함수로 검사한다.
+
 이전 금고 방문·아케이드 복귀 경로의 실측과 실패 기록은 [9월 인계 기록](docs/earner-handoff.md)에 보존한다. 이 이동 경로는 현재 F9 금고 작업의 완료 조건에서 제외했다. 남아 있는 길찾기·블립 검사는 `tools/earn-test/test-earnnav.ps1`, `tools/earn-test/test-earnblip.ps1`이다.
 
 시험은 `tools/earn-test/earntest.ahk`로 Main 없이 실행한다. 하네스 자체는 Main과 AFK를 켜지 않는다. 하네스는 8초 물리 입력 유휴를 최대 2분 기다리고, 시험 도중 사용자 입력·포커스 이탈·End가 감지되면 중단한다. 실행 제한은 25분이고 오류는 창 대신 로그와 표준 출력에 남긴다. `Status`·`Idle`·`PhoneStatus`는 전면화나 입력 없이 상태를 읽는다. `PhoneStatus`는 전화 테두리와 통화 종료 아이콘의 감지 결과를 구분한다. 시험 하네스의 세션 전환에는 추가 화면 검사(`SessionGuard.ahk`)가 적용되므로 필요한 메뉴 템플릿이 없으면 해당 키 전에 멈춘다.

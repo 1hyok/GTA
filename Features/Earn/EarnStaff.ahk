@@ -281,9 +281,16 @@ EarnStaffWaitBusy(kind, target, deadline) {
         if (A_TickCount >= deadline || EarnAborted())
             return false
         if (kind = "bail") {
-            state := EarnStaffReadBail(target, &identityValid, deadline)
-            if (!identityValid)
-                return false
+            state := EarnStaffReadBail(target, &identityValid, deadline, &identityRejected)
+            if (!identityValid) {
+                ; 요원 행·제목의 일시적인 OCR 누락은 선택 변경의 증거가 아니다. 다시 읽기만 한다.
+                ; 다른 요원 선택을 실제로 관측했거나 6번 연속 신원을 잃었으면 보류한다.
+                if (identityRejected || ++glitches >= 6
+                    || !EarnSleep(Max(0, Min(500, deadline-A_TickCount))))
+                    return false
+                continue
+            }
+            glitches := 0
         } else {
             current := EarnStaffReadCargo(target, deadline)
             ; 판독이 한 번 흔들려 아무것도 못 읽은 것은 선택이 바뀐 증거가 아니다. 다시 읽기만 한다(Enter 는 다시 안 누른다).
@@ -506,11 +513,16 @@ EarnStaffCargoDetail(lines, heading) {
     return found
 }
 
-EarnStaffReadBail(agent, &identityValid := false, deadline := 0) {
+EarnStaffReadBail(agent, &identityValid := false, deadline := 0, &identityRejected := false) {
     identityValid := false
+    identityRejected := false
     lines := EarnStaffBailRows(agent, deadline)
     if (!EarnStaffBailIdentity(lines, agent)) {
+        identityRejected := EarnStaffBailOtherSelected(lines, agent)
         full := EarnReadScreen([25,125,450,180], false, deadline)
+        identityRejected := identityRejected || EarnStaffBailOtherSelected(full, agent)
+        if (identityRejected)
+            return "invalid"
         if (EarnStaffBailBusyFrame(full, agent)) {
             identityValid := true
             return "busy"
@@ -530,6 +542,13 @@ EarnStaffReadBail(agent, &identityValid := false, deadline := 0) {
     for row in detail
         lines.Push(row)
     return EarnStaffBailState(lines, agent)
+}
+
+EarnStaffBailOtherSelected(lines, agent) {
+    if (agent != 1 && agent != 2)
+        return true
+    heading := EarnStaffUniqueRow(lines, "i)^THE VINEWOOD CLUB APP$")
+    return heading && EarnMenuRowSelected({y:heading.y+37*(3-agent)})
 }
 
 ; 작업 중으로 바뀐 선택 행은 밝은 막대 위 회색 글자라 일반 판독이 앞에 글자를 붙인다(1004 02:01 "I Agent 2", 05:24 "j Agent 2").
