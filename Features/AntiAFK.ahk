@@ -1,6 +1,6 @@
 ; === AFK 방지 (GTA Online idle 킥 방지) ===
 ; 사용자가 AFKUserIdleSec 초 동안 키보드·마우스를 안 만졌을 때만, AFKIntervalSec 초(±AFKJitterSec) 간격으로
-; 일반 모드는 W/S 왕복, MCT 모드는 확인된 메뉴를 열고 닫아 시작 화면으로 돌아온다.
+; 모든 모드에서 마우스를 좌우로 2만큼 움직인다. 클릭·키 입력은 보내지 않는다.
 ; GTA가 앞일 때만 입력한다. 다른 창이 앞이면 물리 입력과, 이 매크로 밖에서 주입된 입력(크롬 원격 데스크톱·computer-use·코덱스 등)이
 ; 둘 다 AFKRefocusIdleSec 초(기본 300, 0 이면 끔) 넘게 없을 때만 GTA 를 앞으로 가져오고(최소화면 복원), AFKRefocusSettleMs 기다린 뒤
 ; 같은 입력 판정을 다시 거친다. 그보다 짧으면 누가 자리에 있거나 다른 창을 쓰는 중이라고 보고 포커스를 뺏지 않는다.
@@ -8,16 +8,14 @@
 ; 사용자 물리 입력이 생기면 남은 동작을 취소한다.
 ; 인형 뽑기 반복이나 이동·자동 클릭 토글이 켜져 있으면 그 자체가 입력이므로 건너뛴다 (W 를 떼면 달리기 유지가 풀린다).
 global afkOn := false
-global afkFlip := false
 global afkNextDue := 0
 global gAFKBusy := false
 global afkRefocusFails := 0      ; 같은 유휴 구간에서 입력까지 못 가고 연달아 실패한 전면화 횟수
 global afkRefocusStretch := 0    ; 그 유휴 구간이 시작된 시각(A_TickCount - A_TimeIdlePhysical)
 global afkRefocusLastErr := ""   ; 마지막으로 로그에 적은 실패 까닭. 같은 까닭은 다시 적지 않는다
 global afkRefocusWindow := ""    ; 같은 앞 창/유휴 구간의 복귀는 세 번까지만 시도한다
-global afkMCTLastErr := ""       ; 같은 미확인 메뉴 경고는 한 번만 표시한다
 global afkHookTick := 0          ; SetAntiAFK 가 키보드·마우스 훅을 처음 깐 시각(A_TickCount)
-global afkSelfFrom := 0          ; 이 매크로가 입력(W/S·마우스 왕복·전면화 중 Alt)을 넣기 시작한 시각
+global afkSelfFrom := 0          ; 이 매크로가 입력(마우스 왕복·전면화 중 Alt)을 넣기 시작한 시각
 global afkSelfTo := 0            ; 그 입력을 끝낸 시각. 0 이면 아직 넣는 중
 global afkSelfBefore := 0        ; 그 구간 직전까지의 마지막 남의 입력 시각
 
@@ -43,7 +41,7 @@ SetAntiAFK(on) {
 }
 
 AntiAFKTick() {
-    global afkOn, afkFlip, afkNextDue, config, clawLoopRunning, gEarnBusy, gMenuBusy, gAFKBusy, afkRefocusFails, afkRefocusLastErr
+    global afkOn, afkNextDue, config, clawLoopRunning, gEarnBusy, gMenuBusy, gAFKBusy, afkRefocusFails, afkRefocusLastErr
     if (!afkOn || gAFKBusy)
         return
     if (IsSet(clawLoopRunning) && clawLoopRunning)
@@ -103,32 +101,12 @@ AntiAFKTick() {
         }
         if (!AFKInputAllowed())
             return
-        ; MCT에서는 화면 전환의 왕복을 확인한다. 걷기/시점 회전/구매·선택은 하지 않는다.
+        ; 화면 판독에 의존하지 않는 작은 마우스 왕복. 사용자 개입 시 복귀 입력도 취소한다.
         AFKSelfInput(true)
         try {
-            if (config["Settings"].Get("EarnMCTOnly", 0)) {
-                if (!AFKMCTPulse())
-                    return
-                action := "MCT 메뉴 왕복 확인"
-            } else {
-                keys := afkFlip ? ["s", "w"] : ["w", "s"]
-                for k in keys {
-                    if (!AFKInputAllowed())
-                        return
-                    try {
-                        Send("{" k " down}")
-                        if (!AFKWait(config["Settings"]["AFKTapMs"]))
-                            return
-                    } finally {
-                        if (!GetKeyState(k, "P"))
-                            Send("{" k " up}")
-                    }
-                    if (!AFKWait(config["Settings"]["AFKGapMs"]))
-                        return
-                }
-                afkFlip := !afkFlip
-                action := "tap " keys[1] "," keys[2]
-            }
+            if (!AFKMousePulse())
+                return
+            action := "mouse pulse dx=2,-2"
         } finally {
             AFKSelfInput(false)
         }
@@ -436,87 +414,16 @@ AFKWait(ms) {
     return AFKInputAllowed()
 }
 
-AFKMCTPulse() {
-    global afkMCTLastErr, config
-    ; 누르고 있는 키가 있으면(헬기 상승·가속 유지) 조작 중이다.
+AFKMousePulse() {
     if (!AFKInputAllowed() || AFKKeysHeld())
         return false
-    start := "", middle := "", openKey := "", closeKey := ""
-    if (AFKMenuSeen("m_title")) {
-        ; 수익 작업이 멈추며 상호작용 메뉴를 열어 둔 채 남기면 미확인 화면으로 막혀 방치 킥을 당했다(1004 15:43→15:58 실측).
-        ; 사용자가 손을 뗀 뒤에만 여기 오므로 M 으로 닫는다. 그 입력이 곧 무입력 방지다.
-        if (!AFKMenuTap("m") || !AFKWait(900))
-            return AFKMCTBlocked("상호작용 메뉴 닫기 중 입력 중단")
-        if (AFKMenuSeen("m_title"))
-            return AFKMCTBlocked("남은 상호작용 메뉴가 M 에 닫히지 않음")
-        afkMCTLastErr := ""
-        AFKLog("MCT state confirmed: 남은 상호작용 메뉴를 M 으로 닫음")
-        return true
-    }
-    if (AFKMenuSeen("mct_terrorbyte")) {
-        ; 테러바이트 터치스크린 앞은 안내 상자 때문에 빈 HUD로 보이지 않는다. 서 있으니 M 메뉴가 열린다(1003 실측).
-        ; CEO 안내는 저택 앉은 안내와 비슷하게 잡히므로 그보다 먼저 본다.
-        start := "mct_terrorbyte", middle := "m_title", openKey := "m", closeKey := "m"
-    } else if (AFKMenuSeen("mct_title")) {
-        start := "mct_title", middle := "mct_seated", openKey := "Backspace", closeKey := "Enter"
-    } else if (AFKMenuSeen("mct_seated")) {
-        start := "mct_seated", middle := "mct_title", openKey := "Enter", closeKey := "Backspace"
-    } else if (AFKMenuSeen("mct_sit")) {
-        ; Arcade와 Mansion의 같은 MCT 착석 안내에서 먼저 앉는다. 앉은 화면은 mct_seated / mct_seated_mansion
-        ; 둘 다 AFKMenuSeen("mct_seated")가 인식하며, 이후 Enter/Backspace 왕복으로 실제 UI 전환을 확인한다.
-        if (!AFKMenuTap("e") || !AFKWaitMenu("mct_seated", 8000))
-            return AFKMCTBlocked("MCT 착석 미확인: mct_sit → mct_seated")
-        start := "mct_seated", middle := "mct_title", openKey := "Enter", closeKey := "Backspace"
-    } else if (AFKFreeHud()) {
-        ; MCT 앞이 아닌 빈 HUD 에서는 사람이 조작 중일 때 끼어들지 않는다. 1004 23:26 헬기 호송 중 M 메뉴 → 추락. 키보드 훅이
-        ; 입력을 놓쳐(같은 날 23:01 플레이 중 idle=2668s) 물리 유휴만으로는 조작 중을 못 가린다. 그래서 주입까지 세는 전체 입력
-        ; 유휴(AFKOthersIdleMs)도 AFKFreeHudIdleSec 을 넘을 때만, 메뉴를 열지 않는 Z(미니맵 확대) 두 번만 누른다.
-        ; 아무것도 안 누르던 때는 자리를 비우면 방치 킥을 당했다(1005 17:50~18:06·18:15 이후, 「입력 없을 때 누르는 건 뭔 상관」).
-        hudSec := config["Settings"].Get("AFKFreeHudIdleSec", 300)
-        if (hudSec <= 0 || AFKOthersIdleMs() < hudSec * 1000)
-            return false
-        if (!AFKMenuTap("z") || !AFKWait(1500) || !AFKMenuTap("z") || !AFKWait(900))
-            return AFKMCTBlocked("빈 화면 Z 입력 중단")
-        if (!AFKFreeHud())
-            return AFKMCTBlocked("빈 화면 Z 뒤 HUD 미확인")
-        afkMCTLastErr := ""
-        AFKLog("빈 화면: Z 두 번")
-        return true
-    } else if (AFKPhoneOrAppOpen()) {
-        ; 수익 작업이 실패해 전화·Vinewood 앱이 남으면 메뉴 왕복을 못 해 무입력이 쌓였다(1003 17:28·17:39 실측).
-        ; Backspace 는 전화에서 뒤로이고 종료창을 띄우지 않는다. 닫힐 때까지 최대 6번 누르며, 그 입력이 곧 무입력 방지다.
-        Loop 6 {
-            if (!AFKPhoneOrAppOpen())
-                break
-            if (!AFKMenuTap("Backspace") || !AFKWait(900))
-                return AFKMCTBlocked("전화/앱 닫기 중 입력 중단")
-        }
-        if (AFKPhoneOrAppOpen())
-            return AFKMCTBlocked("전화/앱이 Backspace 6번에도 닫히지 않음")
-        afkMCTLastErr := ""
-        AFKLog("MCT state confirmed: 남은 전화/앱을 Backspace 로 닫음")
-        return true
-    } else {
-        return AFKMCTBlocked("전화/앱/미확인 화면. MCT 또는 메뉴 없는 HUD에서만 입력")
-    }
-    if (start = "mct_terrorbyte") {
-        ; 테러바이트 터치스크린 앞은 착석 프롬프트가 없으므로 Z 두 번만 눌러 원래 상태로 돌린다.
-        if (!AFKMenuSeen(start) || !AFKMenuTap("z") || !AFKWait(1500) || !AFKMenuTap("z") || !AFKWait(900))
-            return AFKMCTBlocked("Z 입력 중단: " start)
-        if (!AFKMenuSeen(start))
-            return AFKMCTBlocked("Z 뒤 시작 화면 미확인: " start)
-        afkMCTLastErr := ""
-        AFKLog("MCT state confirmed: " start " → Z 두 번 → " start)
-        return true
-    }
-    if (!AFKMenuSeen(start) || !AFKMenuTap(openKey) || !AFKWaitMenu(middle, 8000))
-        return AFKMCTBlocked("메뉴 진입 미확인: " start " → " middle)
-    if (!AFKMenuSeen(middle) || !AFKMenuTap(closeKey) || !AFKWaitMenu(start, 8000))
-        return AFKMCTBlocked("시작 화면 복귀 미확인: " middle " → " start)
-    afkMCTLastErr := ""
-    AFKLog("MCT state confirmed: " start " → " middle " → " start)
+    DllCall("mouse_event", "uint", 1, "int", 2, "int", 0, "uint", 0, "uptr", 0)
+    if (!AFKWait(100) || AFKKeysHeld())
+        return false
+    DllCall("mouse_event", "uint", 1, "int", -2, "int", 0, "uint", 0, "uptr", 0)
     return true
 }
+
 
 AFKMenuSeen(name) {
     if (name = "game_hud")
@@ -581,40 +488,8 @@ AFKHudVisible() {
     return HealthHudVisible()
 }
 
-AFKMenuTap(key) {
-    if (!AFKInputAllowed())
-        return false
-    try {
-        Send("{" key " down}")
-        return AFKWait(100)
-    } finally {
-        if (!GetKeyState(key, "P"))
-            Send("{" key " up}")
-    }
-}
 
-AFKWaitMenu(name, timeoutMs) {
-    deadline := A_TickCount + timeoutMs
-    Loop {
-        if (!AFKInputAllowed())
-            return false
-        if (AFKMenuSeen(name))
-            return true
-        if (A_TickCount >= deadline || !AFKWait(100))
-            return false
-    }
-}
 
-AFKMCTBlocked(reason) {
-    global afkNextDue, afkMCTLastErr
-    afkNextDue := A_TickCount + 30000
-    if (reason != afkMCTLastErr) {
-        AFKLog("MCT AFK blocked: " reason " (게임 입력 수신/시작 화면 복귀 미확인)")
-        ShowTooltip("⚠ AFK 대기: " reason, 7000)
-        afkMCTLastErr := reason
-    }
-    return false
-}
 
 ; 다른 창이 앞에 있어도 GTA 를 앞으로 가져온다. 일반 WinActivate 는 Windows 가 거부하는 경우가 있어
 ; 앞 창의 입력 스레드에 잠깐 붙어서 가져온다. 앞 창에는 키를 보내지 않는다: Windows 검색 창은 포커스를 잃으면 스스로 닫히고,
