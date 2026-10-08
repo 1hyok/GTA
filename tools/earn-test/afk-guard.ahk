@@ -70,10 +70,6 @@ GuardTick() {
             if (!WinWaitActive(GTA_WIN,,2) || A_TimeIdlePhysical < 45000)
                 return
         }
-        if (!AFKMenuSeen("mct_title") && !AFKMenuSeen("mct_seated")
-            && !AFKMenuSeen("mct_sit") && !AFKMenuSeen("mct_terrorbyte") && !AFKFreeHud())
-            return
-        config["Settings"]["EarnMCTOnly"] := 1
         AntiAFKTick()
     } finally {
         DllCall("ReleaseMutex", "ptr",gGuardMutex)
