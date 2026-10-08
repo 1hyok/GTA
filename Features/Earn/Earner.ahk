@@ -261,7 +261,7 @@ EarnIsMCTTask(id) {
 ; 각 본문은 자기 예약을 유지한다. 완료 횟수·최종 로그는 공동 MCT 정리가 끝난 뒤 확정한다.
 EarnRunScheduledTask(task, mctSession := false) {
     global gEarnCurrent, gEarnFail, gEarnRetryIn
-    result := {task: task, startTick: A_TickCount, ok: false, retryIn: 0, reason: "", cleanupOK: true, fatal: false}
+    result := {task: task, startTick: A_TickCount, ok: false, retryIn: 0, reason: "", cleanupOK: true}
     gEarnCurrent := task.label
     gEarnRetryIn := 0
     gEarnFail := ""
@@ -270,7 +270,6 @@ EarnRunScheduledTask(task, mctSession := false) {
         if (EarnInputAllowed())
             result.ok := mctSession ? task.fn.Call(false) : task.fn.Call()
     } catch as e {
-        result.fatal := true
         EarnFail(task.label " 오류: " e.Message " (" e.File ":" e.Line ")")
     }
     if (!EarnInputAllowed()) {
@@ -336,10 +335,6 @@ EarnRunMCTBatch(tasks) {
 EarnFinishScheduledTask(result) {
     global gEarnDue, gEarnDone, gEarnSoftFails, gEarnNextDue, gEarnHeld, gEarnFailures, config
     task := result.task
-    if (result.HasOwnProp("fatal") && result.fatal) {
-        EarnStopAfterFailure(result.reason)
-        return false
-    }
     if (result.ok) {
         gEarnSoftFails[task.id] := 0
         if (gEarnFailures.Has(task.id))

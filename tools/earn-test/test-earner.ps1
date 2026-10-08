@@ -173,8 +173,12 @@ Check(gEarnOn && !IsObject(gEarnRecovery) && appCloseCount = 2 && calls.Length =
 Reset()
 mode := "throw"
 EarnTick()
-Check(!gEarnOn && releaseCount = 1 && !gEarnBusy && InStr(gEarnFail, "test exception"), "exception releases")
+Check(gEarnOn && stopped = 0 && releaseCount = 1 && !gEarnBusy && InStr(gEarnFail, "test exception")
+    && gEarnFailures.Has("bunker"), "task exception records and retries after cleanup")
 Check(lockReleases = 1 && !lockHeld, "exception releases input lock")
+mode := "ok"
+EarnTick()
+Check(calls.Length = 2 && calls[2] = "dj", "other task continues after task exception")
 Reset()
 mode := "reenter"
 EarnTick()
@@ -510,7 +514,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 70 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 71 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout
@@ -620,3 +624,30 @@ ExitApp(0)
 '@
     Invoke-EarnerMutexCheck ($guiDriver.Replace('@MACRO@', $macroName).Replace('@GUI@', $guiName)) 'PASS EarnerMutex GUI: 2 cases; no game input'
 } finally { $existingGui.Dispose() }
+
+# Production persistence uses a unique offline directory, never the live GTA state file.
+$stateSupport = @('EarnStateGet','EarnStateSet','EarnTransactionBegin','EarnTransactionConfirmed') | ForEach-Object {
+    $body = [regex]::Match($core, ('(?ms)^' + $_ + '\([^\r\n]*\) \{.*?^\}')).Value
+    if (-not $body) { throw "Production state function missing: $_" }
+    $body.Replace('A_Temp', 'stateDirectory')
+}
+$stateDriver = @'
+stateDirectory := A_Temp "\GtaEarnerStateOffline-@ID@"
+EarnFail(*) => false
+if (EarnTransactionBegin("staff", "unconfirmed"))
+    throw Error("Missing state directory must prevent transaction")
+DirCreate(stateDirectory)
+if (!EarnTransactionBegin("staff", "unconfirmed"))
+    throw Error("Persistent pending write must succeed")
+if (EarnStateGet("pending_staff") != "unconfirmed")
+    throw Error("A fresh read must retain the pending transaction")
+EarnStateSet("unrelated", "preserved")
+EarnTransactionConfirmed("staff")
+if (EarnStateGet("pending_staff") != "")
+    throw Error("Confirmed result must clear persistent pending")
+if (EarnStateGet("unrelated") != "preserved")
+    throw Error("Pending update must preserve unrelated state")
+FileAppend("PASS EarnerState persistence: 5 cases; no game input`n", "*")
+ExitApp(0)
+'@
+Invoke-EarnerMutexCheck ($stateDriver.Replace('@ID@', [guid]::NewGuid().ToString('N')) + "`n" + ($stateSupport -join "`n")) 'PASS EarnerState persistence: 5 cases; no game input'
