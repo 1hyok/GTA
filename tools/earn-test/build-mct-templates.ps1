@@ -30,6 +30,7 @@ $items = @(
  @('mct-seated-current','mct_seated_mansion',0,0,240,24),
  @('mct-sit-hdr-live','mct_sit_hdr',0,0,240,48),
  @('mct-sit-hdr-live-20261008','mct_sit_hdr_alt',0,0,240,48),
+ @('mct-sit-hdr-bright-20261008','mct_sit_hdr_bright',0,0,240,48),
  @('mct-seated-hdr-current','mct_seated_hdr',0,0,240,24),
  @('mct-title-hdr-current','mct_title_hdr',0,0,536,39)
 )
@@ -39,7 +40,7 @@ foreach ($requested in $Name) {
 $saved = 0
 foreach ($item in $items) {
  if ($Name.Count -and $Name -notcontains $item[1]) { continue }
- $sourceDirectory = if ($item[1] -in @('mct_seated_mansion','mct_sit_hdr','mct_sit_hdr_alt','mct_seated_hdr','mct_title_hdr')) { $fixtures } else { $CaptureDir }
+ $sourceDirectory = if ($item[1] -in @('mct_seated_mansion','mct_sit_hdr','mct_sit_hdr_alt','mct_sit_hdr_bright','mct_seated_hdr','mct_title_hdr')) { $fixtures } else { $CaptureDir }
  $source = [Drawing.Bitmap]::FromFile((Join-Path $sourceDirectory ($item[0]+'.png')))
  $comparison = $null
  try {
@@ -55,7 +56,7 @@ foreach ($item in $items) {
   $crop = $source.Clone($rect, $source.PixelFormat)
   try {
   $threshold = if ($item[1] -eq 'mct_seated_mansion') { 200 } else { 170 }
-  if ($item[1] -in @('mct_sit_hdr','mct_sit_hdr_alt','mct_seated_hdr','mct_title_hdr')) {
+  if ($item[1] -in @('mct_sit_hdr','mct_sit_hdr_alt','mct_sit_hdr_bright','mct_seated_hdr','mct_title_hdr')) {
    $background = $crop.Clone((New-Object Drawing.Rectangle 0,0,$crop.Width,$crop.Height),$crop.PixelFormat)
    try {
     for ($y=0; $y -lt $crop.Height; $y++) {
@@ -75,6 +76,22 @@ foreach ($item in $items) {
       }
       if ($max -gt 90) { $background.SetPixel($x,$y,[Drawing.Color]::Magenta) }
      }
+    }
+    if ($item[1] -eq 'mct_sit_hdr_bright') {
+     # Keep only the prompt box, away from changing glyph fringes. The world
+     # behind the crop and HDR antialias edges are not dark-box evidence.
+     $bgGraphics = [Drawing.Graphics]::FromImage($background)
+     try {
+      $bgGraphics.FillRectangle([Drawing.Brushes]::Magenta,0,0,28,$crop.Height)
+      $bgGraphics.FillRectangle([Drawing.Brushes]::Magenta,0,0,$crop.Width,17)
+      for ($y=0; $y -lt $crop.Height; $y++) {
+       for ($x=0; $x -lt $crop.Width; $x++) {
+        if ($crop.GetPixel($x,$y).ToArgb() -ne [Drawing.Color]::Magenta.ToArgb()) {
+         $bgGraphics.FillRectangle([Drawing.Brushes]::Magenta,($x-2),($y-2),5,5)
+        }
+       }
+      }
+     } finally { $bgGraphics.Dispose() }
     }
     $crop.Save((Join-Path $target ($item[1]+'.png')),[Drawing.Imaging.ImageFormat]::Png)
     $background.Save((Join-Path $target ($item[1]+'_bg.png')),[Drawing.Imaging.ImageFormat]::Png)
