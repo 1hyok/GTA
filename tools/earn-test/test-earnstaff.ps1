@@ -114,6 +114,7 @@ RunTests() {
         ["wrong_after", ["ready","ready"], false, 1],
         ["cancel_wait", ["ready","ready"], false, 1],
         ["transient_bail_footer", ["ready","busy"], true, 1],
+        ["transient_bail_identity", ["ready","busy"], true, 1],
         ["unknown_bail_footer", ["ready","busy"], false, 1],
         ["lost_bail_identity", ["ready","busy"], false, 1],
         ["cancel_bail_retry", ["ready","busy"], false, 1],
@@ -201,7 +202,12 @@ RunDeadlineTests() {
     Check(postReads = 121 && keys.Length = 0, "unknown footer never retries Enter")
     Reset("lost_bail_identity",["busy","busy"])
     screenState := "bail", selected := "Agent 1", requests[1] := 1
-    Check(!EarnStaffWaitBusy("bail",1,A_TickCount+60000) && reads = 1, "missing title stops immediately")
+    Check(!EarnStaffWaitBusy("bail",1,A_TickCount+60000) && reads >= 6 && reads <= 18 && keys.Length = 0,
+        "missing title has bounded read-only retries")
+    Reset("normal",["busy","busy"])
+    screenState := "bail", selected := "Agent 2", requests[1] := 1
+    Check(!EarnStaffWaitBusy("bail",1,A_TickCount+60000) && reads <= 3 && keys.Length = 0,
+        "observed other agent selection rejects immediately without input")
 }
 
 RunMenuTests() {
@@ -691,6 +697,8 @@ MockReadScreen(area, whiteText) {
     if (mode = "garbled_busy_root" && !whiteText)
         lines[selected = "Agent 1" ? 2 : 3].text := "I " selected
     if (requests[1]) {
+        if (mode = "transient_bail_identity" && ++postReads <= 4)
+            return false
         if (mode = "lost_bail_identity")
             lines[1].text := "UNKNOWN CONFIRMATION"
         if (mode = "late_bail_busy")
@@ -972,6 +980,12 @@ try {
             @('earn-staff-final','menu',1,'unselected','Manage Staff Members',-1),
             @('earn-staff-select','menu',6,'selected','Manage Staff Members',-1)
         )
+        if (Test-Path -LiteralPath (Join-Path $FixtureDirectory 'staff-frame-07.png')) {
+            $fixtureSpecs = @(
+                @('staff-frame-07','bail',1,'ready','',-1),
+                @('staff-frame-14','bail',1,'busy','',-1)
+            )
+        }
         foreach ($spec in $fixtureSpecs) {
             $imagePath = [IO.Path]::GetFullPath((Join-Path $FixtureDirectory ($spec[0] + '.png')))
             if (-not (Test-Path -LiteralPath $imagePath -PathType Leaf)) { throw "Fixture missing: $imagePath" }
