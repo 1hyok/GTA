@@ -82,6 +82,8 @@ EarnVinewoodClaim(name, amount) {
     EarnVinewoodReadSelected(&again, &againAmount)
     if (again != name || againAmount != amount)
         return EarnFail("금고: 수거 직전 " name " $" amount " 선택 미확인")
+    if (!EarnTransactionBegin("safe", name " $" amount " 수거 요청 결과 확인 필요"))
+        return false
     if (!EarnPress("Enter") || !EarnSleep(1000))
         return false
     deadline := A_TickCount + 15000
@@ -90,6 +92,7 @@ EarnVinewoodClaim(name, amount) {
         if (!IsObject(lines))
             return false
         if (after = name && left = 0) {
+            EarnTransactionConfirmed("safe")
             EarnLog("금고: " name " $" amount " 수거 뒤 빈 금고 확인")
             return true
         }

@@ -41,6 +41,12 @@ function Invoke-EarnOfflineCheck {
 #SingleInstance Off
 #NoTrayIcon
 #Warn All, StdOut
+global transactionPending := Map()
+EarnTransactionBegin(id, reason) {
+    transactionPending[id] := reason
+    return true
+}
+EarnTransactionConfirmed(id) => transactionPending.Delete(id)
 OnError(EarnOfflineFailure)
 EarnOfflineFailure(failure, *) {
     FileAppend("FAIL offline runtime: " failure.Message "`n", "**")

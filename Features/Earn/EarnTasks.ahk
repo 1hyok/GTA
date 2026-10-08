@@ -428,6 +428,8 @@ EarnBunkerBuy() {
                 return EarnFail("벙커 가격 불일치 뒤 취소 상태 미확인")
             return price >= 0 || EarnFail("벙커: 확인창 금액 판독 실패")
         }
+        if (!EarnTransactionBegin("bunker", "벙커 보급 구매·배송 결과 확인 필요"))
+            return false
         if (!EarnUIClick("bunker_confirm", 1065, 619)
             || !EarnWaitGone("bunker_confirm", "", 15000)
             || !EarnWaitSeen("bunker_buy", "", 5000))
@@ -437,6 +439,7 @@ EarnBunkerBuy() {
             || !EarnWaitSeen("bunker_pending", "", 5000))
             return EarnFail("벙커: 배송 접수 미확인, 재구매 금지")
         gEarnBunkerOrdered := true
+        EarnTransactionConfirmed("bunker")
     }
     if (!EarnUIClick("bunker_pending", 960, 619)
         || !EarnWaitGone("bunker_pending", "", 3000))
@@ -460,6 +463,8 @@ EarnDJTask(manageSession := true) {
 }
 
 EarnTaskMCTBegin() {
+    global gEarnMCTCleanupOK
+    gEarnMCTCleanupOK := true
     ; 이 자동화는 사용자가 둔 MCT 앞에서만 동작한다. 부동산 재접속·임의 길찾기는 하지 않는다.
     ; 게임 알림 아이콘이 안내 위에 잠깐 겹치면 한 번은 빗나간다(1003 18:25 실측). 5초 다시 보고, 그래도 없으면 끄지 않고 3분 뒤 다시 한다.
     spotDeadline := A_TickCount + 5000
@@ -474,7 +479,7 @@ EarnTaskMCTBegin() {
     } finally {
         ; 등록 또는 화면 판독 예외에도 확인된 화면에서만 닫고 CEO를 해제한다.
         if (!opened)
-            EarnTaskMCTEnd()
+            gEarnMCTCleanupOK := EarnTaskMCTEnd()
     }
 }
 
@@ -644,11 +649,15 @@ EarnDJSwapLoop(previousMCTReading := "") {
     if (!EarnSeen(rebook, area))
         return EarnFail("DJ: 기존 DJ $10,000 재고용 버튼 없음")
     if (!EarnUIClick(rebook, targetX, 584, area)
-        || !EarnWaitSeen(confirmation, "", 3000)
-        || !EarnUIClick(confirmation, 1160, 628)
+        || !EarnWaitSeen(confirmation, "", 3000))
+        return EarnFail("DJ: 재고용 확인창 미확인")
+    if (!EarnTransactionBegin("dj", "DJ $10,000 재고용 결과 확인 필요"))
+        return false
+    if (!EarnUIClick(confirmation, 1160, 628)
         || !EarnWaitGone(confirmation, "", 15000)
         || !EarnWaitSeen(resident, area, 5000))
         return EarnFail("DJ: 교체 결과 미확인")
+    EarnTransactionConfirmed("dj")
     gEarnDJCheckAbove := pop
     EarnDJSchedule(pop, true)
     if (!EarnUIClick("nc_home", 495, 596)

@@ -191,10 +191,13 @@ EarnStaffBailAgents() {
         if (EarnStaffReadBail(agent) != "ready")
             return EarnFail("직원: 보석 집행 요원 " agent " 파견 직전 상태 변경")
         deadline := A_TickCount + 60000
+        if (!EarnTransactionBegin("staff", "보석 집행 요원 " agent " 파견 결과 확인 필요"))
+            return false
         if (!EarnPress("Enter") || !EarnSleep(700))
             return false
         if (!EarnStaffWaitBusy("bail", agent, deadline))
             return EarnFail("직원: 보석 집행 요원 " agent " 파견 결과 미확인, 재요청 중단")
+        EarnTransactionConfirmed("staff")
         EarnLog("직원: 보석 집행 요원 " agent " 파견 확인")
         EarnStaffTrack("bail " agent, "sent")
     }
@@ -253,10 +256,13 @@ EarnStaffCargoWarehouses() {
                 return EarnStaffCargoLeave()
             }
             deadline := A_TickCount + 60000
+            if (!EarnTransactionBegin("staff", current.name " $7,500 조달 결과 확인 필요"))
+                return false
             if (!EarnPress("Enter") || !EarnSleep(700))
                 return false
             if (!EarnStaffWaitBusy("cargo", current, deadline))
                 return EarnFail("직원: " current.name " 조달 결과 미확인, 재구매 중단")
+            EarnTransactionConfirmed("staff")
             EarnLog("직원: " current.name " $7,500 조달 확인")
             EarnStaffTrack("cargo " current.name, "sent")
         }
@@ -322,6 +328,8 @@ EarnStaffHangar() {
         return true
     }
     deadline := A_TickCount + 60000
+    if (!EarnTransactionBegin("staff", "격납고 $25,000 조달 결과 확인 필요"))
+        return false
     if (!EarnPress("Enter") || !EarnSleep(700))
         return false
     ; 주문 처리 중에는 보내기 문구가 잠깐 남을 수 있다. 다시 누르지 않고 최대 60초(121번) 읽기만 한다.
@@ -330,6 +338,7 @@ EarnStaffHangar() {
             break
         state := EarnStaffReadHangar(deadline)
         if (state = "busy" || state = "full") {
+            EarnTransactionConfirmed("staff")
             EarnLog("직원: 격납고 $25,000 조달 확인")
             EarnStaffTrack("hangar", "sent")
             return true

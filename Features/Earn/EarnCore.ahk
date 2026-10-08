@@ -52,6 +52,16 @@ EarnStateSet(key, value) {
 
 EarnUnixNow() => DateDiff(A_NowUTC, "19700101000000", "Seconds")
 
+; 거래 입력 전에 지속 상태를 확인한다. 저장 실패면 요청 자체를 보내지 않는다.
+EarnTransactionBegin(id, reason) {
+    EarnStateSet("pending_" id, reason)
+    return EarnStateGet("pending_" id) = reason || EarnFail("거래 대기 상태 저장 실패: " id)
+}
+
+EarnTransactionConfirmed(id) {
+    EarnStateSet("pending_" id, "")
+}
+
 ; 작업이 화면에서 읽은 상태로 다음 확인까지의 시간을 정한다. 작업이 성공으로 끝날 때만 스케줄러가 이 값을 쓴다.
 EarnScheduleNext(id, ms) {
     global gEarnNextDue
