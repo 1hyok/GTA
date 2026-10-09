@@ -1009,11 +1009,13 @@ global config := Map("Settings",Map("EarnDJPopularityPct",95)), popularity := 90
     gain := 10, confirmations := 0, djScene := "mct", djMode := "", homeReads := 0, backs := 0,
     gEarnDJCheckAbove := -1
 ; Real Home reader/opening and DJ flow. A stale MCT value (92) is never authoritative.
-; One Home visit per run: a rebook goes Home → MCT once, and the next run checks that popularity rose.
+; After a rebook the run goes Home → MCT → Home and rebooks again only when the fresh Home shows a rise.
+; "lag": Home has not caught up yet, so the run stops paying and the next run checks the rise.
 ; [popularity, rebook allowed, gain, result, payments, start scene, mode, previous rebook popularity]
 cases := [[97,true,10,true,0,"mct","",-1],[90,true,10,true,1,"mct","",-1],
     [90,false,10,false,0,"mct","",-1],[95,true,10,true,0,"mct","",-1],
-    [94,true,10,true,1,"mct","",-1],[0,true,10,true,1,"mct","",-1],
+    [90,true,10,true,1,"mct","lag",-1],[20,true,10,true,8,"mct","",-1],
+    [94,true,10,true,1,"mct","",-1],[0,true,10,true,10,"mct","",-1],
     [-1,true,10,false,0,"mct","",-1],[95,true,10,true,0,"home","",-1],
     [90,true,10,false,0,"unknown","",-1],[90,true,10,false,0,"mct","missing_label",-1],
     [90,true,10,false,0,"mct","open_failed",-1],[90,true,10,false,0,"mct","home_failed",-1],
@@ -1026,13 +1028,15 @@ for c in cases {
     popularity := c[1], allowRebook := c[2], gain := c[3], confirmations := 0,
         djScene := c[6], djMode := c[7], homeReads := 0, backs := 0, gEarnDJCheckAbove := c[8]
     result := EarnDJSwapLoop(92)
-    if (result != c[4] || confirmations != c[5] || (result && (djScene != "mct" || backs != 1)))
+    if (result != c[4] || confirmations != c[5] || (result && (djScene != "mct" || backs != confirmations + 1)))
         throw Error("DJ Home flow " A_Index ": result=" result " payments=" confirmations " scene=" djScene " backs=" backs)
     if (c[1] >= 95 && confirmations)
         throw Error("Stale MCT reading spent money while Home already reached target")
-    if (homeReads > 1)
-        throw Error("DJ read Home popularity more than once in one visit")
-    if (gEarnDJCheckAbove != (confirmations ? c[1] : -1))
+    if (homeReads > confirmations + 1)
+        throw Error("DJ read Home popularity more than once per rebook")
+    if (c[1] = 0 && popularity != 100)
+        throw Error("DJ stopped below target while Home kept showing each rise")
+    if (gEarnDJCheckAbove != ((djMode = "lag" || djMode = "post_label_missing") && confirmations ? c[1] : -1))
         throw Error("DJ flow " A_Index ": next-visit check=" gEarnDJCheckAbove)
 }
 FileAppend("PASS DJFlow cases=" cases.Length "`n", "*")
@@ -1085,7 +1089,8 @@ EarnUIClick(name,x,y,*) {
         djScene := name = "dj_rebook_10k" ? "dj_confirm_solomun" : "dj_confirm_tale"
     } else if (name = "dj_confirm_solomun" || name = "dj_confirm_tale") {
         confirmations += 1
-        popularity := Min(100,popularity+gain)
+        if (djMode != "lag")
+            popularity := Min(100,popularity+gain)
         djScene := "dj"
     } else {
         throw Error("Unexpected DJ click " name)
@@ -1111,7 +1116,7 @@ EarnDJSchedule(*) => true
     foreach ($fn in @('EarnDJNeedsRebook','EarnDJHomeOpen','EarnPopularityHomePct')) {
         $djFlowDriver += "`n" + (Get-EarnFunctionBody $sourceText $fn)
     }
-    Invoke-EarnOfflineCheck 'DJFlow' 'EarnDJSwapLoop' $djFlowDriver 19
+    Invoke-EarnOfflineCheck 'DJFlow' 'EarnDJSwapLoop' $djFlowDriver 21
     # Real saved pixels, real bar sampler and real Home reader. No desktop APIs.
     Add-Type -AssemblyName System.Drawing
     Add-Type -ReferencedAssemblies System.Drawing @'
