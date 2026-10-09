@@ -51,6 +51,10 @@ global liveRequiredVariation := 0
 global homeMinimum := 255
 ; This test isolates EarnSeen's template branch; OCR is covered by test-earner.
 EarnMCTSitOcrSeen() => false
+EarnOcrLines(key, area, whiteText) => false
+EarnMCTSeatedOcrMatches(lines) => false
+EarnMCTNeedCeoOcrMatches(lines) => false
+EarnMCTTitleOcrMatches(lines) => false
 OnError((err,*) => (FileAppend("FAIL " err.Message "`n", "**"), ExitApp(1)))
 for sample in FIXTURE_CASES {
     requiredVariation := sample[2]

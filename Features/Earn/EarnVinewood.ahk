@@ -328,8 +328,30 @@ EarnVinewoodPhoneTitle() {
         for title in ["Texts", "Job List", "Internet", "Contacts", "Email", "Mail", "Camera", "Snapmatic", "Settings", "Quick Save", "Radio"]
             if (EarnFindText(lines, "i)^" title "$"))
                 return title
+        ; Vinewood 앱 제목은 흰 글자 모드에서 'Vlnewood Club'·'vqnewood Club' 처럼 앞 글자가 흔들린다(1010 02:00 실측).
+        if (EarnFindText(lines, "i)^\W*\w{1,3}n[eo]wood\h*Club\W*$"))
+            return "Vinewood Club"
     }
     return ""
+}
+
+; 전화 홈에서 Vinewood Club 앱이 선택됐는지. 선택 템플릿이 밝기 때문에 안 맞아도 제목 글자로 확인한다.
+EarnVinewoodWaitSelected(timeoutMs) {
+    deadline := A_TickCount + timeoutMs
+    nextTitleRead := 0
+    Loop {
+        if (EarnAborted())
+            return false
+        if (EarnSeen("ph_vinewood_sel", [0.83,0.66,0.98,0.73]))
+            return true
+        if (A_TickCount >= nextTitleRead) {
+            if (EarnVinewoodPhoneTitle() = "Vinewood Club")
+                return true
+            nextTitleRead := A_TickCount + 300
+        }
+        if (A_TickCount >= deadline || !EarnSleep(200))
+            return false
+    }
 }
 
 EarnVinewoodWaitJobList(timeoutMs) {
@@ -368,7 +390,7 @@ EarnVinewoodOpen(manageMCT := true) {
         return true
     phoneTitle := EarnVinewoodPhoneTitle()
     jobList := EarnSeen("ph_joblist_sel", [0.83,0.66,0.98,0.73]) || phoneTitle = "Job List"
-    vinewood := EarnSeen("ph_vinewood_sel", [0.83,0.66,0.98,0.73])
+    vinewood := EarnSeen("ph_vinewood_sel", [0.83,0.66,0.98,0.73]) || phoneTitle = "Vinewood Club"
     if (!jobList && !vinewood && phoneTitle = "") {
         if (manageMCT && EarnAtMCT() && !EarnMCTClose())
             return false
@@ -401,6 +423,10 @@ EarnVinewoodOpen(manageMCT := true) {
         }
         if (phoneTitle = "Job List") {
             jobList := true
+            break
+        }
+        if (phoneTitle = "Vinewood Club") {
+            vinewood := true
             break
         }
         if (phoneTitle = "Texts") {
@@ -438,7 +464,7 @@ EarnVinewoodOpen(manageMCT := true) {
     }
     ; Right 뒤 선택이 안 보일 때가 있다(1005 06:30 실측, 바로 다음 회차는 정상). 앱에 들어가기 전이므로
     ; 전화를 닫고 3분 뒤 다시 한다.
-    if (!EarnWaitSeen("ph_vinewood_sel", [0.83,0.66,0.98,0.73], 3000)) {
+    if (!EarnVinewoodWaitSelected(3000)) {
         if (!EarnPress("Backspace"))
             return false
         gEarnRetryIn := 3 * 60000
