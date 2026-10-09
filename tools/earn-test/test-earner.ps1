@@ -44,7 +44,7 @@ global gEarnOn, gEarnBusy, gEarnDue, gEarnDone, gEarnTasks, gEarnCurrent, gEarnF
 global calls, releaseCount, stopped, mode, windowExists, focused, otherBusy, activationCount, idleMs, gEarnGuardArmed, timers
 global feedTimer := 0
 global gEarnGamePID, fakePID, fakeTick, gEarnGuardStartedTick, gEarnUserAbort, lockAvailable, lockCalls, lockReleases, lockHeld, hooks, checkCount := 0
-global beginCount, endCount, beginCleanupCount, beginOK, endOK, beginThrows, endThrows, mctOpen, events, logs, taskModes, taskDurations, beginDelay, endDelay, endInput
+global beginCount, endCount, beginCleanupCount, beginOK, endOK, endNoScreen, beginThrows, endThrows, mctOpen, events, logs, taskModes, taskDurations, beginDelay, endDelay, endInput
 global gEarnHeld, gEarnFailures, gEarnRecovery, appCloseOK, appCloseCount
 global state := Map(), stateWritable := true
 Reset()
@@ -183,6 +183,19 @@ endOK := true
 fakeTick := gEarnRecovery.nextTick
 EarnTick()
 Check(!IsObject(gEarnRecovery) && endCount = 3 && calls.Length = 2 && gEarnDone["bunker"] = 1, "known cleanup recovery finalizes once without repeating transactions")
+Reset()
+endOK := false, endNoScreen := true
+EarnTick()
+Check(IsObject(gEarnRecovery) && gEarnRecovery.attempts = 1, "no-screen cleanup failure first waits in recovery")
+fakeTick := gEarnRecovery.nextTick
+EarnTick()
+Check(!IsObject(gEarnRecovery) && gEarnOn && gEarnDone["bunker"] = 1 && endCount = 2, "repeated no-screen cleanup failure releases recovery and finishes the batch")
+Reset()
+endOK := false, endNoScreen := false
+EarnTick()
+fakeTick := gEarnRecovery.nextTick
+EarnTick()
+Check(IsObject(gEarnRecovery) && gEarnRecovery.attempts = 2 && gEarnDone["bunker"] = 0, "other cleanup failures keep guarded recovery")
 Reset()
 gEarnTasks := [{id:"staff",label:"staff",on:true,every:300000,fn:RunTask.Bind("staff")}]
 gEarnDue := Map("staff",0), gEarnDone := Map("staff",0)
@@ -344,7 +357,7 @@ Reset() {
     selfMarks := ""
     fakeTick := 100000, idleMs := 60000, gEarnGuardArmed := false, gEarnGuardStartedTick := 0, gEarnUserAbort := false
     timers := [], fakePID := 101, gEarnGamePID := 101
-    beginCount := 0, endCount := 0, beginCleanupCount := 0, beginOK := true, endOK := true,
+    beginCount := 0, endCount := 0, beginCleanupCount := 0, beginOK := true, endOK := true, endNoScreen := false,
         beginThrows := false, endThrows := false, mctOpen := false, events := [], logs := [],
         taskModes := Map(), taskDurations := Map(), beginDelay := 0, endDelay := 0, endInput := false
     lockAvailable := true, lockCalls := 0, lockReleases := 0, lockHeld := false, hooks := 0
@@ -521,7 +534,7 @@ EarnTaskMCTBegin() {
     return true
 }
 EarnTaskMCTEnd() {
-    global endCount, mctOpen, fakeTick, idleMs
+    global endCount, mctOpen, fakeTick, idleMs, endNoScreen
     if (!lockHeld || !gEarnGuardArmed || !mctOpen)
         throw Error("Group end must retain its single input lock and guard")
     endCount++, events.Push("end")
@@ -532,8 +545,11 @@ EarnTaskMCTEnd() {
     }
     if (endThrows)
         throw Error("end exception")
-    if (!endOK || gAbort)
+    if (!endOK || gAbort) {
+        global gEarnCleanupNoScreen
+        gEarnCleanupNoScreen := endNoScreen
         return EarnFail("end failed")
+    }
     mctOpen := false
     return true
 }
@@ -546,7 +562,7 @@ FocusWaitLogCount() {
 }
 EarnLog(message) {
     logs.Push(message)
-    if (SubStr(message,1,3) = "끝: " && mctOpen)
+    if (SubStr(message,1,3) = "끝: " && mctOpen && !endNoScreen)
         throw Error("Completion log cannot precede MCT cleanup")
 }
 ShowTooltip(*) {
@@ -572,7 +588,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 81 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 84 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout
