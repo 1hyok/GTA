@@ -23,6 +23,10 @@ EarnFail(reason) {
     global gEarnFail
     gEarnFail := reason
     EarnLog("멈춤: " reason)
+    ; MCT 진입·정리 실패는 로그만으로는 화면이 어땠는지 알 수 없다(1009: HDR 자동 OFF 반영 뒤 "화면이 안 열림"·"알려진 화면 확인
+    ; 시간 초과"가 하루 40회 반복됐는데 Steam 녹화가 꺼져 있어 증거가 없었다). 실패 순간의 GTA 클라이언트를 그대로 남긴다.
+    if (InStr(reason, "MCT") = 1)
+        EarnSnapFail(reason)
     return false
 }
 
@@ -1142,6 +1146,42 @@ EarnSnapMinimap(tag) {
         SplitPath(A_LineFile, , &sourceDir)
         captureScript := sourceDir "\..\..\Core\ScreenCapture.ps1"
         RunWait('"' A_WinDir '\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "' captureScript '" -Name "gta-earn-' tag '" -X ' x ' -Y ' y ' -W ' w ' -H ' h ' -Scale 1', , "Hide")
+    }
+}
+
+; 진단용: MCT 실패 순간의 GTA 클라이언트 전체를 %TEMP%\claude\gta-earn-fail-<시각>-<사유>.png 로 남긴다(절반 축소).
+; 포커스를 바꾸지 않고 동기로 찍는다. 3초 안에 겹치는 실패는 한 장만 남기고, 오래된 것부터 지워 30장만 둔다. 실패해도 흐름을 막지 않는다.
+EarnSnapFail(reason) {
+    static lastTick := 0
+    try {
+        if (A_TickCount - lastTick < 3000)
+            return
+        hwnd := IsGTAActive()
+        if (!hwnd)
+            return
+        lastTick := A_TickCount
+        WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
+        tag := Trim(RegExReplace(SubStr(reason, 1, 40), "[^\p{L}\p{N}]+", "-"), "-")
+        name := "gta-earn-fail-" FormatTime(, "yyyyMMdd-HHmmss") "-" tag
+        SplitPath(A_LineFile, , &sourceDir)
+        captureScript := sourceDir "\..\..\Core\ScreenCapture.ps1"
+        RunWait('"' A_WinDir '\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "' captureScript '" -Name "' name '" -X ' cx ' -Y ' cy ' -W ' cw ' -H ' ch ' -Scale 0.5', , "Hide")
+        files := []
+        Loop Files A_Temp "\claude\gta-earn-fail-*.png"
+            files.Push(A_LoopFileFullPath)
+        if (files.Length > 30) {
+            sorted := ""
+            for f in files
+                sorted .= f "`n"
+            sorted := Sort(RTrim(sorted, "`n"))
+            n := files.Length - 30
+            for f in StrSplit(sorted, "`n") {
+                if (n <= 0)
+                    break
+                try FileDelete(f)
+                n -= 1
+            }
+        }
     }
 }
 
