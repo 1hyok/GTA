@@ -547,50 +547,42 @@ EarnTaskMCTEnd() {
         if (EarnAborted())
             return false
         ; 확인창·알림이 사라지는 전환 중에는 어떤 화면도 잡히지 않는다(1003 17:17 실측: 배송 중 알림을 닫은 직후
-        ; 정리가 '복귀 경로 없음'으로 멈췄고, 몇 초 뒤 같은 정리는 성공했다). 아는 화면이 보일 때까지 최대 5초 기다린다.
-        deadline := A_TickCount + 5000
-        Loop 25 {
-            if (EarnAborted())
-                return false
-            if (A_TickCount >= deadline)
-                {
-                    gEarnCleanupNoScreen := true  ; 열린 MCT 화면이 하나도 안 보임: 복구 반복 시 해제 근거
-                    return EarnFail("MCT 정리: 알려진 화면 확인 시간 초과")
-                }
-            known := EarnUIReady("mct_sit", [0,0,0.3,0.1])
-            for name in ["bunker_confirm", "bunker_pending", "dj_confirm_solomun", "dj_confirm_tale", "bunker_page",
-                "bunker_entry", "nc_dj_menu", "mct_title", "mct_seated", "mct_need_ceo", "mct_terrorbyte"] {
+        ; 정리가 '복귀 경로 없음'으로 멈췄고, 몇 초 뒤 같은 정리는 성공했다). 아는 화면이 보일 때까지 기다린다.
+        ; 화면이 템플릿보다 밝으면 원본과 밝기 사본을 모두 찾느라 한 바퀴가 길어진다(1010 02:43 실측: MCT 목록이 열려 있는데
+        ; 5초 안에 MCT 제목까지 못 가 '화면 없음'으로 끝남). 가장 흔한 MCT 제목을 먼저 보고 12초까지 기다린다.
+        ; 목록을 끝까지 한 번 이상 훑고도 못 찾았을 때만 '열린 화면 없음'으로 표시한다.
+        deadline := A_TickCount + 12000
+        names := ["mct_title", "bunker_confirm", "bunker_pending", "dj_confirm_solomun", "dj_confirm_tale", "bunker_page",
+            "bunker_entry", "nc_dj_menu", "mct_seated", "mct_need_ceo", "mct_terrorbyte", "mct_sit"]
+        scanned := false, known := false
+        Loop 60 {
+            checked := 0
+            for name in names {
                 if (EarnAborted())
                     return false
                 if (A_TickCount >= deadline)
-                    {
-                        gEarnCleanupNoScreen := true  ; 열린 MCT 화면이 하나도 안 보임: 복구 반복 시 해제 근거
-                        return EarnFail("MCT 정리: 알려진 화면 확인 시간 초과")
-                    }
+                    break
+                area := name = "mct_title" ? [0.3,0,0.7,0.1] : (name = "mct_seated" || name = "mct_sit") ? [0,0,0.3,0.1] : ""
+                known := EarnUIReady(name, area)
                 if (known)
                     break
-                area := name = "mct_title" ? [0.3,0,0.7,0.1] : name = "mct_seated" ? [0,0,0.3,0.1] : ""
-                known := EarnUIReady(name, area)
+                if (++checked = names.Length)
+                    scanned := true
             }
             if (EarnAborted())
                 return false
-            if (A_TickCount >= deadline)
-                {
-                    gEarnCleanupNoScreen := true  ; 열린 MCT 화면이 하나도 안 보임: 복구 반복 시 해제 근거
-                    return EarnFail("MCT 정리: 알려진 화면 확인 시간 초과")
-                }
-            if (known)
+            if (known || A_TickCount >= deadline)
                 break
             if (!EarnSleep(Min(200, deadline - A_TickCount)))
                 return false
         }
         if (EarnAborted())
             return false
-        if (A_TickCount >= deadline)
-            {
-                gEarnCleanupNoScreen := true  ; 열린 MCT 화면이 하나도 안 보임: 복구 반복 시 해제 근거
-                return EarnFail("MCT 정리: 알려진 화면 확인 시간 초과")
-            }
+        ; 마감 뒤에 끝난 판독은 믿지 않는다. 목록을 한 바퀴 이상 다 보고도 못 찾았을 때만 '열린 화면 없음'으로 표시한다.
+        if (A_TickCount >= deadline) {
+            gEarnCleanupNoScreen := scanned && !known
+            return EarnFail("MCT 정리: 알려진 화면 확인 시간 초과")
+        }
         if (EarnUIReady("bunker_confirm")) {
             if (!EarnUIClick("bunker_confirm", 850, 619)
                 || !EarnWaitGone("bunker_confirm", "", 3000)
