@@ -150,6 +150,10 @@ EarnTick() {
     if (!IsGTAActive()) {
         EarnLog(task.label ": GTA 포커스가 돌아오면 다시 (30초 대기)")
         gEarnDue[task.id] := now + 30000
+        ; 복구 경로는 gEarnDue 가 아니라 gEarnRecovery.nextTick 으로 차례를 정한다. 여기서 같이 미루지 않으면
+        ; 1초 tick 마다 이 분기로 되돌아와 같은 로그가 매초 쌓인다(1009 02:43 부터 하루 1,351줄).
+        if (recovering)
+            gEarnRecovery.nextTick := now + 30000
         return
     }
     try inputLock := EarnInputLockAcquire()
