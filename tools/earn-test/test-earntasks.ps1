@@ -2162,28 +2162,30 @@ for scenario in [[5220,0,-1,-1,true,261,5220,0],
     [5220,0,1,0,false,1,20,0,true,true],
     [5220,0,-1,0,false,0,0,0,true,false],
     [5220,0,-1,0,false,0,0,0,false,true],
-    [5220,0,-1,0,false,0,0,0,true,true,9500],
-    [5220,0,-1,0,false,200,4000,0,true,true,5000],
+    [5220,0,-1,0,true,261,5220,0,true,true,9500],
+    [5220,0,-1,0,true,261,5220,0,true,true,5000],
     [5220,0,-1,0,false,0,0,0,true,true,100,true],
     [5220,0,-1,0,false,17,340,0,true,true,0,false,0,1]] {
+    sIndex := (IsSet(sIndex) ? sIndex : 0) + 1
     turnCase := scenario, moves := 0, movedX := 0, movedY := 0, turnMs := 0, menuChecks := 0, menuAbort := false
     if (EarnTurn(scenario[1],0,scenario.Length >= 9 ? scenario[9] : false) != scenario[5] || moves != scenario[6]
         || movedX != scenario[7] || movedY != scenario[8])
-        throw Error("Camera recovery must preserve abort/HUD guards and bounded movement: moves=" moves " time=" turnMs " expected=" scenario[6])
+        throw Error("Camera recovery must preserve abort/HUD guards and bounded movement: moves=" moves " time=" turnMs " expected=" scenario[6] " scenario=" sIndex)
     if (scenario.Length >= 11 && scenario[11] = 1200 && (menuChecks != 2 || turnMs > 8500))
         throw Error("Slow menu checks must be throttled while HDR recovery remains bounded")
 }
 ; A real arrival must terminate the production loop instead of completing all 261 moves.
 ; The late-arrival case makes a slow menu check cross the deadline with the prompt now visible.
 for arrival in [[1,0,false,0,true], [0,0,false,0,true], [0,50,true,0,false],
-    [0,0,false,9500,true,true], [-1,0,false,9500,false], [0,50,true,9500,false,true],
+    [0,0,false,9500,true,true], [-1,0,false,9500,true], [0,50,true,9500,false,true],
     [0,9500,false,0,true], [-1,9500,false,0,false], [0,9500,true,0,false]] {
+    aIndex := (IsSet(aIndex) ? aIndex : 0) + 1
     goalAfter := arrival[1], goalCost := arrival[2], goalAbort := arrival[3]
     goalMenuOnly := arrival.Length >= 6 && arrival[6]
     turnCase := [5220,0,-1,0,false,0,0,0,true,true,arrival[4]]
     moves := 0, movedX := 0, movedY := 0, turnMs := 0, menuChecks := 0, menuAbort := false
-    if (EarnTurn(5220,0,true) != arrival[5] || moves >= 261 || (goalAfter = 0 && moves != 0))
-        throw Error("MCT prompt arrival must stop movement, including at deadline; moves=" moves)
+    if (EarnTurn(5220,0,true) != arrival[5] || (moves >= 261 && goalAfter >= 0) || (goalAfter = 0 && !goalMenuOnly && moves != 0) || (goalMenuOnly && moves > 1))
+        throw Error("MCT prompt arrival must stop movement, including at deadline; moves=" moves " arrival=" aIndex)
 }
 FileAppend("PASS TurnGuard cases=22`n", "*")
 ExitApp(0)

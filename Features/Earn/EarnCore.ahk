@@ -637,14 +637,19 @@ EarnTurn(units, pitchUnits := 0, hdrMCTRecovery := false) {
         return false
     n := Max(1, Round(Max(Abs(units), Abs(pitchUnits)) / 20))
     step := Round(units / n), pitchStep := Round(pitchUnits / n)
-    recoveryDeadline := A_TickCount + 9000, nextMenuCheck := 0, nextHealthCheck := 0, nextGoalCheck := 0
+    ; 화면 판독 한 번이 밝기 사본·OCR 때문에 수 초 걸린다(1010 03:30 실측: 판독만으로 9초가 지나 거의 돌지 못함).
+    ; 제한 시간은 돌리는 시간에만 9초를 주고, 판독에 쓴 시간은 더한다. 전체는 60초를 넘기지 않는다.
+    turnStart := A_TickCount, readMs := 0, recoveryDeadline := A_TickCount + 9000, nextMenuCheck := 0, nextHealthCheck := 0, nextGoalCheck := 0
     Loop n {
         if (EarnAborted())
             return false
         if (hdrMCTRecovery) {
             ; 목표 안내가 보이면 고정 각도를 채우려고 계속 돌지 않는다. 판독 지연도 간격에 포함한다.
             if (A_TickCount >= nextGoalCheck || A_TickCount >= recoveryDeadline) {
+                readStart := A_TickCount
                 arrived := EarnMCTRecoveryArrived()
+                readMs += A_TickCount - readStart
+                recoveryDeadline := turnStart + Min(60000, 9000 + readMs)
                 if (EarnAborted())
                     return false
                 if (arrived)
@@ -661,7 +666,11 @@ EarnTurn(units, pitchUnits := 0, hdrMCTRecovery := false) {
             }
             ; HDR 판독 실측은 전체 배치 약 1초다. 매 이동 조각마다 반복하지 않는다.
             if (A_TickCount >= nextMenuCheck) {
-                if (!EarnMCTRecoveryHud())
+                readStart := A_TickCount
+                hudOK := EarnMCTRecoveryHud()
+                readMs += A_TickCount - readStart
+                recoveryDeadline := turnStart + Min(60000, 9000 + readMs)
+                if (!hudOK)
                     return EarnFail("MCT 복귀 회전: 메뉴 없는 게임 HUD 미확인")
                 nextMenuCheck := A_TickCount + 3000
             }
