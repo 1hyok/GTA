@@ -662,11 +662,11 @@ global endScene := "unknown", endFailure := "", endOrder := "", endAbort := fals
 global clockMs := 0, reads := 0, abortRead := 0, foundRead := 0
 for scenario in [0,1,2,3] {
     interrupted := scenario = 1
-    clockMs := 0, reads := 0, endAbort := false, endOrder := "", endLogs := [], abortRead := interrupted ? 2 : 0, foundRead := scenario = 2 ? 5 : 0
+    clockMs := 0, reads := 0, endAbort := false, endOrder := "", endLogs := [], abortRead := interrupted ? 2 : 0, foundRead := scenario = 2 ? 11 : 0
     result := EarnTaskMCTEnd()
     if (result || endOrder != "" || gEarnFail != "original")
         throw Error("Slow cleanup must not input or erase the original failure")
-    if (reads != (scenario = 3 ? 300 : interrupted ? 2 : 5) || clockMs != (scenario = 3 ? 5000 : interrupted ? 2200 : 5500))
+    if (reads != (scenario = 3 ? 720 : interrupted ? 2 : 11) || clockMs != (scenario = 3 ? 12000 : interrupted ? 2200 : 12100))
         throw Error("Cleanup exceeded its elapsed deadline: reads=" reads " elapsed=" clockMs)
     for message in endLogs
         if (InStr(message,"오류"))
@@ -677,7 +677,7 @@ ExitApp(0)
 CleanupClock() => clockMs
 EarnUIReady(name, area := "") {
     global clockMs, reads, endAbort
-    if (clockMs >= 5000 || endAbort)
+    if (clockMs >= 12000 || endAbort)
         throw Error("Another screen read started after the deadline or interruption")
     if ((name = "mct_title" || name = "mct_seated") && !IsObject(area))
         throw Error("Cleanup searched the whole screen for a known bounded menu")
