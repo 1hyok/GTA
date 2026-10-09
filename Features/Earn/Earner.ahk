@@ -104,7 +104,7 @@ EarnEnabledText() {
 }
 
 EarnTick() {
-    global gEarnOn, gEarnBusy, gEarnDue, gEarnDone, gEarnTasks, gEarnCurrent, gEarnFail, gEarnNextDue, gEarnSoftFails, gEarnHeld, gEarnFailures, gEarnRecovery, gEarnRetryIn, gAbort, gEarnGamePID, gEarnUserAbort, config, afkOn
+    global gEarnOn, gEarnBusy, gEarnDue, gEarnDone, gEarnTasks, gEarnCurrent, gEarnFail, gEarnNextDue, gEarnSoftFails, gEarnHeld, gEarnFailures, gEarnRecovery, gEarnRetryIn, gEarnCleanupNoScreen, gAbort, gEarnGamePID, gEarnUserAbort, config, afkOn
     if (!gEarnOn || gEarnBusy)
         return
     if (!gEarnGamePID || EarnGamePID() != gEarnGamePID) {
@@ -240,6 +240,17 @@ EarnTick() {
     if (fatalReason != "") {
         EarnStopAfterFailure(fatalReason)
         return
+    }
+    if (!outcome.cleanupOK) {
+        attempts := recovering ? gEarnRecovery.attempts + 1 : 1
+        ; 복구를 두 번 시도해도 열린 MCT 화면이 하나도 안 보이면 정리할 것이 없다(세션이 바뀌었거나 이미 나온 상태, 1010 01:32 실측).
+        ; 그대로 두면 복구가 수익 작업을 영영 막는다. 풀고 나머지를 이어 가며, MCT 작업은 시작할 때 위치를 다시 확인한다.
+        if (recovering && attempts >= 2 && gEarnCleanupNoScreen) {
+            gEarnRecovery := ""
+            EarnLog("복구 해제: " task.id " 열린 MCT 화면 없음이 반복됨, 다음 작업 시작 때 위치 재확인")
+            outcome.cleanupOK := true
+            recovering := false
+        }
     }
     if (!outcome.cleanupOK) {
         attempts := recovering ? gEarnRecovery.attempts + 1 : 1
