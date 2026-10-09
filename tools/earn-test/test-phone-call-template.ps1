@@ -53,6 +53,7 @@ global homeMinimum := 255
 EarnMCTSitOcrSeen() => false
 EarnOcrLines(key, area, whiteText) => false
 EarnMCTSeatedOcrMatches(lines) => false
+EarnBossOffIfOn() => true
 EarnMCTNeedCeoOcrMatches(lines) => false
 EarnMCTTitleOcrMatches(lines) => false
 OnError((err,*) => (FileAppend("FAIL " err.Message "`n", "**"), ExitApp(1)))
