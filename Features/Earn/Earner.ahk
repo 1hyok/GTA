@@ -248,6 +248,7 @@ EarnTick() {
         if (recovering && attempts >= 2 && gEarnCleanupNoScreen) {
             gEarnRecovery := ""
             EarnLog("복구 해제: " task.id " 열린 MCT 화면 없음이 반복됨, 다음 작업 시작 때 위치 재확인")
+            EarnBossOffIfOn()
             outcome.cleanupOK := true
             recovering := false
         }

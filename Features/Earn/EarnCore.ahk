@@ -1356,6 +1356,15 @@ EarnArrowCEOColor() {
     return EarnArrowColorOf(EarnGrab(cx + 150, cy + 990, w, h), w, h)
 }
 
+; 사장은 MCT 에서 벙커·DJ 를 만질 때만 필요하다. 작업이 못 끝나 정리가 사장 해제까지 못 갔을 때 켜진 채 남지 않도록,
+; 조직 색 화살표가 확실히 켜져 있으면(1) 상호작용 메뉴로 해제한다. 흰색·판독 불가면 아무것도 누르지 않는다.
+EarnBossOffIfOn() {
+    if (!EarnInputAllowed() || EarnArrowCEOColor() != 1)
+        return true
+    EarnLog("사장이 켜진 채 남아 있어 해제")
+    return EarnCEO(false)
+}
+
 EarnArrowColorOf(buf, w, h) {
     sat := 0, white := 0
     Loop w * h {

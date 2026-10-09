@@ -526,6 +526,7 @@ EarnBunkerTask(manageSession := true) => RunTask("bunker",manageSession)
 EarnDJTask(manageSession := true) => RunTask("dj",manageSession)
 EarnWarehouseTask(manageSession := true) => RunTask("warehouse",manageSession)
 EarnVinewoodStaffTask() => RunTask("staff")
+EarnBossOffIfOn() => true
 EarnStateGet(key, default := "") => state.Get(key, default)
 EarnStateSet(key, value) {
     if (stateWritable)

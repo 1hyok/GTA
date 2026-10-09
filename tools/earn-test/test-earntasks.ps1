@@ -54,6 +54,7 @@ EarnTransactionConfirmed(id) => transactionPending.Delete(id)
 EarnMCTSitOcrSeen() => false
 EarnOcrLines(key, area, whiteText) => false
 EarnMCTSeatedOcrMatches(lines) => false
+EarnBossOffIfOn() => true
 EarnMCTNeedCeoOcrMatches(lines) => false
 EarnMCTTitleOcrMatches(lines) => false
 OnError(EarnOfflineFailure)
