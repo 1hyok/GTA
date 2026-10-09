@@ -212,6 +212,24 @@ focused := false
 EarnTick()
 Check(calls.Length = 0 && activationCount = 0 && gEarnDue["bunker"] > A_TickCount + 29000, "focus loss postpones without activation")
 Reset()
+endOK := false
+EarnTick()
+Check(IsObject(gEarnRecovery), "recovery focus regression starts from a pending cleanup recovery")
+focused := false, fakeTick := gEarnRecovery.nextTick
+focusWaitLogs := FocusWaitLogCount(), endBefore := endCount, callsBefore := calls.Length
+EarnTick()
+Check(FocusWaitLogCount() = focusWaitLogs + 1 && gEarnRecovery.nextTick >= fakeTick + 30000,
+    "recovery without focus logs once and postpones the recovery tick by 30 seconds")
+fakeTick += 1000
+EarnTick()
+fakeTick += 28000
+EarnTick()
+Check(FocusWaitLogCount() = focusWaitLogs + 1 && endCount = endBefore && calls.Length = callsBefore,
+    "recovery without focus stays silent on later one-second ticks and sends no input")
+fakeTick += 1000
+EarnTick()
+Check(FocusWaitLogCount() = focusWaitLogs + 2 && IsObject(gEarnRecovery), "recovery without focus logs again only after the 30-second wait")
+Reset()
 mode := "physical"
 EarnTick()
 Check(gEarnOn && !gAbort && stopped = 0 && !gEarnGuardArmed && gEarnDone["bunker"] = 0 && gEarnRetryIn = 0
@@ -537,6 +555,13 @@ EarnTaskMCTEnd() {
     mctOpen := false
     return true
 }
+FocusWaitLogCount() {
+    global logs
+    count := 0
+    for message in logs
+        count += InStr(message, "GTA 포커스가 돌아오면 다시") ? 1 : 0
+    return count
+}
 EarnLog(message) {
     logs.Push(message)
     if (SubStr(message,1,3) = "끝: " && mctOpen)
@@ -565,7 +590,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 80 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 84 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout
