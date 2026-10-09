@@ -319,12 +319,16 @@ EarnVinewoodFreeHud() {
 
 ; HDR 에서 전화기 프레임 템플릿이 맞지 않을 때 홈 제목을 상태 앵커로 사용한다.
 EarnVinewoodPhoneTitle() {
-    lines := EarnReadScreen([1580,710,300,100], false)
-    if (!IsObject(lines))
-        return ""
-    for title in ["Texts", "Job List", "Internet", "Contacts", "Email", "Mail", "Camera", "Snapmatic", "Settings", "Quick Save", "Radio"]
-        if (EarnFindText(lines, "i)^" title "$"))
-            return title
+    ; 화면이 밝으면 파란 바탕 위 흰 제목이 'Job-L' 처럼 잘려 읽힌다(1010 01:41 실측, 같은 영역을 흰 글자 모드로 읽으면 'Job List').
+    ; 그래서 흰 글자 모드를 먼저 읽고, 못 알아보면 원래 방식으로 한 번 더 읽는다.
+    for whiteText in [true, false] {
+        lines := EarnReadScreen([1580,710,300,100], whiteText)
+        if (!IsObject(lines))
+            return ""
+        for title in ["Texts", "Job List", "Internet", "Contacts", "Email", "Mail", "Camera", "Snapmatic", "Settings", "Quick Save", "Radio"]
+            if (EarnFindText(lines, "i)^" title "$"))
+                return title
+    }
     return ""
 }
 
