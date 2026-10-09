@@ -2,6 +2,10 @@
 ; Images\<folder>\<가로>x<세로>\<name>.png 를 GTA 클라이언트 영역 안에서 찾는다. 해상도 폴더에 템플릿이 없으면 false(찾지 못함)로 본다.
 ; 템플릿의 FF00FF 칸은 투명으로 친다(반투명 메뉴 바탕 위 글자는 글자와 어두운 바탕만 남기고 가장자리는 투명으로 떠 둔다).
 global gImageRoot := A_ScriptDir "\Images"   ; 템플릿 폴더 뿌리 (시험 스크립트가 바꿔 쓸 수 있게 전역)
+; 원본 템플릿이 안 맞을 때 차례로 찾아볼 밝기 사본 배율.
+; 1010 실측: HDR 화면이 예전 템플릿보다 채널마다 약 1.55배 밝았다(템플릿 값 165 이상은 255로 포화).
+; 이 배율 사본으로 MCT·벙커·DJ·창고 템플릿 16종이 차이 0~8로 맞았고, 다른 화면에는 맞지 않았다.
+global gTemplateGains := ["1.55"]
 
 ; 실측 체력 막대의 가로 연속성. HUD 존재만 확인하며 전화·메뉴 제외는 소비자가 수행한다.
 HealthHudVisible() {
@@ -60,11 +64,20 @@ TemplateSeen(folder, name, area := "", &fx := 0, &fy := 0, variation := 40) {
         a := IsObject(area) ? area : [0, 0, 1, 1]
         CoordMode("Pixel", "Screen")
         found := false
+        x1 := cx + Round(cw * a[1]), y1 := cy + Round(ch * a[2])
+        x2 := cx + Round(cw * a[3]) - 1, y2 := cy + Round(ch * a[4]) - 1
         try {
-            found := ImageSearch(&fx, &fy, cx + Round(cw * a[1]), cy + Round(ch * a[2]),
-                cx + Round(cw * a[3]) - 1, cy + Round(ch * a[4]) - 1, "*" variation " *Trans0xFF00FF " img)
+            found := ImageSearch(&fx, &fy, x1, y1, x2, y2, "*" variation " *Trans0xFF00FF " img)
         } catch as e {
             MacroLog("screen", "ImageSearch 오류 " folder "\" name ": " e.Message)
+        }
+        if (!found) {
+            ; 화면 밝기가 템플릿을 뜰 때와 다르면 같은 그림을 밝힌 사본으로 한 번 더 찾는다.
+            for gainImg in TemplateGainImages(folder, cw "x" ch, name) {
+                try found := ImageSearch(&fx, &fy, x1, y1, x2, y2, "*" variation " *Trans0xFF00FF " gainImg)
+                if (found)
+                    break
+            }
         }
         return found
     } finally {
@@ -92,14 +105,72 @@ TemplateAt(folder, name, x, y, variation := 90) {
             ; HDR MCT title backgrounds are 536px wide. The old 401px search
             ; rectangle could never contain them. Keep the exact-origin check.
             if (ImageSearch(&fx, &fy, x, y, Min(x + cw - 1, cx + cw - 1), Min(y + 60, cy + ch - 1),
-                "*" variation " *Trans0xFF00FF " img))
-                return fx = x && fy = y
+                "*" variation " *Trans0xFF00FF " img) && fx = x && fy = y)
+                return true
         } catch as e {
             MacroLog("screen", "ImageSearch 오류 " folder "\" name ": " e.Message)
+        }
+        for gainImg in TemplateGainImages(folder, cw "x" ch, name) {
+            try {
+                if (ImageSearch(&fx, &fy, x, y, Min(x + cw - 1, cx + cw - 1), Min(y + 60, cy + ch - 1),
+                    "*" variation " *Trans0xFF00FF " gainImg) && fx = x && fy = y)
+                    return true
+            }
         }
         return false
     } finally {
         if (prev)
             DllCall("SetThreadDpiAwarenessContext", "ptr", prev, "ptr")
     }
+}
+
+; 원본 템플릿 대신 찾아볼 밝기 사본들의 경로. 사본은 %TEMP%\gta-template-gain\<배율>\<folder>\<해상도> 에
+; 폴더 단위로 한 번 만들고, 원본 폴더의 파일 수·최근 수정 시각이 바뀌면 다시 만든다.
+TemplateGainImages(folder, res, name) {
+    global gImageRoot, gTemplateGains
+    static ready := Map()
+    out := []
+    if (!IsSet(gTemplateGains) || !(gTemplateGains is Array))
+        return out
+    for gain in gTemplateGains {
+        dst := A_Temp "\gta-template-gain\" gain "\" folder "\" res
+        if (!ready.Has(dst))
+            ready[dst] := TemplateGainBuild(gImageRoot "\" folder "\" res, dst, gain)
+        if (ready[dst] && FileExist(dst "\" name ".png"))
+            out.Push(dst "\" name ".png")
+    }
+    return out
+}
+
+TemplateGainBuild(src, dst, gain) {
+    if (!DirExist(src))
+        return false
+    count := 0, newest := ""
+    Loop Files src "\*.png" {
+        count++
+        if (StrCompare(A_LoopFileTimeModified, newest) > 0)
+            newest := A_LoopFileTimeModified
+    }
+    stamp := count "|" newest "|" gain
+    marker := dst "\.stamp"
+    try {
+        if (FileExist(marker) && FileRead(marker, "UTF-8") = stamp)
+            return true
+    }
+    SplitPath(A_LineFile, , &coreDir)
+    command := '"' A_WinDir '\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "'
+        . coreDir '\TemplateGain.ps1" -Source "' src '" -Destination "' dst '" -Gain ' gain
+    try exitCode := RunWait(command, , "Hide")
+    catch as e {
+        MacroLog("screen", "밝기 사본 생성 실패 " dst ": " e.Message)
+        return false
+    }
+    if (exitCode != 0) {
+        MacroLog("screen", "밝기 사본 생성 실패 " dst ": exit=" exitCode)
+        return false
+    }
+    try FileDelete(marker)
+    try FileAppend(stamp, marker, "UTF-8")
+    MacroLog("screen", "밝기 사본 생성 " dst)
+    return true
 }

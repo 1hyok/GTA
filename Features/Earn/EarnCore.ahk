@@ -408,8 +408,25 @@ EarnHudVisible() {
         return false
     WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
     CoordMode("Pixel", "Screen")
-    return PixelSearch(&fx, &fy, cx + Round(cw * EARN_HUD_BAR[1]), cy + Round(ch * EARN_HUD_BAR[2]),
-        cx + Round(cw * EARN_HUD_BAR[3]), cy + Round(ch * EARN_HUD_BAR[4]), EARN_HUD_GREEN, 30)
+    ; 화면이 템플릿보다 밝으면(1010 실측 약 1.55배) 체력 막대 색도 같은 배율로 밝아진다. 밝기 사본 배율로 함께 찾는다.
+    for color in EarnHudGreens()
+        if (PixelSearch(&fx, &fy, cx + Round(cw * EARN_HUD_BAR[1]), cy + Round(ch * EARN_HUD_BAR[2]),
+            cx + Round(cw * EARN_HUD_BAR[3]), cy + Round(ch * EARN_HUD_BAR[4]), color, 30))
+            return true
+    return false
+}
+
+EarnHudGreens() {
+    global gTemplateGains
+    colors := [EARN_HUD_GREEN]
+    if (IsSet(gTemplateGains) && gTemplateGains is Array)
+        for gain in gTemplateGains {
+            r := Min(255, Round(((EARN_HUD_GREEN >> 16) & 255) * gain))
+            g := Min(255, Round(((EARN_HUD_GREEN >> 8) & 255) * gain))
+            b := Min(255, Round((EARN_HUD_GREEN & 255) * gain))
+            colors.Push((r << 16) | (g << 8) | b)
+        }
+    return colors
 }
 
 ; "w:1800,d:600" 처럼 적은 순서대로 키를 누르고 있다가 뗀다. 이동 중에도 전체 멈춤·포커스를 본다.
