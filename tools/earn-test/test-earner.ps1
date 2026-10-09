@@ -20,6 +20,16 @@ if (-not $mctSitMatcher -or $core -notmatch '(?s)if \(name = "mct_sit"\).*?EarnM
     throw 'Production MCT sit detection must consume its exact OCR fallback'
 }
 $production += "`n" + $mctSitMatcher
+# 밝기와 무관한 MCT 안내 OCR 판정. 실제 EarnSeen 이 이 함수들을 쓰는지도 확인한다.
+foreach ($functionName in @('EarnOcrHas','EarnMCTSeatedOcrMatches','EarnMCTNeedCeoOcrMatches','EarnMCTTitleOcrMatches')) {
+    $fn = [regex]::Match($core, ('(?ms)^' + $functionName + '\([^
+]*\) \{.*?^\}')).Value
+    if (-not $fn) { throw "Missing OCR matcher $functionName" }
+    $production += "`n" + $fn
+}
+foreach ($use in @('EarnMCTSeatedOcrMatches(EarnOcrLines("prompt"','EarnMCTTitleOcrMatches(EarnOcrLines("title"','EarnMCTNeedCeoOcrMatches(EarnOcrLines("prompt"')) {
+    if (-not $core.Contains($use)) { throw "EarnSeen must consume $use" }
+}
 $mctPromptRows = @(Import-Csv (Join-Path $PSScriptRoot '..\..\docs\evidence\2026-10-09-mct\mct-sit-prompt-runtime-20261009.tsv') -Delimiter "`t")
 if ($mctPromptRows.Count -ne 2 -or $mctPromptRows[0].text -ne 'Press' -or $mctPromptRows[1].text -ne 'to sit down.') {
     throw 'Recorded live MCT prompt OCR fixture is incomplete'
@@ -341,6 +351,17 @@ Check(!EarnMCTSitOcrMatches([{x:70,y:40,w:55,h:18,text:"Press"},{x:191,y:39,w:11
 Check(!EarnMCTSitOcrMatches([{x:70,y:40,w:55,h:18,text:"Press"},{x:191,y:62,w:114,h:20,text:"to sit down."}]),
     "prompt fragments at different vertical positions are rejected")
 Check(!EarnMCTSitOcrMatches([]), "empty OCR is rejected")
+; 1010 실화면 OCR(밝기가 템플릿과 달라 템플릿이 실패하던 화면)
+Check(EarnMCTSeatedOcrMatches([{x:192,y:38,w:236,h:18,text:"Master Control Terminal"},{x:161,y:70,w:176,h:21,text:"Security Cameras"},{x:118,y:98,w:90,h:20,text:"Stand up"}]),
+    "seated MCT menu OCR is accepted")
+Check(!EarnMCTSeatedOcrMatches([{x:192,y:38,w:236,h:18,text:"Touchscreen computer"},{x:161,y:70,w:176,h:21,text:"Master Control Terminal"}]),
+    "Terrorbyte prompt without Stand up is not a seated menu")
+Check(EarnMCTNeedCeoOcrMatches([{x:224,y:40,w:368,h:23,text:"You need to be a CEO or Motorcycle"},{x:242,y:70,w:401,h:23,text:"Club President to manage this business."},{x:197,y:98,w:311,h:21,text:"Press • to register as a CEO."}]),
+    "CEO registration prompt OCR is accepted")
+Check(!EarnMCTNeedCeoOcrMatches([{x:224,y:40,w:368,h:23,text:"You need to be a Motorcycle Club"},{x:197,y:98,w:311,h:21,text:"Press • to start a Motorcycle Club."}]),
+    "MC president prompt is not the CEO registration prompt")
+Check(EarnMCTTitleOcrMatches([{x:960,y:62,w:521,h:31,text:"MASTER CONTROL TERMINAL"}]), "MCT page title OCR is accepted")
+Check(!EarnMCTTitleOcrMatches([]) && !EarnMCTNeedCeoOcrMatches("") && !EarnMCTSeatedOcrMatches(false), "empty or failed OCR is rejected")
 Reset()
 gEarnBusy := true
 SetEarner(false)
@@ -588,7 +609,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 84 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 90 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout

@@ -106,13 +106,15 @@ EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
         for part in ["mct_seated_mansion", "mct_seated"]
             if (TemplateSeen("Earn", part, area, &fx, &fy, part = "mct_seated_mansion" ? Max(variation, 60) : variation) && TemplateAt("Earn", part "_bg", fx, fy))
                 return true
-        return TemplateSeen("Earn", "mct_seated_hdr", area, &fx, &fy, variation)
-            && TemplateAt("Earn", "mct_seated_hdr_bg", fx, fy)
+        return (TemplateSeen("Earn", "mct_seated_hdr", area, &fx, &fy, variation)
+            && TemplateAt("Earn", "mct_seated_hdr_bg", fx, fy))
+            || EarnMCTSeatedOcrMatches(EarnOcrLines("prompt", [0, 0, 576, 108], false))
     }
     if (name = "mct_title")
         return TemplateSeen("Earn", "mct_title", area, &fx, &fy, variation)
-            || (TemplateSeen("Earn", "mct_title_hdr", area, &fx, &fy, Max(variation, 75))
+            || (TemplateSeen("Earn", "mct_title_hdr", area, &fx, &fy, Max(variation, 55))
             && TemplateAt("Earn", "mct_title_hdr_bg", fx, fy))
+            || EarnMCTTitleOcrMatches(EarnOcrLines("title", [576, 0, 768, 108], false))
     ; "Press E to sit down" 도 같은 흰 글자 템플릿이라 밝은 벽 앞에서 맞는다(1005 22:55 길가에서 MC 판매를 돕던 중 글자 차이 30~33 으로
     ; 맞아 E 를 누르고 앉기를 기다리다 꺼짐. 그때 글자 밖 바탕 밝기 231, 진짜 안내는 7). 바탕이 어두워야 인정한다.
     if (name = "mct_sit")
@@ -155,6 +157,9 @@ EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
         "dj_confirm_tale", [0.30,0.46,0.70,0.53])
     if (!IsObject(area) && mctAreas.Has(name))
         area := mctAreas[name]
+    if (name = "mct_need_ceo")
+        return TemplateSeen("Earn", name, area, &fx, &fy, variation)
+            || EarnMCTNeedCeoOcrMatches(EarnOcrLines("prompt", [0, 0, 576, 108], false))
     ; HDR 카드 제목은 글자 내부와 같은 자리의 바탕을 함께 확인한다.
     if (name = "mct_bunker_card" || name = "mct_nightclub_card")
         return TemplateSeen("Earn", name, area, &fx, &fy, variation)
@@ -186,6 +191,42 @@ EarnMCTSitOcrSeen() {
     lines := EarnReadScreen([0, 0, 576, 108], true)
     lastResult := EarnMCTSitOcrMatches(lines)
     return lastResult
+}
+
+; 화면 밝기가 템플릿을 만들 때와 달라지면 흰 글자 템플릿이 통째로 안 맞는다(1010 01:50 실측: 안내 글자의 흰색이
+; 템플릿은 205, 화면은 255). 글자 안내는 템플릿이 실패했을 때만 OCR 로 내용을 읽어 밝기와 무관하게 판정한다.
+; 같은 영역을 여러 판정이 잇달아 읽으므로 1초 동안 결과를 나눠 쓴다. 한 번 읽는 데 약 1초 걸린다.
+EarnOcrLines(key, area, whiteText) {
+    static cache := Map()
+    if (cache.Has(key) && A_TickCount - cache[key].tick < 1000)
+        return cache[key].lines
+    lines := EarnReadScreen(area, whiteText)
+    cache[key] := {tick: A_TickCount, lines: lines}
+    return lines
+}
+
+EarnOcrHas(lines, pattern) {
+    if (!IsObject(lines))
+        return false
+    for row in lines
+        if (IsObject(row) && row.HasOwnProp("text") && RegExMatch(row.text, pattern))
+            return true
+    return false
+}
+
+; 저택 MCT에 앉으면 'Master Control Terminal / Security Cameras / Stand up' 세 줄이 뜬다.
+; 테러바이트 안내에도 'Master Control Terminal' 줄이 있으므로 앉아 있을 때만 있는 'Stand up' 을 함께 본다.
+EarnMCTSeatedOcrMatches(lines) {
+    return EarnOcrHas(lines, "i)^\W*Master\h+Control\h+Terminal\W*$") && EarnOcrHas(lines, "i)^\W*Stand\h+up\W*$")
+}
+
+; 사업장 카드를 고르면 뜨는 CEO 등록 안내. MC 사업장 안내('start a Motorcycle Club')와는 구분한다.
+EarnMCTNeedCeoOcrMatches(lines) {
+    return EarnOcrHas(lines, "i)You\h+need\h+to\h+be\h+a\h+CEO") && EarnOcrHas(lines, "i)register\h+as\h+a\h+CEO")
+}
+
+EarnMCTTitleOcrMatches(lines) {
+    return EarnOcrHas(lines, "i)MASTER\W*CONTROL\W*TERMINAL")
 }
 
 EarnMCTSitOcrMatches(lines) {
