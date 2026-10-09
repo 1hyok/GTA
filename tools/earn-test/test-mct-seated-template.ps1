@@ -28,9 +28,36 @@ $atBody = [regex]::Match($screen, '(?s)TemplateAt\(folder,.*?\n\}').Value
 if ($atBody -notmatch 'Min\(x \+ cw - 1, cx \+ cw - 1\)') {
     throw 'TemplateAt search width clips the 536px MCT HDR title background to 401px'
 }
-if ($atBody -notmatch 'return fx = x && fy = y') { throw 'TemplateAt must reject matches shifted from the supplied origin' }
+if ($atBody -notmatch '(return fx = x && fy = y|&& fx = x && fy = y\))') { throw 'TemplateAt must reject matches shifted from the supplied origin' }
 $cases++
 Write-Output 'PASS production TemplateAt admits wide backgrounds and keeps exact-origin guard'
+
+# 화면 밝기 보정 사본(1010 실측 약 1.55배). 원본이 실패하면 TemplateSeen·TemplateAt 이 사본을 찾는다.
+if ($screen -notmatch 'global gTemplateGains := \["1\.55"\]' -or $screen -notmatch '(?s)TemplateSeen\(folder,.*?TemplateGainImages\(folder, cw "x" ch, name\)' `
+    -or $atBody -notmatch 'TemplateGainImages\(folder, cw "x" ch, name\)') {
+    throw 'TemplateSeen and TemplateAt must retry with brightness-gain template copies'
+}
+$gainDir = Join-Path ([IO.Path]::GetTempPath()) ('gta-gain-test-' + [guid]::NewGuid().ToString('N'))
+try {
+    $srcDir = Join-Path $gainDir 'src'; $dstDir = Join-Path $gainDir 'dst'
+    [void][IO.Directory]::CreateDirectory($srcDir)
+    $px = New-Object Drawing.Bitmap 3, 1
+    try {
+        $px.SetPixel(0, 0, [Drawing.Color]::FromArgb(255, 255, 0, 255))
+        $px.SetPixel(1, 0, [Drawing.Color]::FromArgb(255, 100, 50, 200))
+        $px.SetPixel(2, 0, [Drawing.Color]::FromArgb(255, 200, 10, 0))
+        $px.Save((Join-Path $srcDir 'probe.png'), [Drawing.Imaging.ImageFormat]::Png)
+    } finally { $px.Dispose() }
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'Core\TemplateGain.ps1') -Source $srcDir -Destination $dstDir -Gain 1.55 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "TemplateGain.ps1 failed with exit $LASTEXITCODE" }
+    $out = [Drawing.Bitmap]::FromFile((Join-Path $dstDir 'probe.png'))
+    try {
+        $got = @(0, 1, 2 | ForEach-Object { $c = $out.GetPixel($_, 0); '{0},{1},{2}' -f $c.R, $c.G, $c.B }) -join ' '
+    } finally { $out.Dispose() }
+    if ($got -ne '255,0,255 155,78,255 255,16,0') { throw "TemplateGain.ps1 output mismatch: $got" }
+} finally { if (Test-Path $gainDir) { Remove-Item -LiteralPath $gainDir -Recurse -Force } }
+$cases += 2
+Write-Output 'PASS brightness-gain template copies keep transparency and scale channels with clipping'
 $hdrSitBound = 40
 # 18:21 live HDR prompt: old masks retain world pixels outside the box.
 # This pair must match together at the same origin, without broadening *40.
