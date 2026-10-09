@@ -5,6 +5,7 @@
 global gEarnBusy := false        ; 수익 자동화가 게임에 키를 보내는 중. AFK 방지가 이 동안 쉰다
 global gEarnFail := ""           ; 마지막으로 멈춘 까닭 (오버레이·설정 창·로그에 보인다)
 global gEarnCleanupNoScreen := false  ; 마지막 MCT 정리가 "열린 MCT 화면 없음"으로 실패했는가
+global gEarnSkipOcr := false      ; 카메라 회전 중에는 판독마다 1~2초 걸리는 OCR 대체 경로를 건너뛴다(끝난 뒤 최종 확인이 OCR 을 쓴다)
 global gEarnRetryIn := 0          ; 작업이 지정한 재시도 간격. 0이면 스케줄러의 기본 backoff를 쓴다
 
 ; 상호작용 메뉴가 차지하는 영역(클라이언트 비율). 제목·줄 템플릿은 여기서만 찾는다
@@ -108,13 +109,13 @@ EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
                 return true
         return (TemplateSeen("Earn", "mct_seated_hdr", area, &fx, &fy, variation)
             && TemplateAt("Earn", "mct_seated_hdr_bg", fx, fy))
-            || EarnMCTSeatedOcrMatches(EarnOcrLines("prompt", [0, 0, 576, 108], false))
+            || (!gEarnSkipOcr && EarnMCTSeatedOcrMatches(EarnOcrLines("prompt", [0, 0, 576, 108], false)))
     }
     if (name = "mct_title")
         return TemplateSeen("Earn", "mct_title", area, &fx, &fy, variation)
             || (TemplateSeen("Earn", "mct_title_hdr", area, &fx, &fy, Max(variation, 55))
             && TemplateAt("Earn", "mct_title_hdr_bg", fx, fy))
-            || EarnMCTTitleOcrMatches(EarnOcrLines("title", [576, 0, 768, 108], false))
+            || (!gEarnSkipOcr && EarnMCTTitleOcrMatches(EarnOcrLines("title", [576, 0, 768, 108], false)))
     ; "Press E to sit down" 도 같은 흰 글자 템플릿이라 밝은 벽 앞에서 맞는다(1005 22:55 길가에서 MC 판매를 돕던 중 글자 차이 30~33 으로
     ; 맞아 E 를 누르고 앉기를 기다리다 꺼짐. 그때 글자 밖 바탕 밝기 231, 진짜 안내는 7). 바탕이 어두워야 인정한다.
     if (name = "mct_sit")
@@ -123,7 +124,7 @@ EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
             || (TemplateSeen("Earn", "mct_sit_hdr_alt", area, &fx, &fy, variation) && TemplateAt("Earn", "mct_sit_hdr_alt_bg", fx, fy))
             || (TemplateSeen("Earn", "mct_sit_hdr_bright", area, &fx, &fy, variation) && TemplateAt("Earn", "mct_sit_hdr_bright_bg", fx, fy))
             || (TemplateSeen("Earn", "mct_sit_hdr_box", area, &fx, &fy, variation) && TemplateAt("Earn", "mct_sit_hdr_box_bg", fx, fy, 40))
-            || EarnMCTSitOcrSeen()
+            || (!gEarnSkipOcr && EarnMCTSitOcrSeen())
     ; 테러바이트 안내는 CEO 여부에 따라 두 모양이다. CEO 일 때는 'Touchscreen computer / Master Control Terminal'.
     ; 반투명 상자라 뒤 배경에 따라 픽셀이 바뀌고, 남은 커서가 한 줄을 가릴 수 있다(1003 17:15 실측).
     ; 그래서 세 줄 중 하나만 맞아도 인정하고 허용 오차를 60으로 둔다.
@@ -159,7 +160,7 @@ EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
         area := mctAreas[name]
     if (name = "mct_need_ceo")
         return TemplateSeen("Earn", name, area, &fx, &fy, variation)
-            || EarnMCTNeedCeoOcrMatches(EarnOcrLines("prompt", [0, 0, 576, 108], false))
+            || (!gEarnSkipOcr && EarnMCTNeedCeoOcrMatches(EarnOcrLines("prompt", [0, 0, 576, 108], false)))
     ; HDR 카드 제목은 글자 내부와 같은 자리의 바탕을 함께 확인한다.
     if (name = "mct_bunker_card" || name = "mct_nightclub_card")
         return TemplateSeen("Earn", name, area, &fx, &fy, variation)
@@ -633,50 +634,67 @@ ATan2Deg(x, y) {
 ; 20단위/15ms(≈46도/초)에서는 그대로다(0927 실측: 20u/15ms 정상, 40u/12ms·60u/10ms 축소). 90도에 약 2초 걸린다
 ; 돌리는 동안에도 전체 멈춤·포커스를 본다. GTA 가 뒤로 가면 상대 이동이 바탕화면 커서를 날린다
 EarnTurn(units, pitchUnits := 0, hdrMCTRecovery := false) {
+    global gEarnSkipOcr
     if (EarnAborted())
         return false
+    gEarnSkipOcr := hdrMCTRecovery
+    try {
+        return EarnTurnLoop(units, pitchUnits, hdrMCTRecovery)
+    } finally {
+        gEarnSkipOcr := false
+    }
+}
+
+EarnTurnLoop(units, pitchUnits, hdrMCTRecovery) {
     n := Max(1, Round(Max(Abs(units), Abs(pitchUnits)) / 20))
     step := Round(units / n), pitchStep := Round(pitchUnits / n)
     ; 화면 판독 한 번이 밝기 사본·OCR 때문에 수 초 걸린다(1010 03:30 실측: 판독만으로 9초가 지나 거의 돌지 못함).
-    ; 제한 시간은 돌리는 시간에만 9초를 주고, 판독에 쓴 시간은 더한다. 전체는 60초를 넘기지 않는다.
-    turnStart := A_TickCount, readMs := 0, recoveryDeadline := A_TickCount + 9000, nextMenuCheck := 0, nextHealthCheck := 0, nextGoalCheck := 0
+    ; 제한 시간은 돌리는 시간에만 9초를 주고, 판독에 쓴 시간은 더한다. 전체는 90초를 넘기지 않는다.
+    ; 판독 간격도 걸음 수로 잡는다. 시계로 잡으면 판독이 끝나자마자 다음 판독이 돌아 판독 사이에 한 걸음씩만 간다.
+    turnStart := A_TickCount, readMs := 0, recoveryDeadline := A_TickCount + 9000, nextHealthCheck := 0
     Loop n {
         if (EarnAborted())
             return false
         if (hdrMCTRecovery) {
             ; 목표 안내가 보이면 고정 각도를 채우려고 계속 돌지 않는다. 판독 지연도 간격에 포함한다.
-            if (A_TickCount >= nextGoalCheck || A_TickCount >= recoveryDeadline) {
+            if (Mod(A_Index - 1, 16) = 0 || A_TickCount >= recoveryDeadline) {
                 readStart := A_TickCount
                 arrived := EarnMCTRecoveryArrived()
                 readMs += A_TickCount - readStart
-                recoveryDeadline := turnStart + Min(60000, 9000 + readMs)
+                recoveryDeadline := turnStart + Min(90000, 9000 + readMs)
                 if (EarnAborted())
                     return false
                 if (arrived)
                     return true
-                nextGoalCheck := A_TickCount + 500
             }
             if (A_TickCount >= recoveryDeadline)
                 return EarnFail("MCT 복귀 회전: 9초 제한 초과")
             ; 16개 PixelGetColor 판독도 실측 109~125ms다. 최근 판독은 250ms 동안 재사용한다.
             if (A_TickCount >= nextHealthCheck) {
-                if (!HealthHudVisible())
+                readStart := A_TickCount
+                healthOK := HealthHudVisible()
+                readMs += A_TickCount - readStart
+                recoveryDeadline := turnStart + Min(90000, 9000 + readMs)
+                if (!healthOK)
                     return EarnFail("카메라: 게임 HUD를 확인하지 못함")
                 nextHealthCheck := A_TickCount + 250
             }
             ; HDR 판독 실측은 전체 배치 약 1초다. 매 이동 조각마다 반복하지 않는다.
-            if (A_TickCount >= nextMenuCheck) {
+            if (Mod(A_Index - 1, 90) = 0) {
                 readStart := A_TickCount
                 hudOK := EarnMCTRecoveryHud()
                 readMs += A_TickCount - readStart
-                recoveryDeadline := turnStart + Min(60000, 9000 + readMs)
+                recoveryDeadline := turnStart + Min(90000, 9000 + readMs)
                 if (!hudOK)
                     return EarnFail("MCT 복귀 회전: 메뉴 없는 게임 HUD 미확인")
-                nextMenuCheck := A_TickCount + 3000
             }
             ; 메뉴 판독 중 오래된 HUD 판독은 움직이기 전에 갱신한다.
             if (A_TickCount >= nextHealthCheck) {
-                if (!HealthHudVisible())
+                readStart := A_TickCount
+                healthOK := HealthHudVisible()
+                readMs += A_TickCount - readStart
+                recoveryDeadline := turnStart + Min(90000, 9000 + readMs)
+                if (!healthOK)
                     return EarnFail("카메라: 게임 HUD를 확인하지 못함")
                 nextHealthCheck := A_TickCount + 250
             }

@@ -36,6 +36,9 @@ function Invoke-EarnOfflineCheck {
     )
 
     $functionBody = Get-EarnFunctionBody $sourceText $FunctionName
+    if ($Name -eq 'TurnGuard') {
+        $functionBody += "`n" + (Get-EarnFunctionBody $sourceText 'EarnTurnLoop')
+    }
     if ($Name -eq 'MCTEndDeadline') {
         $functionBody = $functionBody.Replace('A_TickCount', 'CleanupClock()')
     }
@@ -45,6 +48,7 @@ function Invoke-EarnOfflineCheck {
 #NoTrayIcon
 #Warn All, StdOut
 global transactionPending := Map()
+global gEarnSkipOcr := false
 EarnTransactionBegin(id, reason) {
     transactionPending[id] := reason
     return true
@@ -2171,20 +2175,20 @@ for scenario in [[5220,0,-1,-1,true,261,5220,0],
     if (EarnTurn(scenario[1],0,scenario.Length >= 9 ? scenario[9] : false) != scenario[5] || moves != scenario[6]
         || movedX != scenario[7] || movedY != scenario[8])
         throw Error("Camera recovery must preserve abort/HUD guards and bounded movement: moves=" moves " time=" turnMs " expected=" scenario[6] " scenario=" sIndex)
-    if (scenario.Length >= 11 && scenario[11] = 1200 && (menuChecks != 2 || turnMs > 8500))
+    if (scenario.Length >= 11 && scenario[11] = 1200 && (menuChecks != 3 || turnMs > 12500))
         throw Error("Slow menu checks must be throttled while HDR recovery remains bounded")
 }
 ; A real arrival must terminate the production loop instead of completing all 261 moves.
 ; The late-arrival case makes a slow menu check cross the deadline with the prompt now visible.
 for arrival in [[1,0,false,0,true], [0,0,false,0,true], [0,50,true,0,false],
     [0,0,false,9500,true,true], [-1,0,false,9500,true], [0,50,true,9500,false,true],
-    [0,9500,false,0,true], [-1,9500,false,0,false], [0,9500,true,0,false]] {
+    [0,9500,false,0,true], [-1,40000,false,0,false], [0,9500,true,0,false]] {
     aIndex := (IsSet(aIndex) ? aIndex : 0) + 1
     goalAfter := arrival[1], goalCost := arrival[2], goalAbort := arrival[3]
     goalMenuOnly := arrival.Length >= 6 && arrival[6]
     turnCase := [5220,0,-1,0,false,0,0,0,true,true,arrival[4]]
     moves := 0, movedX := 0, movedY := 0, turnMs := 0, menuChecks := 0, menuAbort := false
-    if (EarnTurn(5220,0,true) != arrival[5] || (moves >= 261 && goalAfter >= 0) || (goalAfter = 0 && !goalMenuOnly && moves != 0) || (goalMenuOnly && moves > 1))
+    if (EarnTurn(5220,0,true) != arrival[5] || (moves >= 261 && goalAfter >= 0) || (goalAfter = 0 && !goalMenuOnly && moves != 0) || (goalMenuOnly && moves > 16))
         throw Error("MCT prompt arrival must stop movement, including at deadline; moves=" moves " arrival=" aIndex)
 }
 FileAppend("PASS TurnGuard cases=22`n", "*")

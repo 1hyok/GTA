@@ -49,6 +49,7 @@ $driver = @'
 global requiredVariation := 0
 global liveRequiredVariation := 0
 global homeMinimum := 255
+global gEarnSkipOcr := false
 ; This test isolates EarnSeen's template branch; OCR is covered by test-earner.
 EarnMCTSitOcrSeen() => false
 EarnOcrLines(key, area, whiteText) => false
