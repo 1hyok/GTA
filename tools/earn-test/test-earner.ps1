@@ -702,3 +702,88 @@ FileAppend("PASS EarnerState persistence: 5 cases; no game input`n", "*")
 ExitApp(0)
 '@
 Invoke-EarnerMutexCheck ($stateDriver.Replace('@ID@', [guid]::NewGuid().ToString('N')) + "`n" + ($stateSupport -join "`n")) 'PASS EarnerState persistence: 5 cases; no game input'
+
+# Run the real hotkey dispatcher with key waits and timers replaced, never register/send a key.
+$hotkeySource = Get-Content (Join-Path $PSScriptRoot '..\..\Core\HotkeyManager.ahk') -Raw -Encoding UTF8
+$hotkeyFunctions = @('Dispatch','ExpireArmedAction','IgnoredEarnerKey','HotkeyAudit') | ForEach-Object {
+    $body = [regex]::Match($hotkeySource, ('(?ms)^' + $_ + '\([^\r\n]*\) \{.*?^\}')).Value
+    if (-not $body) { throw "Production hotkey function missing: $_" }
+    $body.Replace('A_TickCount','fakeTick').Replace('KeyWait(','AuditKeyWait(').Replace('GetKeyState(','AuditKeyState(').Replace('SetTimer(','AuditTimer(').Replace('WinGetProcessName(','AuditForeground(')
+}
+$hotkeyDriver = @'
+OnError((failure, *) => (FileAppend("FAIL hotkey: " failure.Message "`n", "**"), ExitApp(1)))
+global gArmed := Map(), config := Map("Settings", Map("ConfirmWindowMs", 2000))
+global fakeTick := 100, logs := [], scheduled := [], calls := 0, held := false, failAction := false, failLog := false
+action := {id:"Earner", confirm:true, label:"earn", fn:RunAction}
+Dispatch(action, "F9")
+Require(calls = 0 && HasEvent("received") && HasEvent("confirmation-wait"), "first press logged without action")
+fakeTick := 500
+Dispatch(action, "F9")
+Require(calls = 1 && HasEvent("confirmed") && HasEvent("action-start") && HasEvent("action-return"), "confirmation and return logged")
+scheduled[1].Call()
+Require(!HasEvent("confirmation-expired"), "consumed confirmation cannot expire")
+fakeTick := 3000
+Dispatch(action, "F9")
+fakeTick := 5100
+scheduled[2].Call()
+Require(!gArmed.Has("Earner") && HasEvent("confirmation-expired"), "unused confirmation expires and logs")
+Dispatch(action, "F9")
+held := true
+fakeTick := 8000
+Dispatch(action, "F9")
+Require(!gArmed.Has("Earner") && HasEvent("confirmation-cancelled"), "held key cancellation logged")
+held := false
+gArmed["Earner"] := 8000
+IgnoredEarnerKey(action, "F9")
+Require(!gArmed.Has("Earner") && HasEvent("ignored"), "outside GTA clears confirmation and logs")
+gArmed["Earner"] := fakeTick
+failAction := true
+caught := false
+try Dispatch(action, "F9")
+catch {
+    caught := true
+}
+Require(caught && HasEvent("action-error"), "action exception logged and propagated")
+failAction := false
+failLog := true
+gArmed["Earner"] := fakeTick
+Dispatch(action, "F9")
+Require(calls = 3, "log write failure cannot block action")
+FileAppend("PASS Hotkey audit: 8 cases; no game input`n", "*")
+ExitApp(0)
+RunAction(*) {
+    global calls, failAction
+    calls += 1
+    if (failAction)
+        throw Error("fixture action error")
+}
+MacroLog(tag, text) {
+    global logs, failLog
+    if (failLog)
+        throw Error("fixture log write error")
+    logs.Push(text)
+}
+HasEvent(event) {
+    global logs
+    for row in logs
+        if (InStr(row, "event=" event))
+            return true
+    return false
+}
+Require(value, label) {
+    if (!value)
+        throw Error(label)
+}
+AuditTimer(callback, *) {
+    global scheduled
+    scheduled.Push(callback)
+}
+AuditKeyWait(*) => 0
+AuditKeyState(*) {
+    global held
+    return held
+}
+AuditForeground(*) => "fixture.exe"
+ShowTooltip(*) => 0
+'@
+Invoke-EarnerMutexCheck ($hotkeyDriver + "`n" + ($hotkeyFunctions -join "`n")) 'PASS Hotkey audit: 8 cases; no game input'
