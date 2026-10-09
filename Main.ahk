@@ -35,7 +35,6 @@ A_MenuMaskKey := "vkE8"
 #Include Features\Earn\EarnStaff.ahk
 #Include Features\Earn\EarnWarehouseRead.ahk
 #Include Features\Earn\EarnWarehouse.ahk
-#Include Features\Earn\EarnHdr.ahk
 #Include Features\Earn\Earner.ahk
 #Include Features\CpuBoost.ahk
 #Include Features\StopAll.ahk
@@ -70,9 +69,6 @@ DetachFromLauncher() {
 ; 날짜 없는 AFK 로그만으로는 어느 날 켜지고 꺼졌는지 가릴 수 없었다. 시작·종료를 날짜와 함께 남긴다.
 FileAppend(FormatTime(, "yyyy-MM-dd HH:mm:ss") " 매크로 시작 pid " DllCall("GetCurrentProcessId") "`n", A_Temp "\gta-afk.log", "UTF-8")
 OnExit(LogMacroExit)
-OnExit(EarnHdrExit)
-; 이전 강제 종료는 OnExit를 실행하지 않는다. 저장된 동일 디스플레이 신원을 검증해 복원한다.
-EarnHdrRestore("이전 프로세스 복원 기록")
 LogMacroExit(reason, *) {
     try FileAppend(FormatTime(, "yyyy-MM-dd HH:mm:ss") " 매크로 종료 (" reason ")`n", A_Temp "\gta-afk.log", "UTF-8")
 }

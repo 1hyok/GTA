@@ -2,7 +2,7 @@ function Get-CiCheckPlan {
     param([string[]]$ChangedFiles, [switch]$Full)
 
     $suiteNames = @(
-        'test-earner','test-earnhdr','test-antiafk','test-altf4teleport','test-botwarp-stop','test-claw-stop','test-autoclick-stop',
+        'test-earner','test-antiafk','test-altf4teleport','test-botwarp-stop','test-claw-stop','test-autoclick-stop',
         'test-earnnav','test-earntasks','test-earnblip','test-earnpolicy','test-earnscreen','test-earnscreen-command',
         'test-earnvinewood','test-earnwarehouse-read','test-earnwarehouse','test-earnstaff',
         'test-afk-notification-command','test-afk-input-lock','test-arrow-color','test-cpuboost','test-earndj',
@@ -39,7 +39,6 @@ function Get-CiCheckPlan {
                 '^Features/Earn/EarnStaff\.ahk$' { $selected.AddRange(@('test-earnstaff','test-earner','test-earnvinewood')); break }
                 '^Features/Earn/EarnVinewood\.ahk$' { $selected.AddRange(@('test-earnvinewood','test-earner','test-earnstaff')); break }
                 '^Features/Earn/Earner\.ahk$' { $selected.Add('test-earner'); break }
-                '^Features/Earn/EarnHdr\.ahk$' { $selected.AddRange(@('test-earnhdr','test-earner')); break }
                 '^Features/Earn/EarnWarehouse(Read)?\.ahk$' { $selected.AddRange(@('test-earnwarehouse-read','test-earnwarehouse','test-earnwarehouse-templates','test-earner')); break }
                 default { $selected.AddRange($earnSuites); break }
             }
