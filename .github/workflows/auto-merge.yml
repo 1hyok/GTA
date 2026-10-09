@@ -1,0 +1,26 @@
+name: Enable auto-merge
+
+# 이 저장소는 혼자 쓴다. 소유자가 같은 저장소 안에서 연 PR 에만 자동 머지를 걸고,
+# 실제 머지는 main 보호 규칙의 필수 체크(windows)가 통과한 뒤에 GitHub 이 한다.
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: >-
+      github.event.pull_request.user.login == github.repository_owner
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Enable auto-merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --auto --merge "$PR_URL"
