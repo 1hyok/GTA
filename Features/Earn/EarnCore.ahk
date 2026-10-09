@@ -111,6 +111,10 @@ EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
             && TemplateAt("Earn", "mct_seated_hdr_bg", fx, fy))
             || (!gEarnSkipOcr && EarnMCTSeatedOcrMatches(EarnOcrLines("prompt", [0, 0, 576, 108], false)))
     }
+    ; 메뉴 제목 배너는 반투명이라 뒤 풍경이 밝은 낮에는 같은 자리에서도 차이가 80 까지 벌어진다(1010 04:35 실측: 메뉴가 열려 있는데
+    ; 40 으로 못 찾아 사장 해제가 '메뉴가 열리지 않음'으로 반복 실패, 85 에서는 같은 자리 36,120 에서 맞음).
+    if (name = "m_title")
+        return TemplateSeen("Earn", name, area, &fx, &fy, Max(variation, 85))
     if (name = "mct_title")
         return TemplateSeen("Earn", "mct_title", area, &fx, &fy, variation)
             || (TemplateSeen("Earn", "mct_title_hdr", area, &fx, &fy, Max(variation, 55))
@@ -138,7 +142,9 @@ EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
     static bossNames := Map("m_boss",1,"m_boss_sel",1,"m_ceo_sel",1,"m_start_org_sel",1,
         "m_securo",1,"m_securo_sel",1,"m_retire_sel",1,"m_sub_boss",1,"m_sub_securo",1)
     if (bossNames.Has(name))
-        return TemplateSeen("JobWarp", name, area, &fx, &fy, name = "m_boss" ? 70 : variation)
+        ; 메뉴 패널은 반투명이라 뒤 풍경이 밝은 낮에는 같은 자리에서도 차이가 80 쯤 벌어진다(1010 04:42 실측: m_securo_sel 이 40 에서는
+        ; 안 맞고 80 에서 같은 자리 37,123 에 맞음). 줄마다 글자가 달라 허용치를 넓혀도 서로 섞이지 않는다.
+        return TemplateSeen("JobWarp", name, area, &fx, &fy, Max(variation, 85))
     ; MCT 웹 화면의 고정 위치만 검색한다. 투명 글자 템플릿의 전체 화면 검색은 매우 느리다.
     static mctAreas := Map(
         "mct_need_ceo", [0,0,0.3,0.1],
@@ -414,7 +420,9 @@ EarnHudVisible() {
         if (PixelSearch(&fx, &fy, cx + Round(cw * EARN_HUD_BAR[1]), cy + Round(ch * EARN_HUD_BAR[2]),
             cx + Round(cw * EARN_HUD_BAR[3]), cy + Round(ch * EARN_HUD_BAR[4]), color, 30))
             return true
-    return false
+    ; HDR 톤 매핑은 채널마다 배율이 달라 막대가 5AC854 처럼 나오기도 한다(1010 04:41 실측: 원색 4C8F4C 와 단일 배율로 못 맞춤).
+    ; 색이 안 맞으면 체력 막대 모양 판정으로 한 번 더 본다.
+    return HealthHudVisible()
 }
 
 EarnHudGreens() {
@@ -732,7 +740,8 @@ EarnMCTRecoveryHud() {
     for name in ["afk_phone_frame", "ph_joblist_sel", "ph_vinewood_sel"]
         if (EarnSeen(name, [0.83,0.58,0.98,0.73]))
             return false
-    return !EarnSeen("afk_vinewood_title", [0,0,0.27,0.2])
+    ; Vinewood 제목 템플릿은 허용치 40 에서 'Press E to sit down' 상자에도 맞는다(1010 04:38 실측, 같은 자리 0,57). 실제 제목은 훨씬 가깝다.
+    return !EarnSeen("afk_vinewood_title", [0,0,0.27,0.2], &vx, &vy, 15)
         && !EarnSeen("mct_title", [0.3,0,0.7,0.1])
         && !EarnSeen("mct_seated", EARN_PROMPT_AREA)
 }
