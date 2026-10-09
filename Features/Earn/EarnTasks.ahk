@@ -642,56 +642,73 @@ EarnTaskMCTEnd() {
 ; MCT 로 나갔다 다시 들어가야 새 값이 나와 나이트클럽을 두 번 들어갔다. 다음 DJ 작업이 처음 읽는 값으로 확인한다.
 EarnDJSwapLoop(previousMCTReading := "") {
     global config, gEarnDJCheckAbove
-    if (!EarnDJHomeOpen())
-        return false
-    pop := EarnPopularityHomePct()
-    if (pop < 0)
-        return EarnFail("DJ: Nightclub Home 인기도 미확인")
-    EarnLog("DJ: Home 인기도 " pop "%")
-    if (gEarnDJCheckAbove >= 0) {
-        before := gEarnDJCheckAbove
-        gEarnDJCheckAbove := -1
-        if (pop <= before)
-            return EarnFail("DJ: 지난 재고용 뒤 인기도 증가 미확인 (" before " → " pop ")")
+    ; 재고용 한 번은 +10%p 라 목표까지 여러 번 필요하다. 결제 뒤 Home 은 바로 갱신되지 않으므로(1004 실측)
+    ; MCT 로 나갔다가 Home 을 다시 열어 오른 것이 보일 때만 같은 방문에서 또 재고용한다.
+    ; 아직 안 보이면 돈을 더 쓰지 않고 다음 확인 때 본다.
+    rebooks := 0
+    Loop {
+        if (!EarnDJHomeOpen())
+            return false
+        pop := EarnPopularityHomePct()
+        if (pop < 0)
+            return EarnFail("DJ: Nightclub Home 인기도 미확인")
+        EarnLog("DJ: Home 인기도 " pop "%")
+        if (gEarnDJCheckAbove >= 0) {
+            before := gEarnDJCheckAbove
+            gEarnDJCheckAbove := -1
+            if (pop <= before) {
+                if (!rebooks)
+                    return EarnFail("DJ: 지난 재고용 뒤 인기도 증가 미확인 (" before " → " pop ")")
+                gEarnDJCheckAbove := before
+                EarnLog("DJ: 재고용 반영이 아직 Home 에 안 보여 다음 확인 때 본다")
+                return EarnUIBackToMCT("nc_dj_menu", 1)
+            }
+        }
+        if (!EarnDJNeedsRebook(pop, config["Settings"]["EarnDJPopularityPct"])) {
+            EarnLog("DJ: 목표 인기도 도달로 교체 안 함")
+            EarnDJSchedule(pop, false)
+            return EarnUIBackToMCT("nc_dj_menu", 1)
+        }
+        if (rebooks >= 10) {
+            EarnLog("DJ: 한 번 방문의 재고용 상한 도달, 다음 확인 때 이어서")
+            return EarnUIBackToMCT("nc_dj_menu", 1)
+        }
+        if (!EarnUIClick("nc_dj_menu", 495, 759)
+            || !EarnWaitSeen("dj_solomun", "", 5000))
+            return EarnFail("DJ: 목록 이동 실패")
+        ; 캡처로 확인한 $10,000 Rebook만 클릭. 신규 고용은 선택하지 않는다.
+        area := [0.38, 0.50, 0.603, 0.58]
+        rebook := "dj_rebook_10k"
+        resident := "dj_resident"
+        targetX := 1100, confirmation := "dj_confirm_solomun"
+        if (!EarnSeen(rebook, area)) {
+            area := [0.61, 0.50, 0.835, 0.58]
+            rebook := "dj_rebook_10k_right"
+            resident := "dj_resident_right"
+            targetX := 1540, confirmation := "dj_confirm_tale"
+        }
+        if (!EarnSeen(rebook, area))
+            return EarnFail("DJ: 기존 DJ $10,000 재고용 버튼 없음")
+        if (!EarnUIClick(rebook, targetX, 584, area)
+            || !EarnWaitSeen(confirmation, "", 3000))
+            return EarnFail("DJ: 재고용 확인창 미확인")
+        if (!EarnTransactionBegin("dj", "DJ $10,000 재고용 결과 확인 필요"))
+            return false
+        if (!EarnUIClick(confirmation, 1160, 628)
+            || !EarnWaitGone(confirmation, "", 15000)
+            || !EarnWaitSeen(resident, area, 5000))
+            return EarnFail("DJ: 교체 결과 미확인")
+        EarnTransactionConfirmed("dj")
+        rebooks++
+        gEarnDJCheckAbove := pop
+        EarnDJSchedule(pop, true)
+        if (!EarnUIClick("nc_home", 495, 596)
+            || !EarnWaitSeen("nc_popularity_home", [0.38,0.14,0.54,0.19], 5000))
+            return false
+        EarnLog("DJ: 재고용 확인 (인기도 " pop "%에서 올랐는지 Home 을 다시 열어 본다)")
+        if (!EarnUIBackToMCT("nc_dj_menu", 1) || !EarnSleep(1500))
+            return false
     }
-    if (!EarnDJNeedsRebook(pop, config["Settings"]["EarnDJPopularityPct"])) {
-        EarnLog("DJ: 목표 인기도 도달로 교체 안 함")
-        EarnDJSchedule(pop, false)
-        return EarnUIBackToMCT("nc_dj_menu", 1)
-    }
-    if (!EarnUIClick("nc_dj_menu", 495, 759)
-        || !EarnWaitSeen("dj_solomun", "", 5000))
-        return EarnFail("DJ: 목록 이동 실패")
-    ; 캡처로 확인한 $10,000 Rebook만 클릭. 신규 고용은 선택하지 않는다.
-    area := [0.38, 0.50, 0.603, 0.58]
-    rebook := "dj_rebook_10k"
-    resident := "dj_resident"
-    targetX := 1100, confirmation := "dj_confirm_solomun"
-    if (!EarnSeen(rebook, area)) {
-        area := [0.61, 0.50, 0.835, 0.58]
-        rebook := "dj_rebook_10k_right"
-        resident := "dj_resident_right"
-        targetX := 1540, confirmation := "dj_confirm_tale"
-    }
-    if (!EarnSeen(rebook, area))
-        return EarnFail("DJ: 기존 DJ $10,000 재고용 버튼 없음")
-    if (!EarnUIClick(rebook, targetX, 584, area)
-        || !EarnWaitSeen(confirmation, "", 3000))
-        return EarnFail("DJ: 재고용 확인창 미확인")
-    if (!EarnTransactionBegin("dj", "DJ $10,000 재고용 결과 확인 필요"))
-        return false
-    if (!EarnUIClick(confirmation, 1160, 628)
-        || !EarnWaitGone(confirmation, "", 15000)
-        || !EarnWaitSeen(resident, area, 5000))
-        return EarnFail("DJ: 교체 결과 미확인")
-    EarnTransactionConfirmed("dj")
-    gEarnDJCheckAbove := pop
-    EarnDJSchedule(pop, true)
-    if (!EarnUIClick("nc_home", 495, 596)
-        || !EarnWaitSeen("nc_popularity_home", [0.38,0.14,0.54,0.19], 5000))
-        return false
-    EarnLog("DJ: 재고용 확인 (인기도 " pop "%에서 올랐는지는 다음 DJ 확인 때 본다)")
-    return EarnUIBackToMCT("nc_dj_menu", 1)
 }
 
 EarnDJHomeOpen() {
