@@ -184,6 +184,10 @@ EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
         return TemplateSeen("Earn", name, area, &fx, &fy, Max(variation, 60))
             || TemplateSeen("Earn", "phone_call_end_live", area, &fx, &fy, variation)
     }
+    ; MCT·나이트클럽 웹 화면은 고정 위치의 평평한 그림이라 허용치를 60 으로 넓혀도 다른 화면과 섞이지 않는다(차이 130 이상).
+    ; 창 모드·캡처 압축으로 글자 가장자리 몇 픽셀이 40 을 살짝 넘는다(1010 04:50 실측: dj_solomun 607픽셀 중 2개가 42 차이로 40 에서만 실패).
+    if (mctAreas.Has(name))
+        variation := Max(variation, 60)
     return TemplateSeen("Earn", name, area, &fx, &fy, variation)
 }
 
