@@ -75,8 +75,9 @@ TemplateSeen(folder, name, area := "", &fx := 0, &fy := 0, variation := 40) {
             ; 화면 밝기가 템플릿을 뜰 때와 다르면 같은 그림을 밝힌 사본으로 한 번 더 찾는다.
             for gainImg in TemplateGainImages(folder, cw "x" ch, name) {
                 try found := ImageSearch(&fx, &fy, x1, y1, x2, y2, "*" variation " *Trans0xFF00FF " gainImg)
-                if (found)
+                if (found && TemplateGainBackgroundOK(gainImg, fx, fy))
                     break
+                found := false
             }
         }
         return found
@@ -113,7 +114,8 @@ TemplateAt(folder, name, x, y, variation := 90) {
         for gainImg in TemplateGainImages(folder, cw "x" ch, name) {
             try {
                 if (ImageSearch(&fx, &fy, x, y, Min(x + cw - 1, cx + cw - 1), Min(y + 60, cy + ch - 1),
-                    "*" variation " *Trans0xFF00FF " gainImg) && fx = x && fy = y)
+                    "*" variation " *Trans0xFF00FF " gainImg) && fx = x && fy = y
+                    && TemplateGainBackgroundOK(gainImg, fx, fy))
                     return true
             }
         }
@@ -151,7 +153,7 @@ TemplateGainBuild(src, dst, gain) {
         if (StrCompare(A_LoopFileTimeModified, newest) > 0)
             newest := A_LoopFileTimeModified
     }
-    stamp := count "|" newest "|" gain
+    stamp := "v2|" count "|" newest "|" gain  ; v2: 순백 사본의 바탕 표본(.bg)
     marker := dst "\.stamp"
     try {
         if (FileExist(marker) && FileRead(marker, "UTF-8") = stamp)
@@ -173,4 +175,37 @@ TemplateGainBuild(src, dst, gain) {
     try FileAppend(stamp, marker, "UTF-8")
     MacroLog("screen", "밝기 사본 생성 " dst)
     return true
+}
+
+; 흰 글자만 남긴 템플릿은 밝힌 사본이 순백 덩어리라 흰 벽·하늘에도 맞는다(1010 실측: 밝은 방 벽에서 mct_sit 사본이 맞음).
+; TemplateGain.ps1 이 남긴 바탕 표본(<사본>.bg, 글자에서 떨어진 투명 칸)을 찾은 자리에서 읽어 3/4 이상이 순백이 아니어야 인정한다.
+; 진짜 안내는 어둡거나 색 있는 바탕(검정·보라·빨강 버튼) 위에 있다. 표본 파일이 없는 사본은 글자 외 픽셀이 구별해 주므로 그대로 인정한다.
+TemplateGainBackgroundOK(gainImg, fx, fy) {
+    static cache := Map()
+    bgFile := gainImg ".bg"
+    if (!cache.Has(bgFile)) {
+        points := []
+        if (FileExist(bgFile)) {
+            Loop Parse FileRead(bgFile), "`n", "`r" {
+                if (A_LoopField = "")
+                    continue
+                xy := StrSplit(A_LoopField, ",")
+                if (xy.Length = 2 && IsInteger(xy[1]) && IsInteger(xy[2]))
+                    points.Push([Integer(xy[1]), Integer(xy[2])])
+            }
+        }
+        cache[bgFile] := points
+    }
+    points := cache[bgFile]
+    if (!points.Length)
+        return true
+    dark := 0
+    for point in points {
+        try c := PixelGetColor(fx + point[1], fy + point[2])
+        catch
+            return false
+        if (Min((c >> 16) & 255, (c >> 8) & 255, c & 255) < 200)
+            dark++
+    }
+    return dark * 4 >= points.Length * 3
 }
