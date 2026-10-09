@@ -66,6 +66,18 @@ Reset()
 AntiAFKTick()
 Check(events.Length = 2 && events[1] = "mouse:2" && events[2] = "mouse:-2" && !gAFKBusy && afkNextDue > FakeTick() && releases = 1, "mouse pair and lock release")
 Reset()
+gAFKScreenGuard := FakeScreenGuard, idleMs := 301000
+AntiAFKTick()
+Check(guardCalls = 1 && events.Length = 2 && LogHas("MCT 화면 정리 완료"), "long idle runs the screen guard before the mouse pair")
+Reset()
+gAFKScreenGuard := FakeScreenGuard, idleMs := 120000
+AntiAFKTick()
+Check(guardCalls = 0 && events.Length = 2, "screen guard waits for five minutes of idle")
+Reset()
+gAFKScreenGuard := FakeScreenGuard, idleMs := 301000, guardInterrupts := true
+AntiAFKTick()
+Check(guardCalls = 1 && events.Length = 0 && !gAFKBusy && releases = 1, "user input during the screen guard cancels the mouse pair")
+Reset()
 interrupt := true
 AntiAFKTick()
 Check(events.Length = 1 && !gAFKBusy && releases = 1, "user interrupts mouse return")
@@ -249,6 +261,7 @@ Reset() {
     afkOn := true, afkNextDue := 0, gAFKBusy := false
     afkRefocusFails := 0, afkRefocusStretch := 0, afkRefocusLastErr := "", afkRefocusWindow := "", GTA_WIN := "fake"
     afkHookTick := 0, afkSelfFrom := 0, afkSelfTo := 0, afkSelfBefore := 0
+    gAFKScreenGuard := "", guardCalls := 0, guardInterrupts := false
     clawLoopRunning := false, gEarnBusy := false, gMenuBusy := false
     idleMs := 60000, hookExtraMs := 0, anyIdleMs := 1000000000, anyInjectedAt := 0
     focused := true, windowExists := true, frontExists := true, frontExe := "chrome.exe", frontTitle := "about:blank", teleportBusy := false
@@ -269,6 +282,13 @@ Reset() {
 }
 ; 전체 입력 유휴(GetLastInputInfo). 물리 입력도 세므로 훅이 본 물리 유휴(+훅 설치 전 유휴)보다 길 수 없고, 주입 입력마다 0 이 된다.
 FakeTick() => fakeNow
+FakeScreenGuard(idleSec) {
+    global guardCalls, idleMs
+    guardCalls++
+    if (guardInterrupts)
+        idleMs := 0
+    return "MCT 화면 정리 완료 idle=" idleSec "s"
+}
 AnyIdle() {
     global
     v := Min(idleMs + hookExtraMs, anyIdleMs)

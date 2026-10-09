@@ -19,6 +19,34 @@ global gEarnGuardArmed := false
 global gEarnGuardStartedTick := 0
 global gEarnUserAbort := false
 global gEarnInputGuard := EarnInputAllowed
+global gAFKScreenGuard := EarnAFKCloseMCT
+global gEarnAFKCleanup := false
+
+; AFK 방지가 오래 방치된 MCT 화면을 만나면 수익 작업과 같은 확인된 정리 경로(확인창 취소 → MCT 닫기 → 일어서기 → 사장 해제)로 닫는다.
+; 수익 작업이 도는 중에는 건드리지 않는다. 열린 MCT 화면이 안 보이면 아무 입력도 하지 않고 빈 문자열을 돌려준다.
+EarnAFKCloseMCT(idleSec) {
+    global gEarnBusy, gEarnFail, gAbort, gEarnAFKCleanup, gEarnGuardArmed, gEarnGuardStartedTick, gEarnGamePID, gEarnUserAbort
+    if ((IsSet(gEarnBusy) && gEarnBusy) || gAbort)
+        return ""
+    if (!EarnAtMCT() && !EarnSeen("nc_dj_menu") && !EarnSeen("bunker_page") && !EarnSeen("bunker_entry")
+        && !EarnSeen("dj_solomun") && !EarnSeen("bunker_confirm") && !EarnSeen("bunker_pending"))
+        return ""
+    ; 수익 작업과 같은 입력 감시를 건다. 정리 중 사람이 키보드·마우스를 만지면 바로 멈춘다.
+    prevArmed := gEarnGuardArmed, prevStarted := gEarnGuardStartedTick, prevPID := gEarnGamePID, prevUserAbort := gEarnUserAbort
+    gEarnBusy := true, gEarnAFKCleanup := true
+    gEarnGuardArmed := true, gEarnGuardStartedTick := A_TickCount, gEarnGamePID := EarnGamePID()
+    try {
+        gEarnFail := ""
+        ok := EarnTaskMCTEnd()
+        EarnLog("AFK: " idleSec "초 방치된 MCT 화면 정리 " (ok ? "완료" : "실패: " gEarnFail))
+        return "MCT 화면 정리 " (ok ? "완료" : "실패: " gEarnFail) " idle=" idleSec "s"
+    } finally {
+        gEarnBusy := false, gEarnAFKCleanup := false
+        gEarnGuardArmed := prevArmed, gEarnGuardStartedTick := prevStarted, gEarnGamePID := prevPID
+        ; 정리 중 사용자 입력으로 멈췄어도 스케줄러 상태는 정리 전으로 둔다. 다음 AFK 차례에 다시 판단한다.
+        gAbort := false, gEarnUserAbort := prevUserAbort
+    }
+}
 global gEarnGamePID := 0
 
 EarnTaskList() {
