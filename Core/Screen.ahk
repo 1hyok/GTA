@@ -18,9 +18,11 @@ HealthHudVisible() {
         if (cw != 1920 || ch != 1080)
             return false
         CoordMode("Pixel", "Screen")
+        ; 미니맵 나침반의 N 아이콘이 카메라 방향에 따라 막대 위(x 60~76 근처)로 돌아와 앞쪽 16점(x 40~85) 중 6점을 가렸다
+        ; (1010 07:46 실측: MCT 앞에서 회전·메뉴가 'HUD 미확인'으로 반복 실패). 초록 막대 전체(x 40~164)를 4px 간격으로 본다.
         colors := []
-        Loop 16
-            colors.Push(PixelGetColor(cx + 40 + (A_Index-1)*3, cy + 1053))
+        Loop 32
+            colors.Push(PixelGetColor(cx + 40 + (A_Index-1)*4, cy + 1053))
         return HealthHudColors(colors)
     } catch {
         return false
@@ -31,14 +33,14 @@ HealthHudVisible() {
 }
 
 HealthHudColors(colors) {
-    if (colors.Length != 16)
+    if (colors.Length < 16)
         return false
     green := 0
     for color in colors {
         r := (color >> 16) & 255, g := (color >> 8) & 255, b := color & 255
         green += g >= 100 && g-r >= 40 && g-b >= 40 && Abs(r-b) <= 25
     }
-    return green >= 12
+    return green * 4 >= colors.Length * 3
 }
 
 ; area 는 클라이언트 비율 [x1, y1, x2, y2] (0~1). 찾은 자리(화면 좌표)는 &fx, &fy.
