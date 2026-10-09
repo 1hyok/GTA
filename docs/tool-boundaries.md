@@ -19,6 +19,8 @@
 
 `EarnSnapMinimap`은 `Features/Earn/EarnCore.ahk` 자신의 경로인 `A_LineFile`을 기준으로 캡처 스크립트를 찾는다. `Main.ahk`와 `tools/earn-test/earntest.ahk`에서 같은 런타임을 사용하며, `%TEMP%\claude\capscreen.ps1` 사본이 필요하지 않다. 결과는 기존과 같이 `%TEMP%\claude\gta-earn-<tag>.png`에 저장한다. 출력 디렉터리가 없으면 생성한다.
 
+`EarnSnapFail`도 같은 스크립트로 MCT 실패 순간의 GTA 클라이언트 전체를 `%TEMP%\claude\gta-earn-fail-<시각>-<사유>.png`에 남기고 30장을 넘으면 오래된 것부터 지운다. `EarnFail`에서 `MCT`로 시작하는 사유에만 호출되며, GTA 창이 없으면 아무것도 하지 않는다.
+
 `tools/tests/screen-capture.tests.ps1`은 실제 호출 함수를 별도 디렉터리에 놓고 두 진입점에서 실행한다. 화면 조회는 대역으로 바꾸고 캡처 스크립트는 전달받은 인자만 기록한다. 공백과 `&`가 있는 경로, 음수 좌표, 기존 수동 명령의 인자와 기본값, 새 출력 디렉터리 생성을 검사한다. 이 검사는 실제 화면을 캡처하지 않는다.
 
 ## 감시 도구의 운영 데이터
