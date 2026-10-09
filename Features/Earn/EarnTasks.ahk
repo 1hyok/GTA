@@ -540,7 +540,8 @@ EarnMCTRefresh() {
 }
 
 EarnTaskMCTEnd() {
-    global gEarnFail
+    global gEarnFail, gEarnCleanupNoScreen
+    gEarnCleanupNoScreen := false
     originalFailure := IsSet(gEarnFail) ? gEarnFail : ""
     try {
         if (EarnAborted())
@@ -552,14 +553,20 @@ EarnTaskMCTEnd() {
             if (EarnAborted())
                 return false
             if (A_TickCount >= deadline)
-                return EarnFail("MCT 정리: 알려진 화면 확인 시간 초과")
+                {
+                    gEarnCleanupNoScreen := true  ; 열린 MCT 화면이 하나도 안 보임: 복구 반복 시 해제 근거
+                    return EarnFail("MCT 정리: 알려진 화면 확인 시간 초과")
+                }
             known := EarnUIReady("mct_sit", [0,0,0.3,0.1])
             for name in ["bunker_confirm", "bunker_pending", "dj_confirm_solomun", "dj_confirm_tale", "bunker_page",
                 "bunker_entry", "nc_dj_menu", "mct_title", "mct_seated", "mct_need_ceo", "mct_terrorbyte"] {
                 if (EarnAborted())
                     return false
                 if (A_TickCount >= deadline)
-                    return EarnFail("MCT 정리: 알려진 화면 확인 시간 초과")
+                    {
+                        gEarnCleanupNoScreen := true  ; 열린 MCT 화면이 하나도 안 보임: 복구 반복 시 해제 근거
+                        return EarnFail("MCT 정리: 알려진 화면 확인 시간 초과")
+                    }
                 if (known)
                     break
                 area := name = "mct_title" ? [0.3,0,0.7,0.1] : name = "mct_seated" ? [0,0,0.3,0.1] : ""
@@ -568,7 +575,10 @@ EarnTaskMCTEnd() {
             if (EarnAborted())
                 return false
             if (A_TickCount >= deadline)
-                return EarnFail("MCT 정리: 알려진 화면 확인 시간 초과")
+                {
+                    gEarnCleanupNoScreen := true  ; 열린 MCT 화면이 하나도 안 보임: 복구 반복 시 해제 근거
+                    return EarnFail("MCT 정리: 알려진 화면 확인 시간 초과")
+                }
             if (known)
                 break
             if (!EarnSleep(Min(200, deadline - A_TickCount)))
@@ -577,7 +587,10 @@ EarnTaskMCTEnd() {
         if (EarnAborted())
             return false
         if (A_TickCount >= deadline)
-            return EarnFail("MCT 정리: 알려진 화면 확인 시간 초과")
+            {
+                gEarnCleanupNoScreen := true  ; 열린 MCT 화면이 하나도 안 보임: 복구 반복 시 해제 근거
+                return EarnFail("MCT 정리: 알려진 화면 확인 시간 초과")
+            }
         if (EarnUIReady("bunker_confirm")) {
             if (!EarnUIClick("bunker_confirm", 850, 619)
                 || !EarnWaitGone("bunker_confirm", "", 3000)
