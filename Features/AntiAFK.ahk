@@ -18,6 +18,9 @@ global afkHookTick := 0          ; SetAntiAFK 가 키보드·마우스 훅을 �
 global afkSelfFrom := 0          ; 이 매크로가 입력(마우스 왕복·전면화 중 Alt)을 넣기 시작한 시각
 global afkSelfTo := 0            ; 그 입력을 끝낸 시각. 0 이면 아직 넣는 중
 global afkSelfBefore := 0        ; 그 구간 직전까지의 마지막 남의 입력 시각
+; 마우스 왕복 직전에 부를 화면 정리(Main 은 Earner 가 넣는다). MCT 컴퓨터 화면 안에서는 작은 마우스 이동이 화면 속 커서만 움직여
+; 방치로 세어진다(1010 04:50~05:31: DJ 목록이 열린 채 3~4분마다 마우스 왕복을 보냈는데 추방됨). 그런 화면을 닫아 마우스 왕복이 먹는 상태로 돌린다.
+global gAFKScreenGuard := ""
 
 ToggleAntiAFK(*) {
     global afkOn
@@ -41,7 +44,7 @@ SetAntiAFK(on) {
 }
 
 AntiAFKTick() {
-    global afkOn, afkNextDue, config, clawLoopRunning, gEarnBusy, gMenuBusy, gAFKBusy, afkRefocusFails, afkRefocusLastErr
+    global afkOn, afkNextDue, config, clawLoopRunning, gEarnBusy, gMenuBusy, gAFKBusy, afkRefocusFails, afkRefocusLastErr, gAFKScreenGuard
     if (!afkOn || gAFKBusy)
         return
     if (IsSet(clawLoopRunning) && clawLoopRunning)
@@ -101,6 +104,19 @@ AntiAFKTick() {
         }
         if (!AFKInputAllowed())
             return
+        closeSec := config["Settings"].Get("AFKMCTCloseIdleSec", 300)
+        if (IsObject(gAFKScreenGuard) && closeSec > 0 && AFKPhysicalIdleMs() >= closeSec * 1000) {
+            AFKSelfInput(true)
+            try guarded := gAFKScreenGuard.Call(idleSec)
+            catch as err
+                guarded := "화면 정리 오류: " err.Message
+            finally
+                AFKSelfInput(false)
+            if (guarded != "")
+                AFKLog(guarded)
+            if (!AFKInputAllowed())
+                return
+        }
         ; 화면 판독에 의존하지 않는 작은 마우스 왕복. 사용자 개입 시 복귀 입력도 취소한다.
         AFKSelfInput(true)
         try {

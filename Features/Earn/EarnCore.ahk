@@ -86,10 +86,11 @@ EarnSoftFail(reason, retryMin) {
 
 ; 전체 멈춤(End)·GTA 가 앞이 아님·스케줄러가 꺼짐(F9 두 번). 시험 스크립트(earntest.ahk)는 gEarnOn 이 없어 IsSet 으로 본다
 EarnAborted() {
-    global gAbort, gEarnOn, gEarnInputGuard
+    global gAbort, gEarnOn, gEarnInputGuard, gEarnAFKCleanup
     if (IsSet(gEarnInputGuard) && !gEarnInputGuard.Call())
         return true
-    return gAbort || !IsGTAActive() || (IsSet(gEarnOn) && !gEarnOn)
+    ; AFK 방지의 MCT 정리는 스케줄러가 꺼져 있어도 돈다(꺼진 채 MCT 화면에 방치되는 것이 그 정리가 막을 사고다).
+    return gAbort || !IsGTAActive() || (IsSet(gEarnOn) && !gEarnOn && !(IsSet(gEarnAFKCleanup) && gEarnAFKCleanup))
 }
 
 ; name 템플릿(Images\Earn\<해상도>\<name>.png)이 area(클라이언트 비율 [x1, y1, x2, y2]) 안에 보이면 true. 찾은 자리(화면 좌표)는 &fx, &fy.
