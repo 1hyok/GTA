@@ -4,6 +4,7 @@
 ; 템플릿은 1920x1080 테두리 없는 창에서 뜬 것이다. 해상도가 다르면 그 해상도 폴더에 같은 이름으로 떠 넣어야 동작한다(없으면 멈춘다).
 global gEarnBusy := false        ; 수익 자동화가 게임에 키를 보내는 중. AFK 방지가 이 동안 쉰다
 global gEarnFail := ""           ; 마지막으로 멈춘 까닭 (오버레이·설정 창·로그에 보인다)
+global gEarnCleanupNoScreen := false  ; 마지막 MCT 정리가 "열린 MCT 화면 없음"으로 실패했는가
 global gEarnRetryIn := 0          ; 작업이 지정한 재시도 간격. 0이면 스케줄러의 기본 backoff를 쓴다
 
 ; 상호작용 메뉴가 차지하는 영역(클라이언트 비율). 제목·줄 템플릿은 여기서만 찾는다
