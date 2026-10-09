@@ -71,6 +71,11 @@ SetupHotkeys() {
                 try {
                     Hotkey(prefix name, Dispatch.Bind(action, name))
                     gKeyTable[name] := action.id
+                    HotkeyAudit(action, name, "registered")
+                    if (action.id = "Earner") {
+                        HotIf((*) => !WinActive(GTA_WIN))
+                        Hotkey("~*$" name, IgnoredEarnerKey.Bind(action, name))
+                    }
                 } catch as e {
                     MacroLog("hotkey", "등록 실패 " action.id "=" name " : " e.Message)
                 }
@@ -84,23 +89,63 @@ SetupHotkeys() {
 Dispatch(action, key, *) {
     global gArmed, config
 
+    HotkeyAudit(action, key, "received")
     if (action.HasProp("confirm") && action.confirm) {
         windowMs := config["Settings"]["ConfirmWindowMs"]
         if (!(gArmed.Has(action.id) && A_TickCount - gArmed[action.id] <= windowMs)) {
             gArmed[action.id] := A_TickCount
+            HotkeyAudit(action, key, "confirmation-wait", "window_ms=" windowMs)
+            SetTimer(ExpireArmedAction.Bind(action, key, gArmed[action.id]), -windowMs)
             ShowTooltip(action.label ": " Round(windowMs / 1000) "초 안에 한 번 더 누르면 실행", windowMs)
             ; 키를 누르고 있어서 생기는 자동 반복이 두 번째 누름으로 세지지 않게 뗄 때까지 기다린다.
             KeyWait(key, "T" (windowMs / 1000))
-            if (GetKeyState(key, "P"))
+            if (GetKeyState(key, "P") && gArmed.Has(action.id)) {
                 gArmed.Delete(action.id)
+                HotkeyAudit(action, key, "confirmation-cancelled", "key-held")
+            }
             return
         }
+        HotkeyAudit(action, key, "confirmed", "elapsed_ms=" (A_TickCount - gArmed[action.id]))
         gArmed.Delete(action.id)
     }
 
-    action.fn.Call()
+    HotkeyAudit(action, key, "action-start")
+    try {
+        action.fn.Call()
+        HotkeyAudit(action, key, "action-return")
+    } catch as failure {
+        HotkeyAudit(action, key, "action-error", failure.Message)
+        throw failure
+    }
     ; 토글이 자동 반복으로 켜졌다 바로 꺼지지 않게 뗄 때까지 기다린다 (같은 핫키의 추가 누름은 그동안 무시된다).
     KeyWait(key, "T2")
+}
+
+ExpireArmedAction(action, key, started) {
+    global gArmed
+    if (gArmed.Has(action.id) && gArmed[action.id] = started) {
+        gArmed.Delete(action.id)
+        HotkeyAudit(action, key, "confirmation-expired")
+    }
+}
+
+IgnoredEarnerKey(action, key, *) {
+    global gArmed
+    if (gArmed.Has(action.id))
+        gArmed.Delete(action.id)
+    HotkeyAudit(action, key, "ignored", "GTA-not-active; key-passed-through")
+    KeyWait(key, "T2")
+}
+
+HotkeyAudit(action, key, event, detail := "") {
+    ; Logging failures must not prevent the requested action or key release.
+    try {
+        foreground := "unknown"
+        try foreground := WinGetProcessName("A")
+        MacroLog("hotkey", action.id " key=" key " event=" event
+            " pid=" DllCall("GetCurrentProcessId") " foreground=" foreground
+            (detail = "" ? "" : " " detail))
+    }
 }
 
 ; 액션 id 에 등록된 키를 표시용 이름으로 돌려준다. 없으면 "(키 없음)".
