@@ -461,14 +461,41 @@ EarnDJTask(manageSession := true) {
     return ok && ended
 }
 
+; MCT 앞 안내가 안 보일 때 시점을 좌우로 조금씩 돌려 안내가 뜨는 각도를 찾는다. 찾으면 그 각도에 두고 true,
+; 못 찾으면 원래 각도로 돌려놓고 false. 중단·HUD 미확인이면 거기서 멈춘다.
+EarnMCTSpotSweep() {
+    global config
+    k := config["Settings"]["EarnTurnUnitsPerDeg"]
+    turned := 0
+    for deg in [12, -24, 36, -48] {
+        if (!EarnTurnLoop(Round(deg * k), 0, false))
+            return false
+        turned += deg
+        if (!EarnSleep(400))
+            return false
+        if (EarnAtMCT() || EarnSeen("mct_sit", [0,0,0.3,0.1]) || EarnSeen("mct_terrorbyte")) {
+            EarnLog("MCT 시작: 시점을 " turned "도 돌려 안내 확인")
+            return true
+        }
+    }
+    EarnTurnLoop(Round(-turned * k), 0, false)
+    return false
+}
+
 EarnTaskMCTBegin() {
     global gEarnMCTCleanupOK
     gEarnMCTCleanupOK := true
     ; 이 자동화는 사용자가 둔 MCT 앞에서만 동작한다. 부동산 재접속·임의 길찾기는 하지 않는다.
     ; 게임 알림 아이콘이 안내 위에 잠깐 겹치면 한 번은 빗나간다(1003 18:25 실측). 5초 다시 보고, 그래도 없으면 끄지 않고 3분 뒤 다시 한다.
-    spotDeadline := A_TickCount + 5000
+    spotDeadline := A_TickCount + 5000, swept := false
     while (!EarnAtMCT() && !EarnSeen("mct_sit", [0,0,0.3,0.1]) && !EarnSeen("mct_terrorbyte")) {
         if (A_TickCount >= spotDeadline || !EarnSleep(500)) {
+            ; MCT 앞인데 시점이 살짝 어긋나 안내가 안 뜰 수 있다(1011 01:09~ 실측: 서 있는데 앉기 안내가 없었다). 한 번 좌우로 돌려 찾는다.
+            if (!swept && !EarnAborted()) {
+                swept := true
+                if (EarnMCTSpotSweep())
+                    break
+            }
             EarnBossOffIfOn()
             return EarnSoftFail("MCT 앞에 서 있거나 사업장 목록을 연 상태에서 시작해야 함", 3)
         }
