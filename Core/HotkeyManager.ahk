@@ -92,6 +92,23 @@ KeyHookWatchdog() {
     InstallKeybdHook(true, true)
 }
 
+; 진단용(F9 누락 원인 확인): 1분마다 F24 를 보내고, 직전 F24 가 키보드 훅에 도착했는지 기록한다.
+; 훅이 떨어진 순간 보낸 F24 는 AHK 가 받지 못하므로 미수신 줄이 곧 훅이 죽은 증거다.
+; F24 는 게임이 쓰지 않는 키라 보내도 게임 입력에는 영향이 없다.
+global gProbeSent := 0     ; 마지막으로 F24 를 보낸 시각 (A_TickCount)
+global gProbeSeen := 0     ; 마지막으로 F24 가 훅에 도착한 시각
+KeyProbeSeen(*) {
+    global gProbeSeen
+    gProbeSeen := A_TickCount
+}
+KeyHookProbe() {
+    global gProbeSent, gProbeSeen
+    if (gProbeSent && gProbeSeen < gProbeSent)
+        MacroLog("probe", "F24 미수신: 직전 보낸 뒤 훅에 안 들어옴 (보낸 " gProbeSent ", 받은 " gProbeSeen ")")
+    gProbeSent := A_TickCount
+    Send("{F24}")
+}
+
 ; 핫키 스레드 진입점. confirm 액션은 ConfirmWindowMs 안에 두 번 눌러야 실행한다.
 Dispatch(action, key, *) {
     global gArmed, config

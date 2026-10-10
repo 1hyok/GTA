@@ -42,6 +42,9 @@ function Invoke-EarnOfflineCheck {
     if ($Name -eq 'MCTEndDeadline') {
         $functionBody = $functionBody.Replace('A_TickCount', 'CleanupClock()')
     }
+    if ($Name -eq 'MCTBegin') {
+        $functionBody = $functionBody.Replace('A_TickCount', 'SpotClock()')
+    }
     $prefix = @'
 #Requires AutoHotkey v2.0
 #SingleInstance Off
@@ -452,17 +455,19 @@ ExitApp(0)
 '@
     Invoke-EarnOfflineCheck 'DJRebook' 'EarnDJNeedsRebook' $djDriver 10
     $mctDriver = @'
-global config := Map("Settings", Map("EarnMCTOnly",1)), scene := "", failAt := "", order := "", softRetry := 0
+global config := Map("Settings", Map("EarnMCTOnly",1)), scene := "", failAt := "", order := "", softRetry := 0, spotClockMs := 0, sweepCalls := 0
 for c in [["list","",true,"OR"],["stand","",true,"OR"],["chair","",true,"OR"],
     ["need-ceo","",true,"OR"],["away","",false,""],["list","O",false,"OE"],
-    ["stand","O",false,"OE"],["stand","R",false,"ORE"],["flicker","",true,"OR"]] {
-    scene := c[1], failAt := c[2], order := "", softRetry := 0
+    ["stand","O",false,"OE"],["stand","R",false,"ORE"],["flicker","",true,"OR"],["sweep","",true,"OR"]] {
+    scene := c[1], failAt := c[2], order := "", softRetry := 0, spotClockMs := 0, sweepCalls := 0
     if (EarnTaskMCTBegin() != c[3] || order != c[4])
         throw Error("MCT begin guard: " c[1] "/" c[2] " order=" order)
     if (c[1] = "away" && softRetry != 3)
         throw Error("MCT begin away must retry later instead of stopping")
+    if (sweepCalls != ((c[1] = "away" || c[1] = "sweep") ? 1 : 0))
+        throw Error("MCT begin must sweep the view exactly once, and only when no prompt is seen: " c[1] " calls=" sweepCalls)
 }
-FileAppend("PASS MCTBegin cases=9`n", "*")
+FileAppend("PASS MCTBegin cases=10`n", "*")
 ExitApp(0)
 EarnUIReady(name,*) => EarnSeen(name)
 EarnAtMCT() => scene = "list" || scene = "chair" || scene = "need-ceo"
@@ -493,11 +498,22 @@ EarnGoHome(*) {
     throw Error("MCT tasks must not travel")
 }
 EarnSleep(ms) {
-    global scene
+    global scene, spotClockMs
     if (scene = "flicker")
         scene := "stand"
-    Sleep(ms)
+    spotClockMs += ms
     return true
+}
+SpotClock() => spotClockMs
+EarnAborted() => false
+EarnMCTSpotSweep() {
+    global scene, sweepCalls
+    sweepCalls += 1
+    if (scene = "sweep") {
+        scene := "stand"
+        return true
+    }
+    return false
 }
 EarnSoftFail(reason, retryMin) {
     global softRetry := retryMin
@@ -505,7 +521,7 @@ EarnSoftFail(reason, retryMin) {
 }
 EarnFail(*) => false
 '@
-    Invoke-EarnOfflineCheck 'MCTBegin' 'EarnTaskMCTBegin' $mctDriver 9
+    Invoke-EarnOfflineCheck 'MCTBegin' 'EarnTaskMCTBegin' $mctDriver 10
     $mctCleanupSupport = @'
 EarnAborted() => endAbort
 EarnWaitSeen(name,area,timeoutMs) {
@@ -831,6 +847,7 @@ EarnMCTRefresh() {
 '@
     $mctBeginCleanupDriver += "`n" + $mctCleanupSupport + "`n" + (Get-EarnFunctionBody $sourceText 'EarnTaskMCTEnd')
     $mctBeginCleanupDriver += "`nEarnSoftFail(reason, *) => EarnFail(reason)`n"
+    $mctBeginCleanupDriver += "`nEarnMCTSpotSweep() => false`n"
     Invoke-EarnOfflineCheck 'MCTBeginCleanup' 'EarnTaskMCTBegin' $mctBeginCleanupDriver 14
     $mctRefreshDriver = @'
 global refreshOptions := Map(), refreshClockMs := 0, refreshAborted := false, refreshFocused := true,
