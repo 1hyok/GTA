@@ -1,1 +1,7 @@
-Photo/video/
+# 실측 캡처·영상은 저장소에 넣지 않는다(PR 본문에 첨부). 시험이 쓰는 화면은 tools/earn-test/*-fixtures 에 둔다.
+docs/evidence/
+# 외부 도구는 로컬에만 보관한다(매크로가 쓰지 않음).
+third_party/
+Photo/
+.codex/
+debug.log

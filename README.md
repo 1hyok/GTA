@@ -72,7 +72,7 @@ $ahk = & .\tools\ci\install-autohotkey.ps1 -Destination (Join-Path $ciDirectory 
 
 즐겨찾기한 남의 작업은 지도에 블립이 안 뜬다(내가 만든 작업만 뜬다, 0926 실측). 그런 작업은 `P` → ONLINE → Jobs → Play Job → Bookmarked 에서 골라 CONFIRM 창이 뜬 상태에서 F10 두 번(매크로가 CONFIRM 을 보면 Space 를 건너뛰고 Enter 부터 한다). F11 은 화면을 보지 않고 Space 부터 보내므로 지도에서만 쓴다.
 
-임무 진행 중에는 Jobs가 `Jobs are currently unavailable.`로 막혀 위 목록 경로를 쓸 수 없다. 0927 페이폰 히트에서 기존 웹 기록과 같은 결과를 확인했다([확인 화면](docs/evidence/2026-09-27-payphone-jobs-unavailable.png)).
+임무 진행 중에는 Jobs가 `Jobs are currently unavailable.`로 막혀 위 목록 경로를 쓸 수 없다. 0927 페이폰 히트에서 기존 웹 기록과 같은 결과를 확인했다(확인 화면은 로컬 `docs/evidence/2026-09-27-payphone-jobs-unavailable.png`).
 
 ### 준비 작업 전 Quick Join 적용 순서
 
@@ -347,7 +347,9 @@ F9 진단은 `gta-macro.log`의 `[hotkey] Earner` 기록으로 등록, 키 접�
 - `tools\gta-perf-watch.ps1`: 작업 스케줄러가 10분마다 돌리는 성능 감시. 게임에 입력은 안 보내고, 게임이 꺼져 있을 때 `settings.xml` 의 그래픽 단계를 바꾼다. 기록은 `%USERPROFILE%\gta-perf\`.
 - `tools\kick-watch\kick-watch.pyw`: 작업 스케줄러 "GTA Kick Watch" 가 5분마다 pythonw 로 띄우는 킥 원인 기록기(이미 돌고 있으면 바로 끝난다). 게임과 매크로에 입력을 보내지 않고 `Main.ahk` 와 키가 겹치지 않는다. 기록은 `%USERPROFILE%\gta-kick\`: `fg.log`(전경 창 변화), `events.log`(세션 변경과 AFK 로그), `shots\`(세션 변경 2·15·45초 뒤 전체 화면), `observations.jsonl`(5초마다 전경·커서·OS 입력 시각), `afk-shots\`(AFK 입력 로그 전후와 세션 변경 직전 GTA 영역). [기록의 의미와 원인 분리 시험](tools/kick-watch/README.md)을 따른다. 입력 실행 로그는 게임의 방치 시간 초기화 성공을 뜻하지 않는다.
 
-별도로 보관하는 도구는 `third_party/` 아래에 있다. Main의 CI 검사와 배포 패키지에는 넣지 않는다. 기존 폴더 안의 파일과 상대 경로는 그대로 보존했다.
+별도로 쓰는 외부 도구는 로컬 `third_party/` 에만 두고 저장소에서는 추적하지 않는다(1010 저장소 정리, 매크로가 쓰지 않음).
 
-- `third_party/Lester-Ver2.0/`: 자체 Python 앱. 해당 디렉터리로 이동한 뒤 그 안의 [README](third_party/Lester-Ver2.0/README.md)에 따라 의존성을 설치하고 `python main.py`로 실행한다.
-- `third_party/CodeSwine GTA5O - Private Public Lobby V1.0.1/`: `CodeSwine-Private_Public_Lobby.exe`와 인접한 DLL·설정을 함께 보관한다. 사용하는 바로가기는 새 디렉터리를 대상으로 지정한다.
+- `third_party/Lester-Ver2.0/`: 자체 Python 앱. 그 디렉터리의 README 에 따라 의존성을 설치하고 `python main.py`로 실행한다.
+- `third_party/CodeSwine GTA5O - Private Public Lobby V1.0.1/`: `CodeSwine-Private_Public_Lobby.exe`와 인접한 DLL·설정.
+
+실측 캡처·영상(`docs/evidence/`)도 로컬에만 둔다. 근거 화면은 PR 본문에 첨부하고, 시험이 쓰는 화면만 `tools/earn-test/*-fixtures/` 에 넣는다.
