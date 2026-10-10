@@ -248,6 +248,10 @@ EarnMCTSitOcrMatches(lines) {
     for row in lines {
         if (!IsObject(row) || !row.HasOwnProp("text") || !row.HasOwnProp("x") || !row.HasOwnProp("y"))
             continue
+        ; 창틀이 E 키 문자를 가리지 않으면 OCR 이 키 문자만 빼고 한 줄로 읽는다(1010 17:24 저택 MCT 앞 실측:
+        ; 'Press to sit down.' 한 줄이라 두 조각 판정이 못 맞아 MCT 작업이 모두 '앞에 서 있지 않음'으로 실패).
+        if (row.x < 320 && row.y < 70 && RegExMatch(row.text, "i)^\h*Press\h+(?:E\h+)?to\h+sit\h+down\W*$"))
+            return true
         if (row.x < 180 && row.y < 70 && RegExMatch(row.text, "i)^\h*Press\h*$"))
             press := true, pressY := row.y
         else if (row.x >= 80 && row.x < 320 && row.y < 70
