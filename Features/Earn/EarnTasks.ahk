@@ -461,24 +461,23 @@ EarnDJTask(manageSession := true) {
     return ok && ended
 }
 
-; MCT 앞 안내가 안 보일 때 시점을 좌우로 조금씩 돌려 안내가 뜨는 각도를 찾는다. 찾으면 그 각도에 두고 true,
-; 못 찾으면 원래 각도로 돌려놓고 false. 중단·HUD 미확인이면 거기서 멈춘다.
+; MCT 앞 안내가 안 보일 때 시점을 20도씩 한 바퀴 돌려 안내가 뜨는 방향을 찾는다. 찾으면 그 방향에 두고 true,
+; 못 찾으면(한 바퀴 돌아 처음 방향) false. 중단·HUD 미확인이면 거기서 멈춘다.
+; 작업 뒤 복귀 회전이 실패하면 MCT 옆에서 몸만 크게 틀어진 채 남는다(1011 01:24 녹화: 노트북이 오른쪽 40도 넘게 비켜 있었다).
 EarnMCTSpotSweep() {
     global config
     k := config["Settings"]["EarnTurnUnitsPerDeg"]
-    turned := 0
-    for deg in [12, -24, 36, -48] {
-        if (!EarnTurnLoop(Round(deg * k), 0, false))
+    Loop 18 {
+        if (!EarnTurnLoop(Round(20 * k), 0, false))
             return false
-        turned += deg
-        if (!EarnSleep(400))
+        if (!EarnSleep(300))
             return false
         if (EarnAtMCT() || EarnSeen("mct_sit", [0,0,0.3,0.1]) || EarnSeen("mct_terrorbyte")) {
-            EarnLog("MCT 시작: 시점을 " turned "도 돌려 안내 확인")
+            EarnLog("MCT 시작: 시점을 " (A_Index * 20) "도 돌려 안내 확인")
             return true
         }
     }
-    EarnTurnLoop(Round(-turned * k), 0, false)
+    EarnLog("MCT 시작: 한 바퀴 돌려도 안내 없음")
     return false
 }
 
