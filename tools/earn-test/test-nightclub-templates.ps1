@@ -10,7 +10,7 @@ param([string[]]$AdditionalSamplePath = @())
 
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
-$evidence = Join-Path $root 'docs\evidence\2026-09-27-mct'
+$evidence = Join-Path $root 'tools\earn-test\mct-capture-fixtures'
 $core = Get-Content -LiteralPath (Join-Path $root 'Features\Earn\EarnCore.ahk') -Raw
 $cases = 0
 Add-Type -AssemblyName System.Drawing

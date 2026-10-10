@@ -11,7 +11,7 @@
 | 캡처와 템플릿 제작 | `tools/earn-test/capscreen.ps1`, `tools/jobwarp-capture.ps1`, `tools/*templates.ps1`, `tools/earn-test/build-mct-templates.ps1` | 수동 현장 도구다. 기존 `capscreen.ps1` 명령은 `Core/ScreenCapture.ps1`로 위임한다. |
 | 성능 감시 | `tools/gta-perf-watch.ps1`, `tools/gta-perf-watch.vbs` | 실제 스케줄러가 이 경로를 사용한다. 판정 함수의 fixture 검사만 CI에서 실행한다. |
 | 킥 기록 | `tools/kick-watch/kick-watch.pyw` | 실제 스케줄러가 이 경로를 사용한다. CI에서는 Python 구문을 확인한다. |
-| 별도 보관 도구 | `third_party/Lester-Ver2.0/`, `third_party/CodeSwine GTA5O - Private Public Lobby V1.0.1/` | 자체 실행기와 의존성을 가진다. 매크로 CI·배포 패키지의 대상에서 제외한다. |
+| 별도 보관 도구 | `third_party/Lester-Ver2.0/`, `third_party/CodeSwine GTA5O - Private Public Lobby V1.0.1/` | 자체 실행기와 의존성을 가진다. 로컬에만 두고 저장소에서 추적하지 않는다(1010). |
 
 `tools/earn-test`의 기존 경로는 현장 사용처를 위해 유지한다. CI는 폴더 전체를 자동 실행하지 않고 위 실행 목록에 등록한 검사만 선택한다. 현장 도구를 추가해도 CI의 실행 권한이 늘어나지 않는다.
 
