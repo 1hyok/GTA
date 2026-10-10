@@ -30,7 +30,7 @@ foreach ($functionName in @('EarnOcrHas','EarnMCTSeatedOcrMatches','EarnMCTNeedC
 foreach ($use in @('EarnMCTSeatedOcrMatches(EarnOcrLines("prompt"','EarnMCTTitleOcrMatches(EarnOcrLines("title"','EarnMCTNeedCeoOcrMatches(EarnOcrLines("prompt"')) {
     if (-not $core.Contains($use)) { throw "EarnSeen must consume $use" }
 }
-$mctPromptRows = @(Import-Csv (Join-Path $PSScriptRoot '..\..\docs\evidence\2026-10-09-mct\mct-sit-prompt-runtime-20261009.tsv') -Delimiter "`t")
+$mctPromptRows = @(Import-Csv (Join-Path $PSScriptRoot 'mct-capture-fixtures\mct-sit-prompt-runtime-20261009.tsv') -Delimiter "`t")
 if ($mctPromptRows.Count -ne 2 -or $mctPromptRows[0].text -ne 'Press' -or $mctPromptRows[1].text -ne 'to sit down.') {
     throw 'Recorded live MCT prompt OCR fixture is incomplete'
 }

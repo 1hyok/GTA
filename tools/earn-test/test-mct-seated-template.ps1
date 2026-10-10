@@ -9,7 +9,7 @@ param([string]$AdditionalSeatedSamplePath = '')
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $assetDirectory = Join-Path $root 'Images\Earn\1920x1080'
-$evidence = Join-Path $root 'docs\evidence\2026-09-27-mct'
+$evidence = Join-Path $root 'tools\earn-test\mct-capture-fixtures'
 $cases = 0
 . (Join-Path $PSScriptRoot 'compare-png-pixels.ps1')
 
@@ -319,7 +319,7 @@ try {
             } finally { $source.Dispose() }
         }
     } finally { $seatedHdr.Dispose(); $seatedHdrBg.Dispose(); $seatedFixture.Dispose() }
-    $sitPromptFixture = [Drawing.Bitmap]::FromFile((Join-Path $root 'docs\evidence\2026-10-09-mct\mct-sit-prompt-runtime-20261009.png'))
+    $sitPromptFixture = [Drawing.Bitmap]::FromFile((Join-Path $root 'tools\earn-test\mct-capture-fixtures\mct-sit-prompt-runtime-20261009.png'))
     $sitBox = [Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_sit_hdr_box.png'))
     $sitBoxBg = [Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_sit_hdr_box_bg.png'))
     try {
@@ -335,7 +335,7 @@ try {
     $titleHdr = [Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_title_hdr.png'))
     $titleHdrBg = [Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_title_hdr_bg.png'))
     $titleFixture = [Drawing.Bitmap]::FromFile((Join-Path $PSScriptRoot 'mct-template-fixtures\mct-title-hdr-current.png'))
-    $titleRuntimeFixture = [Drawing.Bitmap]::FromFile((Join-Path $root 'docs\evidence\2026-10-09-mct\mct-title-hdr-runtime-20261009.png'))
+    $titleRuntimeFixture = [Drawing.Bitmap]::FromFile((Join-Path $root 'tools\earn-test\mct-capture-fixtures\mct-title-hdr-runtime-20261009.png'))
     try {
         if ($titleHdr.Width -ne 536 -or $titleHdr.Height -ne 39) { throw 'Unexpected HDR MCT title dimensions' }
         if ($core -notmatch 'TemplateSeen\("Earn",\s*"mct_title_hdr",\s*area,\s*&fx,\s*&fy,\s*Max\(variation,\s*55\)\)\s*&&\s*TemplateAt\("Earn",\s*"mct_title_hdr_bg",\s*fx,\s*fy\)') {

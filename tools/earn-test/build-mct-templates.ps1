@@ -1,5 +1,5 @@
 param(
- [string]$CaptureDir = (Join-Path $PSScriptRoot '..\..\docs\evidence\2026-09-27-mct'),
+ [string]$CaptureDir = (Join-Path $PSScriptRoot 'mct-capture-fixtures'),
  [string]$OutputDir = (Join-Path $PSScriptRoot '..\..\Images\Earn\1920x1080'),
  [string[]]$Name = @()
 )

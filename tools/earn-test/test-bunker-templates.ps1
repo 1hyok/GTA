@@ -7,7 +7,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
-$evidence = Join-Path $root 'docs\evidence\2026-09-27-mct'
+$evidence = Join-Path $root 'tools\earn-test\mct-capture-fixtures'
 $assetDirectory = Join-Path $root 'Images\Earn\1920x1080'
 $core = Get-Content -LiteralPath (Join-Path $root 'Features\Earn\EarnCore.ahk') -Raw
 $cases = 0
