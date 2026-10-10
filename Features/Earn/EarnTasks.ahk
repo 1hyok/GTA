@@ -461,23 +461,29 @@ EarnDJTask(manageSession := true) {
     return ok && ended
 }
 
-; MCT 앞 안내가 안 보일 때 시점을 20도씩 한 바퀴 돌려 안내가 뜨는 방향을 찾는다. 찾으면 그 방향에 두고 true,
-; 못 찾으면(한 바퀴 돌아 처음 방향) false. 중단·HUD 미확인이면 거기서 멈춘다.
+; MCT 앞 안내가 안 보일 때 시점을 20도씩 한 바퀴 돌려 안내가 뜨는 방향을 찾는다. 찾으면 그 방향에 두고 true.
+; 3인칭에서는 마우스가 카메라만 돌리고 몸은 그대로라 한 바퀴를 돌아도 의자를 등진 채다(1011 01:59 녹화).
+; 그래서 못 찾으면 V 로 카메라 모드를 바꿔 다시 돈다. 걷기 카메라는 3인칭 셋·1인칭 하나라 네 번이면 원래 모드로 돌아온다.
 ; 작업 뒤 복귀 회전이 실패하면 MCT 옆에서 몸만 크게 틀어진 채 남는다(1011 01:24 녹화: 노트북이 오른쪽 40도 넘게 비켜 있었다).
 EarnMCTSpotSweep() {
     global config
     k := config["Settings"]["EarnTurnUnitsPerDeg"]
-    Loop 18 {
-        if (!EarnTurnLoop(Round(20 * k), 0, false))
-            return false
-        if (!EarnSleep(300))
-            return false
-        if (EarnAtMCT() || EarnSeen("mct_sit", [0,0,0.3,0.1]) || EarnSeen("mct_terrorbyte")) {
-            EarnLog("MCT 시작: 시점을 " (A_Index * 20) "도 돌려 안내 확인")
-            return true
+    Loop 4 {
+        mode := A_Index
+        Loop 18 {
+            if (!EarnTurnLoop(Round(20 * k), 0, false))
+                return false
+            if (!EarnSleep(300))
+                return false
+            if (EarnAtMCT() || EarnSeen("mct_sit", [0,0,0.3,0.1]) || EarnSeen("mct_terrorbyte")) {
+                EarnLog("MCT 시작: 카메라 모드 " mode "번째에서 시점을 " (A_Index * 20) "도 돌려 안내 확인")
+                return true
+            }
         }
+        if (!EarnPress("v") || !EarnSleep(800))
+            return false
     }
-    EarnLog("MCT 시작: 한 바퀴 돌려도 안내 없음")
+    EarnLog("MCT 시작: 카메라 모드 넷을 다 돌려도 안내 없음")
     return false
 }
 
