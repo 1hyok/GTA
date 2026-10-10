@@ -5,7 +5,7 @@ function Get-CiCheckPlan {
         'test-earner','test-antiafk','test-altf4teleport','test-botwarp-stop','test-claw-stop','test-autoclick-stop',
         'test-earnnav','test-earntasks','test-earnblip','test-earnpolicy','test-earnscreen','test-earnscreen-command',
         'test-earnvinewood','test-earnwarehouse-read','test-earnwarehouse','test-earnstaff',
-        'test-afk-notification-command','test-afk-input-lock','test-arrow-color','test-cpuboost','test-earndj',
+        'test-afk-notification-command','test-afk-input-lock','test-arrow-color','test-cpuboost','test-memguard','test-earndj',
         'test-phone-call-template','test-earnocr','test-notification-dismiss','test-mct-seated-template',
         'test-bunker-templates','test-earnwarehouse-templates','test-afk-overlays','test-session-guard',
         'test-gui-input','test-perf-watch','test-fps-helper','test-screen-capture'
@@ -64,6 +64,7 @@ function Get-CiCheckPlan {
         if ($path -match '^Features/Teleport/AltF4Teleport\.ahk$') { $selected.Add('test-altf4teleport'); $packageRequired = $true; continue }
         if ($path -match '^Features/SessionSwitch\.ahk$') { $selected.Add('test-session-guard'); $packageRequired = $true; continue }
         if ($path -match '^Features/CpuBoost\.ahk$') { $selected.Add('test-cpuboost'); $packageRequired = $true; continue }
+        if ($path -match '^Features/MemoryGuard\.ahk$') { $selected.Add('test-memguard'); $packageRequired = $true; continue }
         if ($path -match '^Images/MCT/') { $selected.Add('test-mct-seated-template'); $packageRequired = $true; continue }
         if ($path -match '^Images/Bunker/') { $selected.Add('test-bunker-templates'); $packageRequired = $true; continue }
         if ($path -match '^Images/') { $selected.Add('test-mct-seated-template'); $selected.Add('test-bunker-templates'); $packageRequired = $true; continue }
