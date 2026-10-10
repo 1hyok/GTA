@@ -106,9 +106,10 @@ KeyHookProbe() {
     if (gProbeSent && gProbeSeen < gProbeSent)
         MacroLog("probe", "F24 미수신: 직전 보낸 뒤 훅에 안 들어옴 (보낸 " gProbeSent ", 받은 " gProbeSeen ")")
     gProbeSent := A_TickCount
-    ; 스크립트가 보낸 키는 SendLevel 0 이면 자기 핫키를 깨우지 않는다(1011 01:36~ 매번 미수신으로 찍힘). 1 로 보낸다.
+    ; 스크립트가 보낸 키는 SendLevel 0 이면 자기 핫키를 깨우지 않고, SendInput 으로 보내면 SendLevel 1 이어도 자기 훅이
+    ; 못 받는다(1011 01:36·01:46 둘 다 매번 미수신). SendLevel 1 + SendEvent 로 보낸다.
     SendLevel(1)
-    Send("{F24}")
+    SendEvent("{F24}")
 }
 
 ; 핫키 스레드 진입점. confirm 액션은 ConfirmWindowMs 안에 두 번 눌러야 실행한다.
