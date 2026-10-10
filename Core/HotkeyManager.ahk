@@ -85,6 +85,13 @@ SetupHotkeys() {
     HotIf()
 }
 
+; Windows 는 저수준 키보드 훅이 콜백에 늦으면 말없이 떼어 버리는데 AHK 는 그걸 모른 채 살아 있다고 본다.
+; 1010 19:21 에 띄운 매크로가 3시간 동안 F9 를 한 번도 받지 못했다(hotkey 기록에 received 없음). 그래서 1분마다
+; 강제로 다시 붙인다(Force). 훅이 살아 있어도 설치 상태만 다시 쓰므로 키 동작은 바뀌지 않는다.
+KeyHookWatchdog() {
+    InstallKeybdHook(true, true)
+}
+
 ; 핫키 스레드 진입점. confirm 액션은 ConfirmWindowMs 안에 두 번 눌러야 실행한다.
 Dispatch(action, key, *) {
     global gArmed, config
