@@ -12,7 +12,7 @@ $driver = @"
 #Warn All, StdOut
 #Include $guard
 SetTimer(MemGuardTick, 0)
-global config := Map("Settings", Map()), gEarnOn := false
+global config := Map("Settings", Map()), gEarnOn := false, GTA_WIN := "ahk_exe none.exe"
 EarnLog(*) => true
 SetEarner(*) => true
 ReleaseHeldKeys() => true
@@ -32,6 +32,7 @@ CheckReaders() {
     gb := MemGuardProcessGB(DllCall("GetCurrentProcessId"))
     Check(gb > 0 && gb < 1, "own private memory read " gb)
     Check(MemGuardProcessGB(0) = -1, "unopenable process reads -1")
+    Check(MemGuardDisplayNote() ~= "^모니터 \d+", "display note")
 }
 Check(ok, name) {
     global n
@@ -44,6 +45,6 @@ $path = Join-Path ([IO.Path]::GetTempPath()) ('gta-memguard-' + [Guid]::NewGuid(
 [IO.File]::WriteAllText($path, $driver, (New-Object Text.UTF8Encoding($true)))
 try {
     $out = (& $AhkPath /ErrorStdOut $path 2>&1 | Out-String).Trim()
-    if ($LASTEXITCODE -ne 0 -or $out -ne 'PASS MemGuard cases=10') { throw "MemGuard failed (exit=$LASTEXITCODE): $out" }
+    if ($LASTEXITCODE -ne 0 -or $out -ne 'PASS MemGuard cases=11') { throw "MemGuard failed (exit=$LASTEXITCODE): $out" }
     Write-Output $out
 } finally { [IO.File]::Delete($path) }

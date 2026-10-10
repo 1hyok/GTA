@@ -43,6 +43,19 @@ MemGuardProcessGB(pid) {
     }
 }
 
+; 0925 실측: 외장 1080p 모니터에서는 GTA 커밋이 분당 2~6MB, 노트북 패널(2560x1600)로 옮긴 뒤 125~140MB 늘었다(두 짧은 구간).
+; 화면 상태별 증가 속도를 가르려고 모니터 수, GTA 창 위치·크기, 앞 창 여부를 함께 남긴다.
+MemGuardDisplayNote() {
+    global GTA_WIN
+    note := "모니터 " MonitorGetCount()
+    try {
+        WinGetPos(&x, &y, &w, &h, GTA_WIN)
+        note .= ", 창 " x "," y " " w "x" h
+    }
+    try note .= WinActive(GTA_WIN) ? ", 앞" : ", 뒤"
+    return note
+}
+
 MemGuardLog(msg) {
     try FileAppend(FormatTime(, "yyyy-MM-dd HH:mm:ss") " " msg "`n", A_Temp "\gta-mem.log", "UTF-8")
 }
@@ -62,7 +75,7 @@ MemGuardTick() {
     level := MemGuardLevel(pct, gta, s.Get("MemWarnPct", 80), s.Get("MemClosePct", 92), s.Get("MemCloseMinGB", 25))
     line := "커밋 " Round(used, 1) "/" Round(limit, 1) "GB(" pct "%), GTA " (gta < 0 ? "?" : Round(gta, 1)) "GB"
     if (level != gMemGuardLevel || !gMemGuardLastLog || A_TickCount - gMemGuardLastLog >= 600000) {
-        MemGuardLog(line " " level)
+        MemGuardLog(line " " level " " MemGuardDisplayNote())
         gMemGuardLastLog := A_TickCount
     }
     changed := level != gMemGuardLevel
