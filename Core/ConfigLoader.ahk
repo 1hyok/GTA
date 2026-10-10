@@ -23,7 +23,7 @@ CONFIG_DEFAULTS["Settings"] := Map(
     "ClawForwardMs", 5000, "ClawRightMs", 5000, "ClawEnterTimeout", 15000, "ClawResultTimeout", 30000,
     "SessionMenuDelay", 600,
     "AFKUserIdleSec", 45, "CpuBoostIdleSec", 300, "IdleFpsLimit", 30, "AFKIntervalSec", 200, "AFKJitterSec", 20, "AFKTapMs", 150, "AFKGapMs", 250, "AFKOnStart", 1,
-    "AFKRefocusIdleSec", 300, "AFKRefocusSettleMs", 800, "AFKMCTCloseIdleSec", 300,
+    "AFKRefocusIdleSec", 300, "AFKRefocusSettleMs", 800, "AFKMCTCloseIdleSec", 300, "MemWarnPct", 80, "MemClosePct", 92, "MemCloseMinGB", 25,
     "OverlayEnabled", 1, "OverlayXPct", 98, "OverlayYPct", 18, "DiscordHUDPath", "", "SaleAlertName", "", "SaleAlertIntervalSec", 10,
     "MenuTopOffset", 0, "SnackMenuSteps", 4, "SnackSubSteps", 2, "SnackItemSteps", 0, "SnackCount", 1, "SnackCloseMenu", 1,
     "EarnKeyDelay", 350, "EarnTurnUnitsPerDeg", 29, "EarnRerollMax", 12, "EarnReachPx", 14, "EarnWalkRetry", 3, "EarnUserIdleSec", 45, "EarnMCTBatchAheadSec", 120, "EarnLoadMinSec", 8, "EarnLoadTimeoutSec", 240,
