@@ -351,6 +351,11 @@ Check(!EarnMCTSitOcrMatches([{x:70,y:40,w:55,h:18,text:"Press"},{x:191,y:39,w:11
 Check(!EarnMCTSitOcrMatches([{x:70,y:40,w:55,h:18,text:"Press"},{x:191,y:62,w:114,h:20,text:"to sit down."}]),
     "prompt fragments at different vertical positions are rejected")
 Check(!EarnMCTSitOcrMatches([]), "empty OCR is rejected")
+; 1010 17:24 실화면 OCR: 키 문자만 빠지고 한 줄로 읽힘(흰 글자 모드, 일반 모드)
+Check(EarnMCTSitOcrMatches([{x:145,y:38,w:205,h:18,text:"Press to sit down."}]), "one-line MCT prompt OCR is accepted")
+Check(EarnMCTSitOcrMatches([{x:154,y:40,w:226,h:22,text:"Press to sit down—"}]), "one-line MCT prompt OCR with trailing mark is accepted")
+Check(!EarnMCTSitOcrMatches([{x:145,y:38,w:205,h:18,text:"Press to access terminal."}]), "different one-line prompt is rejected")
+Check(!EarnMCTSitOcrMatches([{x:145,y:300,w:205,h:18,text:"Press to sit down."}]), "one-line prompt outside the help box is rejected")
 ; 1010 실화면 OCR(밝기가 템플릿과 달라 템플릿이 실패하던 화면)
 Check(EarnMCTSeatedOcrMatches([{x:192,y:38,w:236,h:18,text:"Master Control Terminal"},{x:161,y:70,w:176,h:21,text:"Security Cameras"},{x:118,y:98,w:90,h:20,text:"Stand up"}]),
     "seated MCT menu OCR is accepted")
@@ -610,7 +615,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 90 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 94 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout
