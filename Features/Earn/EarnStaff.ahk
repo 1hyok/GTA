@@ -358,8 +358,10 @@ EarnStaffHangar() {
 
 EarnStaffHangarPattern() => "i)^Hangar(?:\h+\$[0-9,]+)?$"
 
-; 파견 뒤 회색 Hangar 이름이 일반/흰 글자 OCR에서 모두 사라진다(1008 실측).
-; 직원 목록의 나머지 두 행과 첫 행 선택, 전체 작업 중 문구를 함께 확인한다. 결제 판정에는 쓰지 않는다.
+; 파견 뒤 회색 Hangar 이름이 일반/흰 글자 OCR에서 모두 사라진다(1008 실측). 격납고가 가득 차도 같다
+; (1010 19:09 실측: 첫 행 글자 없이 "There is no more room to store cargo for / this property." 만 읽혀 줄 선택이 연속 실패).
+; 직원 목록의 나머지 두 행과 첫 행 선택, 전체 작업 중·만재 문구를 함께 확인해 "busy"/"full" 을, 아니면 "" 을 돌려준다.
+; 결제 판정에는 쓰지 않는다(두 상태 모두 Enter 를 누르지 않는다).
 EarnStaffHangarBusyFrame(lines) {
     heading := EarnStaffUniqueRow(lines, "i)^THE VINEWOOD CLUB APP$")
     warehouse := EarnStaffUniqueRow(lines, "~Warehouse")
@@ -367,13 +369,17 @@ EarnStaffHangarBusyFrame(lines) {
     if (!heading || !warehouse || !bail || Abs(warehouse.y-heading.y-74) > 8
         || Abs(bail.y-heading.y-111) > 8 || !EarnMenuRowSelected({y:heading.y+37})
         || EarnMenuRowSelected(warehouse) || EarnMenuRowSelected(bail))
-        return false
+        return ""
     for row in lines
         if (Abs(row.y-heading.y-37) <= 10 && InStr(row.text, "$"))
-            return false
+            return ""
     detail := EarnStaffFooter(lines, {y:heading.y+111,h:22})
     text := StrLower(RegExReplace(detail, "[^A-Za-z]"))
-    return EarnStaffEditDistance(text, "yourhangarstaffmemberiscurrentlyoutonajob") <= 2
+    if (EarnStaffEditDistance(text, "yourhangarstaffmemberiscurrentlyoutonajob") <= 2)
+        return "busy"
+    if (EarnStaffEditDistance(text, "thereisnomoreroomtostorecargoforthisproperty") <= 2)
+        return "full"
+    return ""
 }
 
 ; ready 는 선택된 Hangar 줄의 가격이 정확히 $25000 이고 설명이 보내기 문구일 때만이다.
@@ -382,8 +388,8 @@ EarnStaffReadHangar(deadline := 0) {
         lines := EarnReadScreen([25,125,450,300], whiteText, deadline)
         heading := EarnStaffUniqueRow(lines, "i)^THE VINEWOOD CLUB APP$")
         row := EarnStaffUniqueRow(lines, EarnStaffHangarPattern())
-        if (!row && EarnStaffHangarBusyFrame(lines))
-            return "busy"
+        if (!row && (frame := EarnStaffHangarBusyFrame(lines)))
+            return frame
         if (!heading || !row || Abs(row.y-heading.y-37) > 8 || !EarnMenuRowSelected(row))
             continue
         price := -1
