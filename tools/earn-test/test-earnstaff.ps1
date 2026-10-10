@@ -479,7 +479,9 @@ RunCargoTests() {
         ["hangar_unconfirmed","ready",false,1,"ready"], ["hangar_flaky","ready",true,0,"ready"],
         ; 1006 녹화: 설명 문구가 한두 글자 깨져도 보내고, 깨진 작업 중 문구에는 사지 않는다.
         ["hangar_garbled","ready",true,1,"busy"], ["hangar_garbled_busy","busy",true,0,"busy"],
-        ["hangar_missing_busy","ready",true,1,"busy"], ["hangar_missing_busy","busy",true,0,"busy"]] {
+        ["hangar_missing_busy","ready",true,1,"busy"], ["hangar_missing_busy","busy",true,0,"busy"],
+        ; 1010 19:09 실측: 만재면 첫 행 글자가 사라진 채 만재 문구만 남는다. 사지 않고 건너뛴다.
+        ["hangar_full","full",true,0,"full"], ["hangar_missing_full","full",true,0,"full"]] {
         Reset(c[1],["busy","busy"])
         hangarState := c[2]
         config["Settings"]["EarnBailAgents"] := 0, config["Settings"]["EarnCargoStaff"] := 0, config["Settings"]["EarnHangarStaff"] := 1
@@ -491,8 +493,10 @@ RunCargoTests() {
     ; 1008 실측 OCR: 첫 행은 없고 제목과 다른 두 행, 두 줄 작업 중 설명만 읽힌다.
     busyFrame := [TextLine("THE VINEWOOD CLUB APP",144),TextLine("Warehouse",217),TextLine("Bail Office",255),
         TextLine("Your Hangar staff member is currently out",301),TextLine("on a job.",328)]
-    Check(EarnStaffHangarBusyFrame(busyFrame), "recorded missing Hangar label is busy")
-    selected := "Warehouse"
+    Check(EarnStaffHangarBusyFrame(busyFrame) = "busy", "recorded missing Hangar label is busy")
+    ; 1010 19:15 실측 OCR(일반·흰 글자 같음): 만재 문구 두 줄.
+    fullFrame := [busyFrame[1],busyFrame[2],busyFrame[3],TextLine("There is no more room to store cargo for",301),TextLine("this property.",328)]
+    Check(EarnStaffHangarBusyFrame(fullFrame) = "full", "recorded missing Hangar label with full footer is full")    selected := "Warehouse"
     Check(!EarnStaffHangarBusyFrame(busyFrame), "busy footer cannot substitute for Hangar selection")
     selected := "Hangar"
     for badDetail in ["Send your Hangar staff member out on a job.", "Your Warehouse staff member is currently out on a job.",
@@ -619,7 +623,10 @@ MockReadScreen(area, whiteText) {
             if (hangarState = "ready")
                 rows.Push(TextLine(mode = "hangar_bad_price" || mode = "hangar_flaky" && hangarReads >= 2 ? "$250000" : "$25000",181,420,80))
             rows[5].text := hangarState = "ready" ? "Send your Hangar staff member out on a job."
-                : hangarState = "busy" ? "Your Hangar staff member is currently out on a job." : "Something else."
+                : hangarState = "busy" ? "Your Hangar staff member is currently out on a job."
+                : hangarState = "full" ? "There is no more room to store cargo for this property." : "Something else."
+            if (mode = "hangar_missing_full" && hangarState = "full")
+                rows[2].text := ""
             if (mode = "hangar_garbled" && hangarState = "ready")
                 rows[5].text := "Fend yo r Hangar staff member out"   ; 1006 22:17 녹화: "on a job." 이 빠짐
             if (mode = "hangar_garbled_busy" && hangarState = "busy")
