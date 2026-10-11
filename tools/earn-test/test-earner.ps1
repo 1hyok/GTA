@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 $source = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\Earner.ahk') -Raw -Encoding UTF8
 $tick = [regex]::Match($source, '(?ms)^EarnTick\(\) \{.*?^\}').Value
 if (-not $tick) { throw 'EarnTick missing' }
-$guards = @('EarnAFKCloseMCT', 'EarnInputGuardStart', 'EarnInputGuardStop', 'EarnInputWatch', 'EarnInputAllowed', 'EarnGamePID', 'EarnTaskList', 'EarnEnabledText', 'ToggleEarner', 'SetEarner', 'EarnStatusText', 'EarnIsMCTTask', 'EarnRunScheduledTask', 'EarnRunMCTBatch', 'EarnTaskMCTEndWithManualRetry', 'EarnManualStopCleanup', 'EarnBossOffWithManualRetry', 'EarnManualBossOffCleanup', 'EarnFinishManualStop', 'EarnNotifyStockFull', 'EarnFinishScheduledTask', 'EarnStopAfterFailure') | ForEach-Object {
+$guards = @('EarnAFKCloseMCT', 'EarnInputGuardStart', 'EarnInputGuardStop', 'EarnInputWatch', 'EarnInputAllowed', 'EarnInputAbortEvidence', 'EarnInputWindowEvidence', 'EarnInputEvidenceText', 'EarnGamePID', 'EarnTaskList', 'EarnEnabledText', 'ToggleEarner', 'SetEarner', 'EarnStatusText', 'EarnIsMCTTask', 'EarnRunScheduledTask', 'EarnRunMCTBatch', 'EarnTaskMCTEndWithManualRetry', 'EarnManualStopCleanup', 'EarnBossOffWithManualRetry', 'EarnManualBossOffCleanup', 'EarnFinishManualStop', 'EarnNotifyStockFull', 'EarnFinishScheduledTask', 'EarnStopAfterFailure') | ForEach-Object {
     $functionName = $_
     $body = [regex]::Match($source, ('(?ms)^' + $functionName + '\([^\r\n]*\) \{.*?^\}')).Value
     if (-not $body) { throw "Production function missing: $functionName" }
@@ -17,6 +17,7 @@ $guards = @('EarnAFKCloseMCT', 'EarnInputGuardStart', 'EarnInputGuardStop', 'Ear
     $body
 }
 $production = ($tick + "`n" + ($guards -join "`n")).Replace('A_TimeIdlePhysical', 'idleMs').Replace('A_TickCount', 'fakeTick')
+$production = $production.Replace('DllCall("GetForegroundWindow", "ptr")', 'FakeForegroundWindow()')
 $core = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnCore.ahk') -Raw -Encoding UTF8
 foreach ($functionName in @('EarnTransactionBegin','EarnTransactionConfirmed')) {
     $production += "`n" + [regex]::Match($core, ('(?ms)^' + $functionName + '\([^\r\n]*\) \{.*?^\}')).Value
@@ -75,7 +76,88 @@ global gEarnHeld, gEarnFailures, gEarnRecovery, appCloseOK, appCloseCount
 global gEarnManualStop, gEarnManualCleanupActive, gEarnManualCleanupAttempted, gEarnTaskActive, gEarnAFKCleanup, gEarnMCTCleanupOK, stopStatus
 global gEarnFeedSeen, beginStopInjected, gEarnSellNotice, tooltips
 global lifecycleTrace, lifecycleEvents, finalizerProbeStages
+global gEarnInputAbortReason, metadataFailure, metadataCalls
 global state := Map(), stateWritable := true
+Reset()
+gEarnInputAbortReason := "stale"
+EarnInputGuardStart()
+fakeTick += 100, idleMs += 100
+Check(EarnInputAllowed() && gEarnInputAbortReason = "" && metadataCalls = 0 && releaseCount = 0,
+    "normal guarded work clears the previous reason without diagnostic window reads")
+for scenario in ["physical", "focus", "both"] {
+    Reset()
+    EarnInputGuardStart()
+    fakeTick += 100
+    idleMs := scenario = "focus" ? 60100 : 0
+    focused := scenario = "physical"
+    expectedAbort := scenario = "physical" ? "사용자 물리 입력으로 중단" : scenario = "focus" ? "GTA 포커스 판정 실패로 중단" : "사용자 물리 입력 및 GTA 포커스 판정 실패로 중단"
+    Check(!EarnInputAllowed() && gAbort && gEarnUserAbort && gEarnInputAbortReason = expectedAbort && releaseCount = 1,
+        scenario " immediately latches the exact reason and releases keys")
+    Check(InputEvidenceCount() = 1 && HasLog("physical=" (scenario = "focus" ? 0 : 1) " focus=" (scenario = "physical" ? 0 : 1))
+        && HasLog("idle_ms=" idleMs " elapsed_ms=100 winactive=" (focused ? 1 : 0))
+        && HasLog("expected_game_pid=101") && HasLog("game={hwnd=1 pid=101")
+        && HasLog(scenario = "physical" ? "foreground={hwnd=1 pid=101" : "foreground={hwnd=777 pid=707"),
+        scenario " records one complete diagnostic after key release")
+    EarnFail("화면 판독 중단 또는 시간 초과")
+    EarnInputAllowed()
+    Check(InputEvidenceCount() = 1 && releaseCount = 1 && gEarnInputAbortReason = expectedAbort,
+        scenario " preserves the first reason across repeated guards and later OCR failure")
+}
+Reset()
+EarnInputGuardStart()
+focused := false, metadataFailure := true
+Check(!EarnInputAllowed() && gAbort && releaseCount = 1 && InputEvidenceCount() = 1
+    && HasLog('foreground={hwnd=777 pid=unknown exe="unknown" title="unknown"}'),
+    "unreadable window metadata cannot prevent abort or key release")
+Check(EarnInputEvidenceText("line1`r`n" Chr(34) "line2") = '"line1\r\n\"line2"',
+    "window titles remain escaped on one diagnostic line")
+Reset()
+EarnInputGuardStart()
+focused := false
+EarnInputAllowed()
+EarnInputGuardStop()
+gAbort := false, gEarnUserAbort := false, focused := true
+EarnInputGuardStart()
+Check(EarnInputAllowed() && gEarnInputAbortReason = "" && InputEvidenceCount() = 1,
+    "new guarded attempt does not inherit the previous abort reason")
+for scenario in ["physical", "focus", "both"] {
+    Reset()
+    mode := scenario "-ocr"
+    EarnTick()
+    expectedAbort := scenario = "physical" ? "사용자 물리 입력으로 중단" : scenario = "focus" ? "GTA 포커스 판정 실패로 중단" : "사용자 물리 입력 및 GTA 포커스 판정 실패로 중단"
+    Check(gEarnFail = expectedAbort && HasLog("bunker: " expectedAbort " → 3분 뒤 다시") && tooltips[tooltips.Length] = "💰 " expectedAbort " → 3분 뒤 다시",
+        scenario " scheduler and tooltip preserve the first reason after OCR overwrites gEarnFail")
+}
+Reset()
+gEarnInputAbortReason := "old focus failure"
+SetEarner(true)
+Check(gEarnInputAbortReason = "", "manual enable clears old guard evidence")
+Reset()
+gEarnInputAbortReason := "outer reason", gEarnUserAbort := true, mctOpen := true, endInput := true, endDelay := 100
+afkResult := EarnAFKCloseMCT(600)
+Check(InStr(afkResult, "사용자 물리 입력으로 중단") && gEarnInputAbortReason = "outer reason" && gEarnUserAbort,
+    "AFK cleanup reports its own abort but restores the caller evidence scope")
+Reset()
+gEarnInputAbortReason := "old guard reason", gEarnUserAbort := true, gAbort := true
+gEarnGuardArmed := true, lockHeld := true, mctOpen := true
+Check(EarnManualStopCleanup() && gEarnInputAbortReason = "" && !gEarnUserAbort,
+    "manual MCT cleanup starts a fresh evidence scope")
+Reset()
+gEarnInputAbortReason := "old guard reason", gEarnUserAbort := true, gAbort := true
+gEarnGuardArmed := true, lockHeld := true
+Check(EarnManualBossOffCleanup() && gEarnInputAbortReason = "" && !gEarnUserAbort,
+    "manual CEO cleanup starts a fresh evidence scope")
+Reset()
+gEarnManualStop := true, gAbort := true, gEarnUserAbort := true
+gEarnInputAbortReason := "GTA 포커스 판정 실패로 중단", gEarnFail := "화면 판독 중단 또는 시간 초과"
+EarnFinishManualStop(false, true, true)
+Check(gEarnFail = "GTA 포커스 판정 실패로 중단" && gEarnInputAbortReason = "" && !gEarnUserAbort,
+    "manual finalizer preserves first guard reason in the result then clears its evidence scope")
+Reset()
+gEarnInputAbortReason := "old guard reason", gEarnBusy := true
+SetEarner(false, "메모리 보호")
+Check(gEarnInputAbortReason = "" && gEarnFail = "메모리 보호" && gAbort,
+    "explicit hard stop replaces stale input evidence with its own reason")
 Reset()
 gEarnFail := "old failure"
 gEarnOn := false
@@ -126,8 +208,8 @@ Reset()
 endStopMode := "manual-user"
 EarnTick()
 Check(!gAbort && !gEarnUserAbort && !gEarnManualStop && mctOpen && bossOffCount = 0
-    && gEarnFail = "사용자 입력 또는 GTA 포커스 이탈로 중단"
-    && EarnStatusText() = "수익 멈춤: 사용자 입력 또는 GTA 포커스 이탈로 중단",
+    && gEarnFail = "사용자 물리 입력으로 중단"
+    && EarnStatusText() = "수익 멈춤: 사용자 물리 입력으로 중단",
     "manual cleanup interruption keeps its reason but releases the abort latch for later AFK cleanup")
 Reset()
 gEarnTasks := [{id:"safe", label:"safe", on:true, every:300000, fn:RunTask.Bind("safe")}]
@@ -684,6 +766,7 @@ Reset() {
     global
     selfMarks := ""
     fakeTick := 100000, idleMs := 60000, gEarnGuardArmed := false, gEarnGuardStartedTick := 0, gEarnUserAbort := false
+    gEarnInputAbortReason := "", metadataFailure := false, metadataCalls := 0
     timers := [], fakePID := 101, gEarnGamePID := 101
     beginCount := 0, endCount := 0, beginCleanupCount := 0, beginOK := true, endOK := true, endNoScreen := false,
         beginThrows := false, endThrows := false, mctOpen := false, events := [], logs := [],
@@ -717,6 +800,13 @@ RunTask(id, manageSession := true) {
     calls.Push(id)
     events.Push(id)
     taskMode := taskModes.Get(id,mode)
+    if (taskMode = "physical-ocr" || taskMode = "focus-ocr" || taskMode = "both-ocr") {
+        fakeTick += 100
+        idleMs := taskMode = "focus-ocr" ? idleMs + 100 : 0
+        focused := taskMode = "physical-ocr"
+        EarnInputWatch()
+        return EarnFail("화면 판독 중단 또는 시간 초과")
+    }
     duration := taskDurations.Get(id,0)
     fakeTick += duration, idleMs += duration
     if (taskMode = "manual-stop-app") {
@@ -787,7 +877,37 @@ Check(ok, name) {
     }
 }
 WinExist(*) => windowExists
-WinGetPID(*) => fakePID
+WinGetPID(selector) {
+    if (selector = "ahk_id 777") {
+        if (metadataFailure)
+            throw Error("fixture window vanished")
+        return 707
+    }
+    return fakePID
+}
+WinGetProcessName(selector) {
+    if (metadataFailure)
+        throw Error("fixture process unavailable")
+    return selector = "ahk_id 777" ? "fixture.exe" : "GTA5_Enhanced.exe"
+}
+WinGetTitle(selector) {
+    if (metadataFailure)
+        throw Error("fixture title unavailable")
+    return selector = "ahk_id 777" ? "Fixture window" : "Grand Theft Auto V"
+}
+FakeForegroundWindow() {
+    global metadataCalls
+    if (!releaseCount)
+        throw Error("diagnostic metadata must follow immediate key release")
+    metadataCalls++
+    return focused ? 1 : 777
+}
+InputEvidenceCount() {
+    count := 0
+    for message in logs
+        count += InStr(message, "[input-abort]") = 1 ? 1 : 0
+    return count
+}
 IsGTAActive() => focused
 EarnOtherMacroBusy() => otherBusy
 BringGTAToFront() {
@@ -1068,7 +1188,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 140 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 162 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout

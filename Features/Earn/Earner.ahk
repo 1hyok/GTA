@@ -18,6 +18,7 @@ global gEarnRecovery := ""        ; 확인된 정리 경로를 다음 tick에서
 global gEarnGuardArmed := false
 global gEarnGuardStartedTick := 0
 global gEarnUserAbort := false
+global gEarnInputAbortReason := "" ; 최초 입력 감시 사유. 뒤따른 OCR 실패가 원인을 덮지 않게 회차별로 보존한다.
 global gEarnManualStop := false
 global gEarnManualCleanupActive := false
 global gEarnManualCleanupAttempted := false
@@ -29,7 +30,7 @@ global gEarnAFKCleanup := false
 ; AFK 방지가 오래 방치된 MCT 화면을 만나면 수익 작업과 같은 확인된 정리 경로(확인창 취소 → MCT 닫기 → 일어서기 → 사장 해제)로 닫는다.
 ; 수익 작업이 도는 중에는 건드리지 않는다. 열린 MCT 화면이 안 보이면 아무 입력도 하지 않고 빈 문자열을 돌려준다.
 EarnAFKCloseMCT(idleSec) {
-    global gEarnBusy, gEarnFail, gAbort, gEarnAFKCleanup, gEarnGuardArmed, gEarnGuardStartedTick, gEarnGamePID, gEarnUserAbort, gEarnManualStop
+    global gEarnBusy, gEarnFail, gAbort, gEarnAFKCleanup, gEarnGuardArmed, gEarnGuardStartedTick, gEarnGamePID, gEarnUserAbort, gEarnManualStop, gEarnInputAbortReason
     if ((IsSet(gEarnBusy) && gEarnBusy) || gAbort)
         return ""
     if (!EarnAtMCT() && !EarnSeen("nc_dj_menu") && !EarnSeen("bunker_page") && !EarnSeen("bunker_entry")
@@ -37,17 +38,23 @@ EarnAFKCloseMCT(idleSec) {
         return ""
     ; 수익 작업과 같은 입력 감시를 건다. 정리 중 사람이 키보드·마우스를 만지면 바로 멈춘다.
     prevArmed := gEarnGuardArmed, prevStarted := gEarnGuardStartedTick, prevPID := gEarnGamePID, prevUserAbort := gEarnUserAbort
+    prevAbortReason := gEarnInputAbortReason
     gEarnBusy := true, gEarnAFKCleanup := true
+    gEarnUserAbort := false, gEarnInputAbortReason := ""
     gEarnGuardArmed := true, gEarnGuardStartedTick := A_TickCount, gEarnGamePID := EarnGamePID()
     ok := false, result := ""
     try {
         gEarnFail := ""
         ; 정리 도중 F9의 key-up이 입력 감시에 잡히면 중앙 wrapper가 새 기준점으로 딱 한 번 다시 확인한다.
         ok := EarnTaskMCTEndWithManualRetry()
+        if (gEarnUserAbort && gEarnInputAbortReason != "")
+            gEarnFail := gEarnInputAbortReason
         EarnLog("AFK: " idleSec "초 방치된 MCT 화면 정리 " (ok ? "완료" : "실패: " gEarnFail))
         result := "MCT 화면 정리 " (ok ? "완료" : "실패: " gEarnFail) " idle=" idleSec "s"
     } catch as e {
         EarnFail("AFK MCT 정리 오류: " e.Message)
+        if (gEarnUserAbort && gEarnInputAbortReason != "")
+            gEarnFail := gEarnInputAbortReason
         result := "MCT 화면 정리 실패: " gEarnFail " idle=" idleSec "s"
     } finally {
         gEarnBusy := false, gEarnAFKCleanup := false
@@ -61,6 +68,7 @@ EarnAFKCloseMCT(idleSec) {
         gEarnUserAbort := prevUserAbort
     } else if (!gAbort)
         gEarnUserAbort := prevUserAbort
+    gEarnInputAbortReason := gEarnUserAbort ? prevAbortReason : ""
     return result
 }
 global gEarnGamePID := 0
@@ -92,7 +100,7 @@ ToggleEarner(*) {
 }
 
 SetEarner(on, reason := "", stopMode := "hard") {
-    global gEarnOn, gEarnDue, gEarnDone, gEarnFail, gEarnTasks, gEarnNextDue, gEarnSoftFails, gEarnHeld, gEarnFailures, gEarnRecovery, gEarnRetryIn, gEarnBusy, gAbort, gEarnGamePID, gEarnBunkerFull, gEarnManualStop, gEarnManualCleanupActive, gEarnManualCleanupAttempted, gEarnTaskActive, gEarnAFKCleanup, gEarnUserAbort, gEarnSellNotice, config, afkOn
+    global gEarnOn, gEarnDue, gEarnDone, gEarnFail, gEarnTasks, gEarnNextDue, gEarnSoftFails, gEarnHeld, gEarnFailures, gEarnRecovery, gEarnRetryIn, gEarnBusy, gAbort, gEarnGamePID, gEarnBunkerFull, gEarnManualStop, gEarnManualCleanupActive, gEarnManualCleanupAttempted, gEarnTaskActive, gEarnAFKCleanup, gEarnUserAbort, gEarnSellNotice, gEarnInputAbortReason, config, afkOn
     if (on && (gEarnBusy || gEarnManualStop)) {
         ShowTooltip("💰 수익 자동화 끄기 정리 중: 다시 켤 수 없음", 2000)
         EarnLog("켜기 무시: 종료 정리 중 직접 재활성화 요청")
@@ -118,6 +126,7 @@ SetEarner(on, reason := "", stopMode := "hard") {
         gEarnManualCleanupAttempted := false
         gAbort := false
         gEarnUserAbort := false
+        gEarnInputAbortReason := ""
         gEarnSellNotice := ""
         ; 끈 사이에 벙커를 팔았을 수 있다. 첫 확인은 벙커 카드로 새로 읽는다.
         gEarnBunkerFull := false
@@ -145,6 +154,7 @@ SetEarner(on, reason := "", stopMode := "hard") {
     } else {
         SetTimer(EarnTick, 0)
         SetTimer(EarnSafeFeedWatch, 0)
+        gEarnInputAbortReason := ""
         ; gEarnBusy는 예약 작업 외에 금고 알림 OCR과 AFK 정리도 공유한다. 정리를 소비할 주체가 있는 구간만
         ; 수동 종료 latch를 세워야 OCR 도중 F9가 영구적인 "끄는 중" 상태를 남기지 않는다.
         manualCleanup := stopMode = "manual" && gEarnBusy && (gEarnTaskActive || gEarnAFKCleanup)
@@ -185,7 +195,7 @@ EarnEnabledText() {
 }
 
 EarnTick() {
-    global gEarnOn, gEarnBusy, gEarnDue, gEarnDone, gEarnTasks, gEarnCurrent, gEarnFail, gEarnNextDue, gEarnSoftFails, gEarnHeld, gEarnFailures, gEarnRecovery, gEarnRetryIn, gEarnCleanupNoScreen, gAbort, gEarnGamePID, gEarnUserAbort, gEarnManualStop, gEarnManualCleanupAttempted, gEarnTaskActive, config, afkOn
+    global gEarnOn, gEarnBusy, gEarnDue, gEarnDone, gEarnTasks, gEarnCurrent, gEarnFail, gEarnNextDue, gEarnSoftFails, gEarnHeld, gEarnFailures, gEarnRecovery, gEarnRetryIn, gEarnCleanupNoScreen, gAbort, gEarnGamePID, gEarnUserAbort, gEarnManualStop, gEarnManualCleanupAttempted, gEarnTaskActive, gEarnInputAbortReason, config, afkOn
     if (!gEarnOn || gEarnBusy)
         return
     if (!gEarnGamePID || EarnGamePID() != gEarnGamePID) {
@@ -295,6 +305,8 @@ EarnTick() {
     }
     ; F9 수동 종료는 새 작업 입력을 즉시 막되, 이미 연 MCT의 확인된 정리와 CEO 해제까지 끝낸 뒤 꺼진다.
     ; 정리 기준점을 다시 잡은 뒤 생긴 End·사용자 입력·포커스 이탈은 gAbort를 다시 켜므로 성공으로 덮지 않는다.
+    if (gEarnUserAbort && gEarnInputAbortReason != "")
+        gEarnFail := gEarnInputAbortReason
     if (gEarnManualStop) {
         EarnFinishManualStop(outcome.cleanupOK, gEarnManualCleanupAttempted, mctSession)
         return
@@ -327,8 +339,9 @@ EarnTick() {
                 gEarnNextDue.Delete(t.id)
             gEarnDue[t.id] := A_TickCount + 3 * 60000
         }
-        EarnLog(task.label ": 사용자 입력 또는 GTA 포커스 이탈로 중단 → 3분 뒤 다시")
-        ShowTooltip("💰 사용자 입력으로 중단 → 3분 뒤 다시", 4000)
+        abortReason := gEarnInputAbortReason != "" ? gEarnInputAbortReason : "입력 감시 중단 (상세 사유 없음)"
+        EarnLog(task.label ": " abortReason " → 3분 뒤 다시")
+        ShowTooltip("💰 " abortReason " → 3분 뒤 다시", 4000)
         return
     }
     if (fatalReason != "") {
@@ -470,11 +483,12 @@ EarnBossOffWithManualRetry(requireConfirmed := false) {
 }
 
 EarnManualBossOffCleanup(requireConfirmed := false) {
-    global gEarnManualCleanupActive, gEarnManualCleanupAttempted, gEarnGuardStartedTick, gEarnUserAbort, gAbort, gEarnFail
+    global gEarnManualCleanupActive, gEarnManualCleanupAttempted, gEarnGuardStartedTick, gEarnUserAbort, gAbort, gEarnFail, gEarnInputAbortReason
     gEarnManualCleanupActive := true
     gEarnManualCleanupAttempted := true
     gAbort := false
     gEarnUserAbort := false
+    gEarnInputAbortReason := ""
     gEarnGuardStartedTick := A_TickCount - A_TimeIdlePhysical
     gEarnFail := ""
     try return EarnBossOffIfOn(requireConfirmed)
@@ -484,11 +498,12 @@ EarnManualBossOffCleanup(requireConfirmed := false) {
 ; F9를 누른 시점까지의 중단 신호는 작업 본문에만 적용한다. 같은 입력 잠금과 감시를 유지한 채 기준점을
 ; 다시 잡아 MCT 정리를 허용하고, 이후 새 사용자 입력·포커스 이탈·End는 다시 gAbort를 켜 즉시 멈춘다.
 EarnManualStopCleanup() {
-    global gEarnManualCleanupActive, gEarnManualCleanupAttempted, gEarnGuardStartedTick, gEarnUserAbort, gAbort, gEarnFail
+    global gEarnManualCleanupActive, gEarnManualCleanupAttempted, gEarnGuardStartedTick, gEarnUserAbort, gAbort, gEarnFail, gEarnInputAbortReason
     gEarnManualCleanupActive := true
     gEarnManualCleanupAttempted := true
     gAbort := false
     gEarnUserAbort := false
+    gEarnInputAbortReason := ""
     ; Dispatch가 두 번째 F9의 key-up까지 기다린 뒤 원래 작업을 재개한다. 현재 물리 유휴 시각을 기준점으로 삼아
     ; 그 F9를 새 사용자 입력으로 다시 세지 않고, 이 뒤에 들어온 입력만 감지한다.
     gEarnGuardStartedTick := A_TickCount - A_TimeIdlePhysical
@@ -500,7 +515,7 @@ EarnManualStopCleanup() {
 
 ; 예약 작업과 AFK MCT 정리가 공유하는 F9 종료 finalizer다. hard stop은 gEarnManualStop을 먼저 내리므로 여기에 오지 않는다.
 EarnFinishManualStop(cleanupOK, cleanupAttempted, mctSession := true) {
-    global gEarnManualStop, gEarnManualCleanupAttempted, gAbort, gEarnUserAbort, gEarnFail
+    global gEarnManualStop, gEarnManualCleanupAttempted, gAbort, gEarnUserAbort, gEarnFail, gEarnInputAbortReason
     ; AHK hotkey thread가 finalizer 사이에 끼어들면 새 run을 켠 뒤 이전 상태로 덮어쓸 수 있다.
     ; 모든 상태 정리가 끝날 때까지 latch를 유지하고, 그 순간의 F9·End는 critical 해제 뒤 새 상태에 적용되게 한다.
     Critical "On"
@@ -516,6 +531,8 @@ EarnFinishManualStop(cleanupOK, cleanupAttempted, mctSession := true) {
         EarnLog("꺼짐: " message)
         ShowTooltip("💰 수익 자동화 꺼짐: " message, 4000)
     } else {
+        if (gEarnUserAbort && gEarnInputAbortReason != "")
+            gEarnFail := gEarnInputAbortReason
         if (gEarnFail = "" || gEarnFail = "화면 판독 중단 또는 시간 초과")
             gEarnFail := "수동 종료 정리 미확인. 화면 확인 후 보스 해제 필요"
         EarnLog("끄기 정리 실패: " gEarnFail)
@@ -524,6 +541,7 @@ EarnFinishManualStop(cleanupOK, cleanupAttempted, mctSession := true) {
     ; 이 작업과 입력 잠금은 끝났다. 실패 이유는 남기되 수동 종료용 latch를 AFK 정리까지 영구 차단하지 않게 소비한다.
     gAbort := false
     gEarnUserAbort := false
+    gEarnInputAbortReason := ""
     gEarnManualCleanupAttempted := false
     gEarnManualStop := false
     } finally {
@@ -600,7 +618,8 @@ EarnStopAfterFailure(why) {
 
 ; 물리 키보드/마우스 입력만 본다. 자동 클릭·카메라 입력은 유휴 시간을 초기화하지 않는다.
 EarnInputGuardStart() {
-    global gEarnGuardArmed, gEarnGuardStartedTick
+    global gEarnGuardArmed, gEarnGuardStartedTick, gEarnInputAbortReason
+    gEarnInputAbortReason := ""
     gEarnGuardStartedTick := A_TickCount
     gEarnGuardArmed := true
     SetTimer(EarnInputWatch, 25)
@@ -617,7 +636,7 @@ EarnInputWatch() {
 }
 
 EarnInputAllowed() {
-    global gEarnGuardArmed, gEarnGuardStartedTick, gAbort, gEarnRetryIn, gEarnGamePID, gEarnUserAbort
+    global gEarnGuardArmed, gEarnGuardStartedTick, gAbort, gEarnRetryIn, gEarnGamePID, gEarnUserAbort, gEarnInputAbortReason
     if (!gEarnGuardArmed)
         return !gAbort
     if (!gAbort && (!gEarnGamePID || EarnGamePID() != gEarnGamePID)) {
@@ -625,17 +644,52 @@ EarnInputAllowed() {
         gEarnRetryIn := 0
         EarnFail("GTA 종료 또는 재시작으로 중단. 현재 화면을 확인하고 다시 켜기")
         ReleaseHeldKeys()
-    } else if (!gAbort && (((A_TickCount - gEarnGuardStartedTick) > 0
-        && A_TimeIdlePhysical < A_TickCount - gEarnGuardStartedTick) || !IsGTAActive())) {
+    } else if (!gAbort) {
+        elapsedMs := A_TickCount - gEarnGuardStartedTick
+        physicalIdleMs := A_TimeIdlePhysical
+        activeHwnd := IsGTAActive()
+        physicalInput := elapsedMs > 0 && physicalIdleMs < elapsedMs
+        if (!physicalInput && activeHwnd)
+            return true
         ; 긴 OCR 호출 중 발생한 입력도 시작 이후 경과 시간과 비교해 감지한다.
         ; 끄지 않는다. EarnTick 이 3분 뒤로 미룬다.
         gAbort := true
         gEarnUserAbort := true
         gEarnRetryIn := 0
-        EarnFail("사용자 입력 또는 GTA 포커스 이탈로 중단")
+        gEarnInputAbortReason := physicalInput ? (activeHwnd ? "사용자 물리 입력으로 중단" : "사용자 물리 입력 및 GTA 포커스 판정 실패로 중단")
+            : "GTA 포커스 판정 실패로 중단"
+        ; 창 메타데이터 조회가 실패하거나 늦어져도 키 해제와 중단은 먼저 끝낸다.
         ReleaseHeldKeys()
+        foreground := "unknown"
+        try foreground := DllCall("GetForegroundWindow", "ptr")
+        EarnFail(gEarnInputAbortReason)
+        try EarnInputAbortEvidence(physicalInput, activeHwnd, physicalIdleMs, elapsedMs, foreground)
     }
     return !gAbort
+}
+
+EarnInputAbortEvidence(physicalInput, activeHwnd, idleMs, elapsedMs, foreground) {
+    global GTA_WIN, gEarnGamePID
+    gameHwnd := "unknown"
+    try gameHwnd := WinExist(GTA_WIN)
+    EarnLog("[input-abort] physical=" (physicalInput ? 1 : 0) " focus=" (activeHwnd ? 0 : 1)
+        " idle_ms=" idleMs " elapsed_ms=" elapsedMs " winactive=" activeHwnd " expected_game_pid=" gEarnGamePID
+        " foreground={" EarnInputWindowEvidence(foreground) "} game={" EarnInputWindowEvidence(gameHwnd) "}")
+}
+
+EarnInputWindowEvidence(hwnd) {
+    pid := "unknown", exe := "unknown", title := "unknown"
+    if (IsInteger(hwnd) && hwnd) {
+        try pid := WinGetPID("ahk_id " hwnd)
+        try exe := WinGetProcessName("ahk_id " hwnd)
+        try title := WinGetTitle("ahk_id " hwnd)
+    }
+    return "hwnd=" hwnd " pid=" pid " exe=" EarnInputEvidenceText(exe) " title=" EarnInputEvidenceText(title)
+}
+
+EarnInputEvidenceText(value) {
+    ; 제목의 개행이나 따옴표가 하나의 진단을 여러 로그처럼 보이게 하지 않는다.
+    return '"' StrReplace(StrReplace(StrReplace(StrReplace(SubStr(value, 1, 512), "\", "\\"), '"', '\"'), "`r", "\r"), "`n", "\n") '"'
 }
 
 EarnGamePID() {
