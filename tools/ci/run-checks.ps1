@@ -27,7 +27,7 @@ $ahkSuites = @('test-earner', 'test-antiafk', 'test-altf4teleport', 'test-botwar
     'test-earnpolicy', 'test-earnscreen', 'test-earnscreen-command', 'test-earnvinewood', 'test-earnwarehouse-read', 'test-earnwarehouse',
     'test-earnstaff', 'test-afk-notification-command', 'test-afk-input-lock', 'test-arrow-color', 'test-cpuboost', 'test-memguard', 'test-earndj', 'test-phone-call-template')
 $allAuxChecks = @(
-    'test-earnocr', 'test-mct-seated-template', 'test-bunker-templates', 'test-earnwarehouse-templates', 'test-afk-overlays', 'test-notification-dismiss', 'test-session-guard', 'test-gui-input', 'test-perf-watch', 'test-fps-helper', 'test-screen-capture')
+    'test-earnocr', 'test-mct-seated-template', 'test-bunker-templates', 'test-earnwarehouse-templates', 'test-afk-overlays', 'test-notification-dismiss', 'test-session-guard', 'test-gui-input', 'test-perf-watch', 'test-fps-helper', 'test-screen-capture', 'test-gta-mode')
 $selectionScript = Join-Path $PSScriptRoot 'check-selection.ps1'
 . $selectionScript
 if ($ChangedFilesPath) {
@@ -192,6 +192,9 @@ try {
     )) }
     if ('test-screen-capture' -in $selectedSuites) { Invoke-LoggedCheck 'test-screen-capture' $powershell ($psArguments + @(
         (Join-Path $repositoryRoot 'tools\tests\screen-capture.tests.ps1'), '-AhkPath', $AhkPath
+    )) }
+    if ('test-gta-mode' -in $selectedSuites) { Invoke-LoggedCheck 'test-gta-mode' $powershell ($psArguments + @(
+        (Join-Path $repositoryRoot 'tools\tests\gta-mode.tests.ps1')
     )) }
     if (($sourceHashes | ConvertTo-Json -Compress) -cne ((Get-MacroHashes $repositoryRoot) | ConvertTo-Json -Compress)) {
         throw 'Package source files changed during verification.'
