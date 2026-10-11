@@ -662,7 +662,7 @@ EarnTaskMCTEnd() {
                 return EarnCEO(false)
             return EarnFail("MCT 정리: 확인된 복귀 경로 없음. 화면 확인 후 보스 해제 필요")
         }
-        return EarnMCTClose() && EarnCEO(false)
+        return EarnMCTClose(false) && EarnCEO(false)
     } catch as e {
         return EarnFail("MCT 정리 오류: " e.Message)
     } finally {
