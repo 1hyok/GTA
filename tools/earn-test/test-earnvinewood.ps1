@@ -23,6 +23,14 @@ foreach ($functionName in @('EarnFindText', 'EarnReadDollars', 'EarnSelectText',
 $idleNeedle = 'A_TimeIdlePhysical < idleMs'
 if (([regex]::Matches($production, [regex]::Escape($idleNeedle))).Count -ne 1) { throw "Expected one free-HUD idle check" }
 $production = $production.Replace($idleNeedle, 'gPhysIdle < idleMs')
+$deadlineNeedle = 'deadline := A_TickCount + Max(0, timeoutMs)'
+$remainingNeedle = 'remainingMs := deadline - A_TickCount'
+if (([regex]::Matches($production, [regex]::Escape($deadlineNeedle))).Count -ne 1 -or
+    ([regex]::Matches($production, [regex]::Escape($remainingNeedle))).Count -ne 1) {
+    throw "Expected the free-HUD wait to use one wall-clock deadline"
+}
+$production = $production.Replace($deadlineNeedle, 'deadline := gNowMs + Max(0, timeoutMs)')
+$production = $production.Replace($remainingNeedle, 'remainingMs := deadline - gNowMs')
 if (-not (Test-Path -LiteralPath $AhkPath -PathType Leaf)) { throw "AutoHotkey executable not found: $AhkPath" }
 $driver = @'
 #Requires AutoHotkey v2.0
@@ -36,6 +44,7 @@ EarnTransactionBegin(id, reason) {
 }
 EarnTransactionConfirmed(id) => transactionPending.Delete(id)
 global gMode, gState, gSelected, gBiz, gIdx, gReads, gClaims, gClaimAttempts, gKeys, gStandWaits, gMctCloses, gCEOCalls, gFailure, gScheduled, gPhoneFrameVisible, gTests := 0
+global gNowMs := 0, gSleepMs := 0, gTimedReads := 0
 ; 입금 알림 감시(EarnSafeFeedWatch)는 스케줄러 전역을 쓴다. 이 시험은 파서만 부른다.
 global gEarnRetryIn := 0, gEarnOn := false, gEarnBusy := false, gEarnDue := Map(), gEarnNextDue := Map()
 global config := Map("Settings", Map("EarnUserIdleSec", 45)), gPhysIdle := 600000, gOthersIdle := 600000
@@ -51,6 +60,7 @@ DefaultBiz() => [["Nightclub",150000], ["Arcade",10000], ["Agency",80000], ["Sal
 
 RunTests() {
     global gClaims, gClaimAttempts, gKeys, gState, gMctCloses, gCEOCalls, gScheduled, gBiz, gIdx, gSelected, gPhysIdle, gOthersIdle
+    global gNowMs, gSleepMs, gTimedReads
     ; mode, starting screen, amounts to override, success, claimed names, final screen, scheduled minutes (0 = not checked)
     cases := [
         ["normal", "main", Map(), true, "", "standing", 88],
@@ -185,9 +195,39 @@ RunTests() {
     Reset("normal", "hud")
     Check(EarnVinewoodOpen(false) && gState = "main" && gMctCloses = 0 && gCEOCalls = 0,
         "staff opens away from MCT without terminal or boss operations")
+    ; CEO/menu cleanup can finish one frame before the confirmed MCT standing
+    ; prompt returns. Staff must wait without input, then accept that prompt as a
+    ; normal free-HUD anchor even when the health bar itself is not detected.
+    Reset("mct_ready_delay", "mct_transition")
+    Check(EarnVinewoodOpen(false) && gState = "main" && gStandWaits >= 1
+        && gKeys.Length = 3 && gKeys[1] = "Up" && gKeys[2] = "Right" && gKeys[3] = "Enter"
+        && gMctCloses = 0 && gCEOCalls = 0,
+        "staff waits for the delayed MCT standing prompt before opening the app")
+    Reset("mct_ready_delay", "mct_transition")
+    Check(EarnVinewoodOpen() && gState = "main" && gStandWaits >= 1
+        && gKeys.Length = 3 && gKeys[1] = "Up" && gKeys[2] = "Right" && gKeys[3] = "Enter"
+        && gMctCloses = 0 && gCEOCalls = 1,
+        "safe reclassifies the delayed MCT standing prompt and retires CEO before opening the app")
+    Reset("mct_ready_once", "mct_transition")
+    Check(EarnVinewoodOpen() && gState = "main" && gStandWaits >= 1
+        && gKeys.Length = 3 && gKeys[1] = "Up" && gKeys[2] = "Right" && gKeys[3] = "Enter"
+        && gMctCloses = 0 && gCEOCalls = 1,
+        "safe preserves a one-frame MCT standing result and retires CEO without rereading it")
+    Reset("wait_deadline", "timed_wait")
+    timedMCT := true
+    Check(!EarnVinewoodWaitFreeHud(450, &timedMCT) && !timedMCT
+        && gTimedReads = 2 && gSleepMs = 200 && gNowMs = 460,
+        "free-HUD wait counts OCR time against one wall-clock deadline")
     Reset("normal", "standing")
-    Check(!EarnVinewoodOpen(false) && gKeys.Length = 0 && gMctCloses = 0 && gCEOCalls = 0,
-        "staff does not substitute MCT position for a verified free HUD")
+    Check(EarnVinewoodFreeHud(), "MCT standing prompt is a free-HUD anchor without a health bar")
+    gOthersIdle := 1000
+    Check(EarnVinewoodFreeHud(), "MCT standing prompt permits recent injected input")
+    gOthersIdle := 600000, gPhysIdle := 1000
+    Check(!EarnVinewoodFreeHud(), "MCT standing prompt still rejects recent physical input")
+    Reset("hud_menu", "standing")
+    Check(!EarnVinewoodFreeHud(), "MCT standing prompt does not override an open interaction menu")
+    Reset("mct_phone", "standing")
+    Check(!EarnVinewoodFreeHud(), "MCT standing prompt does not override an open phone")
     Reset("normal", "phone_job")
     Check(EarnVinewoodOpen() && gState = "main" && gKeys.Length = 2
         && gKeys[1] = "Right" && gKeys[2] = "Enter", "Job List home only moves right and opens the selected app")
@@ -268,6 +308,7 @@ RunTests() {
 Reset(mode, state, amounts := "") {
     global transactionPending := Map()
     global gMode, gState, gSelected, gBiz, gIdx, gReads, gClaims, gClaimAttempts, gKeys, gStandWaits, gMctCloses, gCEOCalls, gFailure, gScheduled, gPhysIdle, gOthersIdle, gPhoneFrameVisible
+    global gNowMs, gSleepMs, gTimedReads
     gMode := mode, gState := state = "earnings_mid" ? "earnings" : state, gBiz := DefaultBiz(), gIdx := state = "earnings_mid" ? 4 : 1
     gPhoneFrameVisible := mode != "phone_texts_hdr"
     if (mode = "unknown_business")
@@ -279,6 +320,7 @@ Reset(mode, state, amounts := "") {
                     biz[2] := amount
     gSelected := gState = "earnings" ? gBiz[gIdx][1] : "Claim Business Earnings"
     gReads := Map(), gClaims := [], gClaimAttempts := 0, gKeys := [], gStandWaits := 0, gMctCloses := 0, gCEOCalls := 0, gFailure := "", gScheduled := 0, gPhysIdle := 600000, gOthersIdle := 600000
+    gNowMs := 0, gSleepMs := 0, gTimedReads := 0
 }
 
 EarnReadScreen(*) {
@@ -386,7 +428,10 @@ EarnPress(key) {
     return true
 }
 EarnSleep(ms) {
-    global gMode, gState, gClaims, gStandWaits
+    global gMode, gState, gClaims, gStandWaits, gNowMs, gSleepMs
+    gNowMs += ms, gSleepMs += ms
+    if (gState = "mct_transition")
+        gStandWaits += 1, gState := gMode = "mct_ready_once" ? "standing_once" : "standing"
     if (gClaims.Length && ms = 300 && gMode = "post_unconfirmed")
         return false
     if (gState = "waiting_prompt" && ms = 300 && ++gStandWaits >= 2)
@@ -394,12 +439,24 @@ EarnSleep(ms) {
     return true
 }
 EarnSeen(name, *) {
-    global gState, gMode
+    global gState, gMode, gNowMs, gTimedReads
     if (name = "m_title")
         return gMode = "hud_menu"
     if (name = "afk_phone_frame")
-        return gPhoneFrameVisible && (gState = "phone_texts" || gState = "phone_internet" || gState = "phone_job")
-    return name = "mct_sit" ? gState = "standing" : name = "ph_joblist_sel" ? gState = "phone_job" : name = "ph_vinewood_sel" && gState = "phone_vinewood"
+        return gPhoneFrameVisible && (gState = "phone_texts" || gState = "phone_internet" || gState = "phone_job"
+            || gMode = "mct_phone" && gState = "standing")
+    if (name = "mct_sit") {
+        if (gMode = "wait_deadline") {
+            gNowMs += 130, gTimedReads += 1
+            return false
+        }
+        if (gMode = "mct_ready_once" && gState = "standing_once") {
+            gState := "hud"
+            return true
+        }
+        return gState = "standing"
+    }
+    return name = "ph_joblist_sel" ? gState = "phone_job" : name = "ph_vinewood_sel" && gState = "phone_vinewood"
 }
 EarnWaitSeen(name, *) => EarnSeen(name)
 EarnHudVisible() {
