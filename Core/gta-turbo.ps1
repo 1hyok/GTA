@@ -217,8 +217,14 @@ function Set-AwayCpuLimit {
 function Get-Fps {
     if (-not (Test-Path -LiteralPath $script:PresentMon)) { return ',' }
     if (Test-Path -LiteralPath $script:PmOut) { Remove-Item -LiteralPath $script:PmOut }
-    & $script:PresentMon --process_name "$($script:Game).exe" --output_file $script:PmOut --timed 2 --terminate_after_timed `
-        --no_console_stats --stop_existing_session --session_name gta_perf 2>$null | Out-Null
+    # Windows PowerShell turns native stderr warnings into ErrorRecords even when
+    # redirected. A non-fatal elevation warning must not abort the capture.
+    $previousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        & $script:PresentMon --process_name "$($script:Game).exe" --output_file $script:PmOut --timed 2 --terminate_after_timed `
+            --no_console_stats --stop_existing_session --session_name gta_perf 2>$null | Out-Null
+    } finally { $ErrorActionPreference = $previousPreference }
     try {
         $ms = @(Import-Csv -LiteralPath $script:PmOut | Where-Object { $_.MsBetweenDisplayChange -ne 'NA' } |
             ForEach-Object { [double]$_.MsBetweenDisplayChange } | Where-Object { $_ -gt 0 })
