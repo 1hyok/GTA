@@ -17,7 +17,7 @@ if ($timer.Count -ne 1) { throw 'Expected exactly one production CpuBoostTick ti
 $src = $src.Remove($timer[0].Index, $timer[0].Length)
 $src = $src.Replace('RunWait(', 'TestRunWait(').Replace('FileOpen(', 'TestFpsFileOpen(').
     Replace('FileRead(', 'TestFpsFileRead(').Replace('EnvGet(', 'TestEnvGet(').
-    Replace('A_TrayMenu', 'gTestTray').Replace('A_IconTip', 'gTestIconTip')
+    Replace('A_TrayMenu', 'gTestTray').Replace('A_IconTip', 'gTestIconTip').Replace('A_TickCount', 'TestNow()')
 $configSource = $configSource.Replace('A_ScriptDir', 'gFixtureRoot')
 $traySource = $tray[0].Value.Replace('A_TrayMenu', 'gTestTray').Replace('A_IconTip', 'gTestIconTip')
 if ($src -match '(?m)^SetTimer\(' -or $src -match '(?<!Test)Run(?:Wait)?\(') {
@@ -35,6 +35,7 @@ global n := 0, gFixtureRoot := "@FIXTURE@", gTestTray := FakeTray(), gTestIconTi
 global gEarnOn := false, testPhys := 0, testOthers := 0, testPowerExit := 0, testPowerCalls := []
 global testFpsFail := "", testFpsOpens := 0, testFpsReads := 0, testLogs := [], testTips := []
 global testPowerDelay := 0, testHeld := false, testPowerDuringHold := false, testHoldMs := 0
+global testNowMs := 1000000
 @CONFIG@
 @CPU@
 try {
@@ -64,6 +65,9 @@ RunCases() {
     ResetState(0, 0, 30, false, 0, 0)
     Check(CpuBoostTick(), "disabled untouched normal policy returns success")
     Check(testPowerCalls.Length = 0 && testFpsOpens = 0, "disabled untouched normal policy has no side effects")
+    ResetState(0, 300, 24, true, 600000, 600000)
+    testNowMs := 120000
+    Check(CpuBoostTick() && gCpuBoostState = "on", "idle cannot exceed a fresh machine uptime")
     ResetState(0, 300, 24, true, 600000, 600000)
     Check(CpuBoostTick() && gCpuBoostState = "off" && ReadFps() = "24", "normal idle policy uses configured FPS")
     config["Settings"]["IdleFpsLimit"] := 20
@@ -183,6 +187,8 @@ ResetState(away, sec, fps, earn, phys, others) {
     config["Settings"] := Map("AwayMode", away, "CpuBoostIdleSec", sec, "IdleFpsLimit", fps)
     gCpuBoostState := "", gCpuBoostFps := "", gCpuBoostLastActive := 0
     gCpuBoostWorking := false, gCpuBoostError := "", gEarnOn := earn
+    ; Synthetic idle values must share a deterministic clock, not the CI VM uptime.
+    testNowMs := 1000000
     testPhys := phys, testOthers := others, testPowerExit := 0, testPowerCalls := []
     testFpsFail := "", testFpsOpens := 0, testFpsReads := 0, testLogs := [], testTips := []
     try FileDelete(gFixtureRoot "\.gta-fps-want")
@@ -211,6 +217,10 @@ AFKPhysicalIdleMs() {
 AFKOthersIdleMs() {
     global testOthers
     return testOthers
+}
+TestNow() {
+    global testNowMs
+    return testNowMs
 }
 TestRunWait(command, workingDir := "", options := "") {
     global testPowerCalls, testPowerExit, testPowerDelay, testHeld, testPowerDuringHold
@@ -332,7 +342,7 @@ FinishTiming() {
 }
 '@
 try {
-    Invoke-CpuFixture $driver '^PASS CpuBoost cases=66$'
+    Invoke-CpuFixture $driver '^PASS CpuBoost cases=67$'
     $timingDriver = [regex]::Replace($driver, '(?m)^    RunCases\(\)\r?\n    FileAppend[^\r\n]*\r?\n    ExitApp\(0\)',
         "    SetTimer(BeginTiming, -1)`n    return")
     # Control reproduces the RunWait interruption before the timer-priority fix.
