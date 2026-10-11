@@ -30,7 +30,7 @@ StopAll(reason := "hotkey") {
         stopped.Push("벨럼")
     }
     ; F9 안전 정리가 이미 시작돼 gEarnOn이 false여도 End는 그 정리를 즉시 hard-stop으로 바꾼다.
-    if (IsSet(gEarnOn) && (gEarnOn || (IsSet(gEarnBusy) && gEarnBusy))) {
+    if ((IsSet(gEarnOn) && gEarnOn) || (IsSet(gEarnBusy) && gEarnBusy)) {
         SetEarner(false, "전체 멈춤")
         stopped.Push("수익 자동화")
     }
