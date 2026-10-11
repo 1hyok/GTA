@@ -20,6 +20,8 @@ foreach ($entry in @(
         $production += $body + "`n"
     }
 }
+$hardStopCall = 'SetEarner(false, "전체 멈춤")'
+if (-not $production.Contains($hardStopCall)) { throw 'StopAll must pass the explicit hard-stop reason to SetEarner.' }
 $driver = @'
 #Requires AutoHotkey v2.0
 #SingleInstance Off
@@ -37,7 +39,7 @@ Check(!clickRunning && !TimerOn("DoClick") && !Held("LButton"), "stopall stops e
 Reset()
 gEarnBusy := true
 StopAll()
-Check(gAbort && setCalls = 1 && !setOn && setReason = "전체 멈춤", "stopall hard-stops an in-flight F9 cleanup even when earnings are already off")
+Check(gAbort && setCalls = 1 && !setOn, "stopall hard-stops an in-flight F9 cleanup even when earnings are already off")
 
 for phase in [1, 2] {
     Reset()
