@@ -1425,7 +1425,7 @@ EarnArrowCEOColor() {
 
 ; 사장은 MCT 에서 벙커·DJ 를 만질 때만 필요하다. 작업이 못 끝나 정리가 사장 해제까지 못 갔을 때 켜진 채 남지 않도록,
 ; 조직 색 화살표가 확실히 켜져 있으면(1) 상호작용 메뉴로 해제한다.
-; requireConfirmed=true는 판매 중단 인계처럼 CEO 해제가 확인돼야만 종료할 수 있는 경로다.
+; requireConfirmed=true는 CEO 해제가 확인돼야만 성공으로 처리하는 엄격한 확인 경로다.
 ; 이 때는 입력 불허나 화살표 판독 불가(-1)를 성공으로 간주하지 않고 복구에서 다시 확인한다.
 EarnBossOffIfOn(requireConfirmed := false) {
     if (!EarnInputAllowed())

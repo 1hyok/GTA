@@ -8,8 +8,7 @@ global gEarnOn := false
 global gEarnDue := Map()        ; 작업 id → 다음 실행 시각(A_TickCount)
 global gEarnDone := Map()       ; 작업 id → 켠 뒤 성공 횟수
 global gEarnCurrent := ""       ; 지금 하는 작업 이름
-global gEarnSellNotice := ""    ; 만재를 확인한 순간부터 안전 정리가 끝날 때까지 표시할 판매 알림
-global gEarnSellStopReason := "" ; 안전 정리 뒤 수익 자동화를 끌 판매 대상
+global gEarnSellNotice := ""    ; 자동화를 중단하지 않고 표시할 재고 만재 알림
 global gEarnTasks := []
 global gEarnNextDue := Map()   ; 작업이 스스로 정한 다음 실행 시각(A_TickCount). 없으면 시작 시각 + 간격
 global gEarnSoftFails := Map()   ; 작업별 연속 실패 횟수. 빠른 재시도 뒤 최대 30분으로 간격을 늘린다
@@ -93,7 +92,7 @@ ToggleEarner(*) {
 }
 
 SetEarner(on, reason := "", stopMode := "hard") {
-    global gEarnOn, gEarnDue, gEarnDone, gEarnFail, gEarnTasks, gEarnNextDue, gEarnSoftFails, gEarnHeld, gEarnFailures, gEarnRecovery, gEarnRetryIn, gEarnBusy, gAbort, gEarnGamePID, gEarnBunkerFull, gEarnManualStop, gEarnManualCleanupActive, gEarnManualCleanupAttempted, gEarnTaskActive, gEarnAFKCleanup, gEarnUserAbort, gEarnSellStopReason, gEarnSellNotice, config, afkOn
+    global gEarnOn, gEarnDue, gEarnDone, gEarnFail, gEarnTasks, gEarnNextDue, gEarnSoftFails, gEarnHeld, gEarnFailures, gEarnRecovery, gEarnRetryIn, gEarnBusy, gAbort, gEarnGamePID, gEarnBunkerFull, gEarnManualStop, gEarnManualCleanupActive, gEarnManualCleanupAttempted, gEarnTaskActive, gEarnAFKCleanup, gEarnUserAbort, gEarnSellNotice, config, afkOn
     if (on && (gEarnBusy || gEarnManualStop)) {
         ShowTooltip("💰 수익 자동화 끄기 정리 중: 다시 켤 수 없음", 2000)
         EarnLog("켜기 무시: 종료 정리 중 직접 재활성화 요청")
@@ -119,7 +118,6 @@ SetEarner(on, reason := "", stopMode := "hard") {
         gEarnManualCleanupAttempted := false
         gAbort := false
         gEarnUserAbort := false
-        gEarnSellStopReason := ""
         gEarnSellNotice := ""
         ; 끈 사이에 벙커를 팔았을 수 있다. 첫 확인은 벙커 카드로 새로 읽는다.
         gEarnBunkerFull := false
@@ -187,16 +185,9 @@ EarnEnabledText() {
 }
 
 EarnTick() {
-    global gEarnOn, gEarnBusy, gEarnDue, gEarnDone, gEarnTasks, gEarnCurrent, gEarnFail, gEarnNextDue, gEarnSoftFails, gEarnHeld, gEarnFailures, gEarnRecovery, gEarnRetryIn, gEarnCleanupNoScreen, gAbort, gEarnGamePID, gEarnUserAbort, gEarnManualStop, gEarnManualCleanupAttempted, gEarnTaskActive, gEarnSellStopReason, gEarnSellNotice, config, afkOn
+    global gEarnOn, gEarnBusy, gEarnDue, gEarnDone, gEarnTasks, gEarnCurrent, gEarnFail, gEarnNextDue, gEarnSoftFails, gEarnHeld, gEarnFailures, gEarnRecovery, gEarnRetryIn, gEarnCleanupNoScreen, gAbort, gEarnGamePID, gEarnUserAbort, gEarnManualStop, gEarnManualCleanupAttempted, gEarnTaskActive, config, afkOn
     if (!gEarnOn || gEarnBusy)
         return
-    ; 만재를 이미 확인했고 정리 재시도도 남지 않았으면 새 작업을 시작하지 않는다.
-    if (gEarnSellStopReason != "" && !IsObject(gEarnRecovery)) {
-        reason := gEarnSellStopReason
-        gEarnSellStopReason := "", gEarnSellNotice := ""
-        SetEarner(false, reason)
-        return
-    }
     if (!gEarnGamePID || EarnGamePID() != gEarnGamePID) {
         SetEarner(false, "GTA 종료 또는 재시작 감지. 현재 화면을 확인하고 다시 켜기")
         return
@@ -262,7 +253,6 @@ EarnTick() {
     try %"AFKSelfInput"%(true)
     outcome := {results: [], cleanupOK: true}
     fatalReason := ""
-    noScreenBossChecked := false, noScreenBossOK := false
     try {
         EarnInputGuardStart()
         if (EarnInputAllowed()) {
@@ -278,12 +268,9 @@ EarnTick() {
             }
         }
         ; no-screen 복구의 CEO 해제도 다른 화면 입력과 같은 mutex·물리 입력 guard 안에서만 시도한다.
-        ; 판매 중단은 두 번째 no-screen에서 CEO 해제가 확인되지 않으면 recovery를 풀지 않는다.
         if (recovering && !outcome.cleanupOK && gEarnCleanupNoScreen
             && gEarnRecovery.attempts + 1 >= 2) {
-            noScreenBossChecked := true
-            noScreenBossOK := EarnBossOffWithManualRetry(gEarnSellStopReason != "")
-            if (noScreenBossOK)
+            if (EarnBossOffWithManualRetry())
                 outcome.cleanupOK := true
         }
         ; 마지막 단계에서 사용자가 개입한 경우 성공/자동 재시도로 덮지 않는다.
@@ -353,17 +340,10 @@ EarnTick() {
         ; 복구를 두 번 시도해도 열린 MCT 화면이 하나도 안 보이면 정리할 것이 없다(세션이 바뀌었거나 이미 나온 상태, 1010 01:32 실측).
         ; 그대로 두면 복구가 수익 작업을 영영 막는다. 풀고 나머지를 이어 가며, MCT 작업은 시작할 때 위치를 다시 확인한다.
         if (recovering && attempts >= 2 && gEarnCleanupNoScreen) {
-            bossOffOK := noScreenBossChecked && noScreenBossOK
-            if (gEarnSellStopReason != "" && !bossOffOK) {
-                ; 판매를 위해 넘길 때는 CEO가 남은 상태를 정상 종료로 확정하지 않는다. 확인될 때까지 정리만 재시도한다.
-                EarnFail("판매 중단 정리: 열린 MCT 화면 없음, CEO 해제 미확인")
-                outcome.cleanupOK := false
-            } else {
-                gEarnRecovery := ""
-                EarnLog("복구 해제: " task.id " 열린 MCT 화면 없음이 반복됨, 다음 작업 시작 때 위치 재확인")
-                outcome.cleanupOK := true
-                recovering := false
-            }
+            gEarnRecovery := ""
+            EarnLog("복구 해제: " task.id " 열린 MCT 화면 없음이 반복됨, 다음 작업 시작 때 위치 재확인")
+            outcome.cleanupOK := true
+            recovering := false
         }
     }
     if (!outcome.cleanupOK) {
@@ -382,12 +362,6 @@ EarnTick() {
         EarnFinishScheduledTask(result)
         if (!gEarnOn)
             return
-    }
-    if (gEarnSellStopReason != "") {
-        reason := gEarnSellStopReason
-        gEarnSellStopReason := "", gEarnSellNotice := ""
-        SetEarner(false, reason)
-        return
     }
 }
 
@@ -427,7 +401,7 @@ EarnRunScheduledTask(task, mctSession := false) {
 }
 
 EarnRunMCTBatch(tasks) {
-    global gEarnCurrent, gEarnFail, gEarnRetryIn, gEarnMCTCleanupOK, gEarnSellStopReason
+    global gEarnCurrent, gEarnFail, gEarnRetryIn, gEarnMCTCleanupOK
     outcome := {results: [], cleanupOK: true}
     opened := false
     currentTask := tasks[1]
@@ -444,7 +418,7 @@ EarnRunMCTBatch(tasks) {
                 currentTask := task
                 result := EarnRunScheduledTask(task, true)
                 outcome.results.Push(result)
-                if (!result.ok || gEarnSellStopReason != "")
+                if (!result.ok)
                     break
             }
         } else {
@@ -557,24 +531,15 @@ EarnFinishManualStop(cleanupOK, cleanupAttempted, mctSession := true) {
     }
 }
 
-; 화면에서 만재를 실제로 확인한 작업은 이 요청만 남긴다. 현재 앱이나 MCT는 기존 확인 경로로 닫고,
-; EarnTick이 입력 잠금을 해제한 뒤 자동화를 꺼 사용자가 바로 판매할 수 있게 한다.
-EarnRequestSellStop(reason) {
-    global gEarnSellStopReason, gEarnSellNotice
-    if (gEarnSellStopReason = "") {
-        notify := gEarnSellNotice != reason
-        gEarnSellStopReason := reason
+; 만재는 알림만 남긴다. 구매·조달을 건너뛸지는 각 작업이 판단하고, 전체 자동화 중단은 사용자가 결정한다.
+EarnNotifyStockFull(reason) {
+    global gEarnSellNotice
+    if (gEarnSellNotice != reason) {
         gEarnSellNotice := reason
-        EarnLog("판매 중단 요청: " reason)
-        if (notify)
-            ShowTooltip("💰 " reason " · 안전 정리 뒤 자동화 멈춤", 10000)
+        EarnLog("재고 만재 알림: " reason " · 나머지 작업 계속")
+        ShowTooltip("💰 " reason " · 자동화 계속, 중단은 직접", 10000)
     }
     return true
-}
-
-EarnSellStopPending() {
-    global gEarnSellStopReason
-    return gEarnSellStopReason != ""
 }
 
 EarnFinishScheduledTask(result) {

@@ -43,7 +43,7 @@ global fixtureData := Map(), fixtureKey := ""
 global observedDeadlines := []
 global menuReads := 0, mainNames := [], bailMenuReads := 0, bailMenuReadsAtFirstKey := 0
 global hangarState := "ready", hangarRequests := 0, hangarReads := 0
-global sellStopRequests := 0, sellStopReasons := []
+global stockFullNotices := 0, stockFullReasons := []
 global greyText := "", greyMissing := 0, flickerReads := 0
 OnError(TestUnhandledError)
 __FIXTURE_INIT__
@@ -316,8 +316,8 @@ RunCargoTests() {
     global hangarState, hangarRequests, hangarReads
     global mode, screenState, selected, statuses, requests, keys, config
     global cargoNames, cargoStatuses, cargoRequests, activeCount, opens
-    global transactionPending, sellStopRequests, sellStopReasons
-    ; mode, statuses, success, per-run cargo request count, sell-stop request count.
+    global transactionPending, stockFullNotices, stockFullReasons
+    ; mode, statuses, success, per-run cargo request count, full-stock notification count.
     cases := [
         ["normal",["ready","ready","busy","ready","busy"],true,3,0],
         ["normal",["busy","busy","busy","busy","busy"],true,0,0],
@@ -347,7 +347,7 @@ RunCargoTests() {
         result := EarnStaffCargoWarehouses()
         Check(result = c[3], c[1] " cargo success=" result)
         Check(Sum(cargoRequests) = c[4], c[1] " cargo request count=" Sum(cargoRequests))
-        Check(sellStopRequests = c[5], c[1] " sell-stop request count=" sellStopRequests)
+        Check(stockFullNotices = c[5], c[1] " full-stock notice count=" stockFullNotices)
         if (c[5])
             Check(screenState = "staff", c[1] " full terminal leaves the cargo list")
         if (c[1] = "cargo_after_full")
@@ -401,46 +401,65 @@ RunCargoTests() {
         for key in keys
             Check(key != "Esc", "combined task no Esc")
     }
-    ; A full special-cargo property requests one sell stop, then skips later cargo and Hangar dispatches.
+    ; Full cargo skips only that property, including first/middle/last slots. Later cargo and Hangar still run.
+    for fullIndex in [1,3,5] {
+        Reset("normal",["busy","busy"])
+        config["Settings"]["EarnBailAgents"] := 0, config["Settings"]["EarnHangarStaff"] := 1
+        cargoStatuses[fullIndex] := "full"
+        Check(EarnVinewoodStaffTask(), "full special cargo completes the remaining staff task at slot " fullIndex)
+        Check(stockFullNotices = 1 && stockFullReasons.Length = 1
+            && stockFullReasons[1] = "스페셜 패키지 " cargoNames[fullIndex] " 만재: 판매 필요",
+            "full special cargo reports the exact property once")
+        Check(cargoRequests[fullIndex] = 0 && Sum(cargoRequests) = 4 && hangarRequests = 1,
+            "full special cargo skips only itself and continues remaining cargo and hangar")
+        Check(!transactionPending.Has("staff"), "full special cargo leaves no pending transaction")
+        Check(screenState = "standing" && keys.Length >= 2
+            && keys[keys.Length-1] = "Backspace" && keys[keys.Length] = "Backspace",
+            "full special cargo task follows the confirmed app-close path")
+    }
+
     Reset("normal",["busy","busy"])
     config["Settings"]["EarnBailAgents"] := 0, config["Settings"]["EarnHangarStaff"] := 1
-    cargoStatuses := ["ready","full","ready","ready","ready"]
-    Check(EarnVinewoodStaffTask(), "full special cargo closes the app after requesting a sell stop")
-    Check(sellStopRequests = 1 && sellStopReasons.Length = 1
-        && sellStopReasons[1] = "스페셜 패키지 Railyard Warehouse 만재: 판매 필요",
-        "full special cargo requests the exact sell stop once")
-    Check(cargoRequests[1] = 1 && Sum(cargoRequests) = 1 && hangarRequests = 0,
-        "full special cargo permits no later procurement or dispatch")
-    Check(screenState = "standing" && keys.Length >= 3
-        && keys[keys.Length-2] = "Backspace" && keys[keys.Length-1] = "Backspace" && keys[keys.Length] = "Backspace",
-        "full special cargo leaves its list and follows the confirmed app-close path")
+    cargoStatuses := ["full","full","full","full","full"]
+    Check(EarnVinewoodStaffTask() && Sum(cargoRequests) = 0 && hangarRequests = 1,
+        "all full cargo still permits hangar dispatch without buying cargo")
+    Check(stockFullNotices = 5 && screenState = "standing", "all full cargo reports every property and closes normally")
 
     ; Full can appear during the no-input preflight reread or as the terminal result after one request.
     for fullMode in ["cargo_full_change","cargo_after_full"] {
         Reset(fullMode,["busy","busy"])
         config["Settings"]["EarnBailAgents"] := 0, config["Settings"]["EarnHangarStaff"] := 1
-        cargoStatuses := ["ready","busy","busy","busy","busy"]
+        cargoStatuses := ["ready","ready","busy","ready","ready"]
         Check(EarnVinewoodStaffTask(), fullMode " ends successfully after confirmed full")
-        Check(sellStopRequests = 1 && sellStopReasons.Length = 1
-            && sellStopReasons[1] = "스페셜 패키지 Discount Retail Unit 만재: 판매 필요",
-            fullMode " requests the exact sell stop once")
+        Check(stockFullNotices = 1 && stockFullReasons.Length = 1
+            && stockFullReasons[1] = "스페셜 패키지 Discount Retail Unit 만재: 판매 필요",
+            fullMode " reports the exact full property once")
         expectedRequests := fullMode = "cargo_after_full" ? 1 : 0
-        Check(cargoRequests[1] = expectedRequests && Sum(cargoRequests) = expectedRequests && hangarRequests = 0,
-            fullMode " permits no procurement or dispatch after full")
+        Check(cargoRequests[1] = expectedRequests && Sum(cargoRequests) = expectedRequests + 3 && hangarRequests = 1,
+            fullMode " continues remaining cargo and hangar without reordering the full property")
         Check(!transactionPending.Has("staff"), fullMode " leaves no transaction pending")
-        Check(screenState = "standing" && keys.Length >= 3
-            && keys[keys.Length-2] = "Backspace" && keys[keys.Length-1] = "Backspace" && keys[keys.Length] = "Backspace",
+        Check(screenState = "standing" && keys.Length >= 2
+            && keys[keys.Length-1] = "Backspace" && keys[keys.Length] = "Backspace",
             fullMode " follows the confirmed app-close path")
+        for count in cargoRequests
+            Check(count <= 1, fullMode " never duplicates a cargo request")
     }
+
+    Reset("cargo_after_full",["busy","busy"])
+    activeCount := 1
+    EarnStaffTrack("reset")
+    Check(EarnStaffCargoWarehouses() && cargoRequests[1] = 1 && !transactionPending.Has("staff"),
+        "post-request full is confirmed once without leaving a pending transaction")
+    Check(EarnStaffTrack() = 300000, "post-request full is tracked as full rather than newly sent")
 
     ; A full Hangar never dispatches and also returns through the confirmed app-close path.
     Reset("normal",["busy","busy"])
     config["Settings"]["EarnBailAgents"] := 0, config["Settings"]["EarnCargoStaff"] := 0, config["Settings"]["EarnHangarStaff"] := 1
     hangarState := "full"
-    Check(EarnVinewoodStaffTask(), "full hangar closes the app after requesting a sell stop")
-    Check(sellStopRequests = 1 && sellStopReasons.Length = 1
-        && sellStopReasons[1] = "격납고 재고 만재: 판매 필요",
-        "full hangar requests the exact sell stop once")
+    Check(EarnVinewoodStaffTask(), "full hangar skips dispatch and completes the task")
+    Check(stockFullNotices = 1 && stockFullReasons.Length = 1
+        && stockFullReasons[1] = "격납고 재고 만재: 판매 필요",
+        "full hangar reports the exact property once")
     Check(hangarRequests = 0 && Sum(cargoRequests) = 0 && Sum(requests) = 0,
         "full hangar permits no procurement or dispatch")
     for key in keys
@@ -542,10 +561,10 @@ RunCargoTests() {
         config["Settings"]["EarnBailAgents"] := 0, config["Settings"]["EarnCargoStaff"] := 0, config["Settings"]["EarnHangarStaff"] := 1
         result := EarnVinewoodStaffTask()
         Check(result = c[3] && hangarRequests = c[4] && hangarState = c[5], c[1] " hangar result=" result " requests=" hangarRequests)
-        Check(sellStopRequests = c[6], c[1] " sell-stop request count=" sellStopRequests)
+        Check(stockFullNotices = c[6], c[1] " full-stock notice count=" stockFullNotices)
         if (c[1] = "hangar_preflight_full") {
-            Check(sellStopReasons.Length = 1 && sellStopReasons[1] = "격납고 재고 만재: 판매 필요",
-                "hangar_preflight_full requests the exact sell stop once")
+            Check(stockFullReasons.Length = 1 && stockFullReasons[1] = "격납고 재고 만재: 판매 필요",
+                "hangar_preflight_full reports the exact property once")
             Check(!transactionPending.Has("staff") && hangarRequests = 0 && Sum(cargoRequests) = 0 && Sum(requests) = 0,
                 "hangar_preflight_full starts no transaction or later procurement")
             for key in keys
@@ -600,12 +619,12 @@ Reset(nextMode, initial) {
     global config, cargoNames, cargoStatuses, cargoRequests, cargoReads, activeCount, opens, postReads
     global observedDeadlines
     global menuReads, mainNames, hangarState, hangarRequests, hangarReads, greyMissing, flickerReads
-    global sellStopRequests, sellStopReasons
+    global stockFullNotices, stockFullReasons
     global bailMenuReads, bailMenuReadsAtFirstKey
     greyMissing := 0, flickerReads := 0
     mode := nextMode, screenState := "staff", selected := "Hangar"
     hangarState := "ready", hangarRequests := 0, hangarReads := 0
-    sellStopRequests := 0, sellStopReasons := []
+    stockFullNotices := 0, stockFullReasons := []
     statuses := initial.Clone(), requests := [0,0], keys := [], reads := 0, failure := ""
     config := Map("Settings",Map("EarnBailAgents",1,"EarnCargoStaff",1))
     cargoNames := ["Discount Retail Unit","Railyard Warehouse","Foreclosed Garage","Darnell Bros Warehouse","West Vinewood Backlot"]
@@ -1010,7 +1029,7 @@ EarnPress(key) {
                 if (mode = "cargo_cancel")
                     return false
                 if (mode != "cargo_unconfirmed" && mode != "delayed_cargo")
-                    cargoStatuses[index] := mode = "cargo_after_full" ? "full" : "busy"
+                    cargoStatuses[index] := mode = "cargo_after_full" && index = 1 ? "full" : "busy"
             }
         } else if (screenState = "bail") {
             index := selected = "Agent 1" ? 1 : 2
@@ -1063,14 +1082,10 @@ EarnVinewoodOpen(manageMCT := true) {
     opens += 1
     return mode != "open_fail"
 }
-EarnRequestSellStop(reason) {
-    global sellStopRequests, sellStopReasons
-    sellStopRequests += 1
-    sellStopReasons.Push(reason)
-}
-EarnSellStopPending() {
-    global sellStopRequests
-    return sellStopRequests > 0
+EarnNotifyStockFull(reason) {
+    global stockFullNotices, stockFullReasons
+    stockFullNotices += 1
+    stockFullReasons.Push(reason)
 }
 EarnScheduleNext(*) => true
 RunScheduleTests() {

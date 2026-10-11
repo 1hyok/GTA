@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 $source = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\Earner.ahk') -Raw -Encoding UTF8
 $tick = [regex]::Match($source, '(?ms)^EarnTick\(\) \{.*?^\}').Value
 if (-not $tick) { throw 'EarnTick missing' }
-$guards = @('EarnAFKCloseMCT', 'EarnInputGuardStart', 'EarnInputGuardStop', 'EarnInputWatch', 'EarnInputAllowed', 'EarnGamePID', 'EarnTaskList', 'EarnEnabledText', 'ToggleEarner', 'SetEarner', 'EarnStatusText', 'EarnIsMCTTask', 'EarnRunScheduledTask', 'EarnRunMCTBatch', 'EarnTaskMCTEndWithManualRetry', 'EarnManualStopCleanup', 'EarnBossOffWithManualRetry', 'EarnManualBossOffCleanup', 'EarnFinishManualStop', 'EarnRequestSellStop', 'EarnFinishScheduledTask', 'EarnStopAfterFailure') | ForEach-Object {
+$guards = @('EarnAFKCloseMCT', 'EarnInputGuardStart', 'EarnInputGuardStop', 'EarnInputWatch', 'EarnInputAllowed', 'EarnGamePID', 'EarnTaskList', 'EarnEnabledText', 'ToggleEarner', 'SetEarner', 'EarnStatusText', 'EarnIsMCTTask', 'EarnRunScheduledTask', 'EarnRunMCTBatch', 'EarnTaskMCTEndWithManualRetry', 'EarnManualStopCleanup', 'EarnBossOffWithManualRetry', 'EarnManualBossOffCleanup', 'EarnFinishManualStop', 'EarnNotifyStockFull', 'EarnFinishScheduledTask', 'EarnStopAfterFailure') | ForEach-Object {
     $functionName = $_
     $body = [regex]::Match($source, ('(?ms)^' + $functionName + '\([^\r\n]*\) \{.*?^\}')).Value
     if (-not $body) { throw "Production function missing: $functionName" }
@@ -73,7 +73,7 @@ global beginCount, endCount, beginCleanupCount, beginOK, endOK, endNoScreen, beg
 global endStopMode, bossOffCount, bossProbeOK, bossProbeCount, bossProbeStrictCount, bossProbeGuardedCount, bossProbeMode, bossStopInjected, bossInitialGuardTick, bossRetryBaselineOK, bossRetryCleanupStateOK, staleFailInjected, blockedRestartObserved
 global gEarnHeld, gEarnFailures, gEarnRecovery, appCloseOK, appCloseCount
 global gEarnManualStop, gEarnManualCleanupActive, gEarnManualCleanupAttempted, gEarnTaskActive, gEarnAFKCleanup, gEarnMCTCleanupOK, stopStatus
-global gEarnFeedSeen, beginStopInjected, gEarnSellStopReason, gEarnSellNotice
+global gEarnFeedSeen, beginStopInjected, gEarnSellNotice, tooltips
 global lifecycleTrace, lifecycleEvents, finalizerProbeStages
 global state := Map(), stateWritable := true
 Reset()
@@ -295,53 +295,81 @@ Check(gEarnDue["bunker"] = fakeTick,
     "bunker fallback interval without an explicit reservation keeps the generic completion clamp")
 Reset()
 sellReason := "나이트클럽 창고 만재 1개: 판매 필요"
+gEarnFail := "existing failure", gEarnRetryIn := 1234
+EarnNotifyStockFull(sellReason)
+Check(gEarnSellNotice = sellReason && logs.Length = 1 && tooltips.Length = 1
+    && gEarnOn && !gAbort && !gEarnManualStop && gEarnFail = "existing failure" && gEarnRetryIn = 1234,
+    "stock-full notification changes only notice and output, not control flow or failure state")
+EarnNotifyStockFull(sellReason)
+Check(logs.Length = 1 && tooltips.Length = 1, "unchanged stock-full notice is deduplicated")
+EarnNotifyStockFull("벙커 재고 만재: 판매 필요")
+Check(logs.Length = 2 && tooltips.Length = 2 && gEarnSellNotice = "벙커 재고 만재: 판매 필요",
+    "changed stock-full notice is reported without stopping")
+Reset()
+sellReason := "나이트클럽 창고 만재 1개: 판매 필요"
 gEarnTasks := [{id:"bunker",label:"bunker",on:true,every:300000,fn:RunTask.Bind("bunker")},
     {id:"warehouse",label:"warehouse",on:true,every:300000,fn:RunTask.Bind("warehouse")},
-    {id:"dj",label:"dj",on:true,every:300000,fn:RunTask.Bind("dj")}]
-gEarnDue := Map("bunker", fakeTick - 1, "warehouse", fakeTick - 1, "dj", fakeTick - 1)
-gEarnDone := Map("bunker", 0, "warehouse", 0, "dj", 0), taskModes := Map("warehouse", "sell-stop")
+    {id:"dj",label:"dj",on:true,every:300000,fn:RunTask.Bind("dj")},
+    {id:"safe",label:"safe",on:true,every:300000,fn:RunTask.Bind("safe")}]
+gEarnDue := Map("bunker", fakeTick - 1, "warehouse", fakeTick - 1, "dj", fakeTick - 1, "safe", fakeTick - 1)
+gEarnDone := Map("bunker", 0, "warehouse", 0, "dj", 0, "safe", 0), taskModes := Map("warehouse", "stock-full")
 sellStart := fakeTick
 EarnTick()
-Check(calls.Length = 2 && calls[1] = "bunker" && calls[2] = "warehouse"
-    && gEarnDone["bunker"] = 1 && gEarnDone["warehouse"] = 1 && gEarnDone["dj"] = 0,
-    "sell stop finalizes preceding and detecting tasks once without running the following task")
+Check(calls.Length = 3 && calls[1] = "bunker" && calls[2] = "warehouse" && calls[3] = "dj"
+    && gEarnDone["bunker"] = 1 && gEarnDone["warehouse"] = 1 && gEarnDone["dj"] = 1,
+    "stock-full notification allows following MCT tasks and finalizes all bodies once")
 Check(gEarnDue["bunker"] = sellStart + 300000 && gEarnDue["warehouse"] = sellStart + 300000
-    && gEarnDue["dj"] = sellStart - 1 && !gEarnFailures.Has("bunker") && !gEarnFailures.Has("warehouse"),
-    "sell stop preserves completed scheduling and leaves the unrun task untouched")
-Check(!gEarnOn && !gAbort && !gEarnBusy && !gEarnGuardArmed && !lockHeld && lockReleases = 1
-    && endCount = 1 && bossOffCount = 1 && !mctOpen && stopped = 1
-    && gEarnSellStopReason = "" && gEarnSellNotice = "" && gEarnFail = sellReason
-    && EarnStatusText() = "수익 멈춤: " sellReason,
-    "sell stop turns automation off with its reason only after guarded MCT cleanup")
+    && gEarnDue["dj"] = sellStart + 300000 && !gEarnFailures.Has("bunker") && !gEarnFailures.Has("warehouse"),
+    "stock-full batch keeps ordinary scheduling for every completed task")
+Check(gEarnOn && !gAbort && !gEarnBusy && !gEarnGuardArmed && !lockHeld && lockReleases = 1
+    && endCount = 1 && bossOffCount = 1 && !mctOpen && stopped = 0
+    && gEarnSellNotice = sellReason && gEarnFail = "" && !InStr(EarnStatusText(), "수익 멈춤:"),
+    "stock-full batch remains enabled after guarded MCT cleanup without a stopped overlay")
+EarnTick()
+Check(calls.Length = 4 && calls[4] = "safe" && gEarnDone["safe"] = 1 && gEarnOn,
+    "the next tick runs a non-MCT task after stock-full detection")
+fakeTick := gEarnDue["bunker"], idleMs := 60000
+EarnTick()
+Check(calls.Length = 7 && gEarnDone["bunker"] = 2 && gEarnDone["warehouse"] = 2 && gEarnDone["dj"] = 2
+    && endCount = 2 && bossOffCount = 2 && gEarnOn && stopped = 0 && tooltips.Length = 1,
+    "future due ticks continue full-stock checks and following tasks without repeating the same notice")
+ToggleEarner()
+EarnTick()
+Check(!gEarnOn && calls.Length = 7 && stopped = 1 && !gEarnManualStop,
+    "manual F9 still stops automation after stock-full detection and later ticks do not restart it")
 Reset()
 sellReason := "나이트클럽 창고 만재 1개: 판매 필요"
 gEarnTasks := [{id:"bunker",label:"bunker",on:true,every:300000,fn:RunTask.Bind("bunker")},
     {id:"warehouse",label:"warehouse",on:true,every:300000,fn:RunTask.Bind("warehouse")},
     {id:"dj",label:"dj",on:true,every:300000,fn:RunTask.Bind("dj")}]
 gEarnDue := Map("bunker", fakeTick - 1, "warehouse", fakeTick - 1, "dj", fakeTick - 1)
-gEarnDone := Map("bunker", 0, "warehouse", 0, "dj", 0), taskModes := Map("warehouse", "sell-stop")
+gEarnDone := Map("bunker", 0, "warehouse", 0, "dj", 0), taskModes := Map("warehouse", "stock-full")
 sellStart := fakeTick, endOK := false
 EarnTick()
-Check(gEarnOn && IsObject(gEarnRecovery) && gEarnSellStopReason = sellReason
-    && calls.Length = 2 && gEarnDone["bunker"] = 0 && gEarnDone["warehouse"] = 0 && gEarnDone["dj"] = 0,
-    "sell stop waits in cleanup recovery without prematurely finalizing work")
+Check(gEarnOn && IsObject(gEarnRecovery) && gEarnSellNotice = sellReason
+    && calls.Length = 3 && gEarnDone["bunker"] = 0 && gEarnDone["warehouse"] = 0 && gEarnDone["dj"] = 0,
+    "stock-full batch still waits for cleanup recovery before finalizing work")
 Check(endCount = 1 && bossOffCount = 0 && mctOpen && lockReleases = 1 && stopped = 0,
-    "failed sell-stop cleanup keeps automation on and the MCT recovery state open")
+    "failed stock-full cleanup keeps automation on and the MCT recovery state open")
 endOK := true, fakeTick := gEarnRecovery.nextTick, idleMs := 60000
 EarnTick()
-Check(calls.Length = 2 && endCount = 2 && bossOffCount = 1 && lockReleases = 2
-    && gEarnDone["bunker"] = 1 && gEarnDone["warehouse"] = 1 && gEarnDone["dj"] = 0,
-    "sell-stop recovery retries only End and finalizes each completed body once")
-Check(!gEarnOn && !IsObject(gEarnRecovery) && gEarnSellStopReason = "" && gEarnSellNotice = ""
-    && gEarnFail = sellReason && EarnStatusText() = "수익 멈춤: " sellReason,
-    "sell-stop recovery turns automation off with the preserved reason after cleanup")
+Check(calls.Length = 3 && endCount = 2 && bossOffCount = 1 && lockReleases = 2
+    && gEarnDone["bunker"] = 1 && gEarnDone["warehouse"] = 1 && gEarnDone["dj"] = 1,
+    "stock-full recovery retries only End and finalizes each completed body once")
+Check(gEarnOn && !IsObject(gEarnRecovery) && gEarnSellNotice = sellReason && stopped = 0
+    && !InStr(EarnStatusText(), "수익 멈춤:"),
+    "stock-full recovery resumes normal scheduling without a sale stop")
+fakeTick := gEarnDue["bunker"], idleMs := 60000
+EarnTick()
+Check(calls.Length = 6 && gEarnDone["bunker"] = 2 && gEarnDone["warehouse"] = 2 && gEarnDone["dj"] = 2,
+    "the recovered stock-full batch runs again at its next ordinary due time")
 Reset()
 sellReason := "나이트클럽 창고 만재 1개: 판매 필요"
 gEarnTasks := [{id:"bunker",label:"bunker",on:true,every:300000,fn:RunTask.Bind("bunker")},
     {id:"warehouse",label:"warehouse",on:true,every:300000,fn:RunTask.Bind("warehouse")},
     {id:"dj",label:"dj",on:true,every:300000,fn:RunTask.Bind("dj")}]
 gEarnDue := Map("bunker", fakeTick - 1, "warehouse", fakeTick - 1, "dj", fakeTick - 1)
-gEarnDone := Map("bunker", 0, "warehouse", 0, "dj", 0), taskModes := Map("warehouse", "sell-stop")
+gEarnDone := Map("bunker", 0, "warehouse", 0, "dj", 0), taskModes := Map("warehouse", "stock-full")
 endOK := false, endNoScreen := true, bossProbeOK := false
 EarnTick()
 lifecycleTrace := true, lifecycleEvents := []
@@ -350,67 +378,60 @@ EarnTick()
 lifecycleTrace := false
 Check(bossProbeGuardedCount = 1 && lifecycleEvents.Length = 5
     && lifecycleEvents[1] = "lock-acquire" && lifecycleEvents[2] = "guard-start"
-    && lifecycleEvents[3] = "boss-strict" && lifecycleEvents[4] = "guard-stop"
+    && lifecycleEvents[3] = "boss-probe" && lifecycleEvents[4] = "guard-stop"
     && lifecycleEvents[5] = "lock-release",
-    "strict no-screen CEO retirement runs before guard stop and input lock release")
-Check(gEarnOn && IsObject(gEarnRecovery) && gEarnRecovery.attempts = 2
-    && gEarnSellStopReason = sellReason && calls.Length = 2 && endCount = 2
-    && bossProbeCount = 1 && bossProbeStrictCount = 1
-    && gEarnDone["bunker"] = 0 && gEarnDone["warehouse"] = 0 && gEarnDone["dj"] = 0 && stopped = 0,
-    "sell stop keeps no-screen recovery pending when CEO retirement is unconfirmed")
-bossProbeOK := true, fakeTick := gEarnRecovery.nextTick, idleMs := 60000
-EarnTick()
-Check(calls.Length = 2 && endCount = 3 && bossProbeCount = 2 && bossProbeStrictCount = 2 && lockReleases = 3
-    && gEarnDone["bunker"] = 1 && gEarnDone["warehouse"] = 1 && gEarnDone["dj"] = 0 && stopped = 1,
-    "confirmed CEO retirement finalizes the preserved sell-stop batch exactly once")
-Check(!gEarnOn && !IsObject(gEarnRecovery) && gEarnSellStopReason = "" && gEarnSellNotice = ""
-    && gEarnFail = sellReason && EarnStatusText() = "수익 멈춤: " sellReason,
-    "confirmed no-screen sell-stop recovery turns automation off with its sale reason")
+    "ordinary no-screen CEO probe runs before guard stop and input lock release")
+Check(gEarnOn && !IsObject(gEarnRecovery) && gEarnSellNotice = sellReason
+    && calls.Length = 3 && endCount = 2 && bossProbeCount = 1 && bossProbeStrictCount = 0
+    && gEarnDone["bunker"] = 1 && gEarnDone["warehouse"] = 1 && gEarnDone["dj"] = 1 && stopped = 0,
+    "stock-full uses the existing general no-screen recovery policy, with no special stop latch")
+Check(HasLog("복구 해제:") && !HasLog("복구 완료:") && !HasLog("꺼짐"),
+    "no-screen release is logged separately from a confirmed cleanup or a stop")
 Reset()
 sellReason := "나이트클럽 창고 만재 1개: 판매 필요"
 gEarnTasks := [{id:"bunker",label:"bunker",on:true,every:300000,fn:RunTask.Bind("bunker")},
     {id:"warehouse",label:"warehouse",on:true,every:300000,fn:RunTask.Bind("warehouse")},
     {id:"dj",label:"dj",on:true,every:300000,fn:RunTask.Bind("dj")}]
 gEarnDue := Map("bunker", fakeTick - 1, "warehouse", fakeTick - 1, "dj", fakeTick - 1)
-gEarnDone := Map("bunker", 0, "warehouse", 0, "dj", 0), taskModes := Map("warehouse", "sell-stop")
+gEarnDone := Map("bunker", 0, "warehouse", 0, "dj", 0), taskModes := Map("warehouse", "stock-full")
 endOK := false, endNoScreen := true
 EarnTick()
 bossProbeMode := "manual-retry-success", lifecycleTrace := true, lifecycleEvents := []
 fakeTick := gEarnRecovery.nextTick, idleMs := 60000
 EarnTick()
 lifecycleTrace := false
-Check(bossStopInjected && bossProbeCount = 2 && bossProbeStrictCount = 2 && bossProbeGuardedCount = 2
+Check(bossStopInjected && bossProbeCount = 2 && bossProbeStrictCount = 0 && bossProbeGuardedCount = 2
     && bossRetryBaselineOK && bossRetryCleanupStateOK && lifecycleEvents.Length = 6
     && lifecycleEvents[1] = "lock-acquire" && lifecycleEvents[2] = "guard-start"
-    && lifecycleEvents[3] = "boss-strict" && lifecycleEvents[4] = "boss-strict"
+    && lifecycleEvents[3] = "boss-probe" && lifecycleEvents[4] = "boss-probe"
     && lifecycleEvents[5] = "guard-stop" && lifecycleEvents[6] = "lock-release"
-    && lockCalls = 2 && lockReleases = 2 && calls.Length = 2 && endCount = 2,
-    "F9 during strict CEO retirement retries exactly once under the same guarded input lock")
+    && lockCalls = 2 && lockReleases = 2 && calls.Length = 3 && endCount = 2,
+    "F9 during ordinary CEO retirement retries exactly once under the same guarded input lock")
 Check(!gEarnOn && !gEarnManualStop && !gEarnManualCleanupActive && !gEarnManualCleanupAttempted
     && !gAbort && !gEarnUserAbort && gEarnFail = "" && EarnStatusText() = ""
     && gEarnDone["bunker"] = 0 && gEarnDone["warehouse"] = 0 && gEarnDone["dj"] = 0
     && HasLog("끄기 정리 재확인: CEO 해제 도중 F9 감지")
     && HasLog("꺼짐: MCT 정리와 CEO 해제 완료"),
-    "successful strict CEO retry finalizes the F9 stop as cleaned without rerunning task bodies")
+    "successful ordinary CEO retry finalizes the F9 stop as cleaned without rerunning task bodies")
 Reset()
 sellReason := "나이트클럽 창고 만재 1개: 판매 필요"
 gEarnTasks := [{id:"bunker",label:"bunker",on:true,every:300000,fn:RunTask.Bind("bunker")},
     {id:"warehouse",label:"warehouse",on:true,every:300000,fn:RunTask.Bind("warehouse")},
     {id:"dj",label:"dj",on:true,every:300000,fn:RunTask.Bind("dj")}]
 gEarnDue := Map("bunker", fakeTick - 1, "warehouse", fakeTick - 1, "dj", fakeTick - 1)
-gEarnDone := Map("bunker", 0, "warehouse", 0, "dj", 0), taskModes := Map("warehouse", "sell-stop")
+gEarnDone := Map("bunker", 0, "warehouse", 0, "dj", 0), taskModes := Map("warehouse", "stock-full")
 endOK := false, endNoScreen := true
 EarnTick()
 bossProbeMode := "manual-retry-fail", lifecycleTrace := true, lifecycleEvents := []
 fakeTick := gEarnRecovery.nextTick, idleMs := 60000
 EarnTick()
 lifecycleTrace := false
-Check(bossStopInjected && bossProbeCount = 2 && bossProbeStrictCount = 2 && bossProbeGuardedCount = 2
+Check(bossStopInjected && bossProbeCount = 2 && bossProbeStrictCount = 0 && bossProbeGuardedCount = 2
     && bossRetryBaselineOK && bossRetryCleanupStateOK && lifecycleEvents.Length = 6
-    && lifecycleEvents[3] = "boss-strict" && lifecycleEvents[4] = "boss-strict"
+    && lifecycleEvents[3] = "boss-probe" && lifecycleEvents[4] = "boss-probe"
     && lifecycleEvents[5] = "guard-stop" && lifecycleEvents[6] = "lock-release"
-    && lockCalls = 2 && lockReleases = 2 && calls.Length = 2 && endCount = 2,
-    "failed strict CEO retry is still bounded to one retry under the same guard and lock")
+    && lockCalls = 2 && lockReleases = 2 && calls.Length = 3 && endCount = 2,
+    "failed ordinary CEO retry is still bounded to one retry under the same guard and lock")
 Check(!gEarnOn && !gEarnManualStop && !gEarnManualCleanupActive && !gEarnManualCleanupAttempted
     && !gAbort && !gEarnUserAbort
     && gEarnFail = "수동 종료 정리 미확인. 화면 확인 후 보스 해제 필요"
@@ -418,7 +439,7 @@ Check(!gEarnOn && !gEarnManualStop && !gEarnManualCleanupActive && !gEarnManualC
     && gEarnDone["bunker"] = 0 && gEarnDone["warehouse"] = 0 && gEarnDone["dj"] = 0
     && HasLog("끄기 정리 재확인: CEO 해제 도중 F9 감지")
     && HasLog("끄기 정리 실패: 수동 종료 정리 미확인. 화면 확인 후 보스 해제 필요"),
-    "failed strict CEO retry finalizes the F9 stop with an explicit cleanup warning")
+    "failed ordinary CEO retry finalizes the F9 stop with an explicit cleanup warning")
 Reset()
 mode := "override"
 EarnTick()
@@ -672,7 +693,7 @@ Reset() {
     gEarnManualStop := false, gEarnManualCleanupActive := false, gEarnManualCleanupAttempted := false
     gEarnTaskActive := false, gEarnAFKCleanup := false, gEarnMCTCleanupOK := true, stopStatus := ""
     gEarnFeedSeen := Map(), beginStopInjected := false
-    gEarnSellStopReason := "", gEarnSellNotice := ""
+    gEarnSellNotice := "", tooltips := []
     endStopMode := "", bossOffCount := 0, bossProbeOK := true, bossProbeCount := 0, bossProbeStrictCount := 0, bossProbeGuardedCount := 0
     bossProbeMode := "", bossStopInjected := false, bossInitialGuardTick := 0, bossRetryBaselineOK := false, bossRetryCleanupStateOK := false
     staleFailInjected := false, blockedRestartObserved := false
@@ -702,8 +723,8 @@ RunTask(id, manageSession := true) {
         ToggleEarner()
         return EarnFail("화면 판독 중단 또는 시간 초과")
     }
-    if (taskMode = "sell-stop") {
-        EarnRequestSellStop("나이트클럽 창고 만재 1개: 판매 필요")
+    if (taskMode = "stock-full") {
+        EarnNotifyStockFull("나이트클럽 창고 만재 1개: 판매 필요")
         return true
     }
     if (taskMode = "long-readonly") {
@@ -839,24 +860,22 @@ EarnBossOffIfOn(requireConfirmed := false) {
     global bossProbeOK, bossProbeCount, bossProbeStrictCount, bossProbeGuardedCount, bossProbeMode, bossStopInjected, bossInitialGuardTick, bossRetryBaselineOK, bossRetryCleanupStateOK, lifecycleTrace, lifecycleEvents, fakeTick, idleMs
     bossProbeCount++
     bossProbeStrictCount += requireConfirmed ? 1 : 0
-    if (requireConfirmed) {
-        bossProbeGuardedCount += lockHeld && gEarnGuardArmed ? 1 : 0
-        if (lifecycleTrace)
-            lifecycleEvents.Push("boss-strict")
-        if (bossProbeMode = "manual-retry-success" || bossProbeMode = "manual-retry-fail") {
-            if (!bossStopInjected) {
-                bossStopInjected := true
-                bossInitialGuardTick := gEarnGuardStartedTick
-                fakeTick += 10, idleMs := 0
-                ToggleEarner()
-                return false
-            }
-            bossRetryBaselineOK := gEarnGuardStartedTick = fakeTick - idleMs
-                && gEarnGuardStartedTick > bossInitialGuardTick
-            bossRetryCleanupStateOK := gEarnManualCleanupActive && gEarnManualCleanupAttempted
-                && !gAbort && !gEarnUserAbort
-            return bossProbeMode = "manual-retry-success"
+    bossProbeGuardedCount += lockHeld && gEarnGuardArmed ? 1 : 0
+    if (lifecycleTrace)
+        lifecycleEvents.Push(requireConfirmed ? "boss-strict" : "boss-probe")
+    if (bossProbeMode = "manual-retry-success" || bossProbeMode = "manual-retry-fail") {
+        if (!bossStopInjected) {
+            bossStopInjected := true
+            bossInitialGuardTick := gEarnGuardStartedTick
+            fakeTick += 10, idleMs := 0
+            ToggleEarner()
+            return false
         }
+        bossRetryBaselineOK := gEarnGuardStartedTick = fakeTick - idleMs
+            && gEarnGuardStartedTick > bossInitialGuardTick
+        bossRetryCleanupStateOK := gEarnManualCleanupActive && gEarnManualCleanupAttempted
+            && !gAbort && !gEarnUserAbort
+        return bossProbeMode = "manual-retry-success"
     }
     return bossProbeOK
 }
@@ -1013,6 +1032,8 @@ EarnLog(message) {
         throw Error("Completion log cannot precede MCT cleanup")
 }
 ShowTooltip(message, *) {
+    global tooltips
+    tooltips.Push(message)
     if (mode = "finalizer-race" && InStr(message, "수익 자동화 꺼짐:") > 0)
         EarnFinalizerStateProbe("tooltip")
 }
@@ -1047,7 +1068,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 134 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 140 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout

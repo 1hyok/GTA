@@ -289,11 +289,11 @@ EarnSafeCollect() {
 
 ; --- 벙커 보급 (규칙은 사용자 지시 0926) ---
 ; 풀업그레이드 벙커는 보급 한 칸(20%)을 28분에 쓴다. 구매 값은 빈 양을 20% 단위로 올려 매기고 넘치는 양은 버리므로, 한 칸이 통째로 비었을 때만 산다.
-; 재고가 가득 차면 생산이 멈춰 보급이 줄지 않는다 → 그동안은 사지 않고 타이머를 멈춘다. 재고를 판 뒤 보급이 가득 찬 시점부터 다시 센다.
+; 재고가 가득 차면 생산이 멈춰 보급이 줄지 않는다. 그동안은 사지 않고 5분 뒤 재확인하며 다른 수익 작업은 계속한다.
 ; 막대는 MCT 첫 화면 벙커 카드(재고 초록 y 555, 보급 파랑 y 577, x 766~1154)에서 읽는다. 판단이 안 되면 사지 않고 로그만 남긴다.
 ; 주문 시각을 배송 완료 시각으로 사용하지 않는다. 매번 갱신한 막대와 실제 가격으로 판단한다.
 global gEarnBunkerOrdered := false
-; 재고가 가득 찬 것을 본 뒤에는 true. 판매(사용자 조작)가 있어야 줄어들고, 그 조작이 자동화를 멈추므로 F9 로 다시 켤 때 지운다.
+; 마지막 벙커 관측이 만재면 true. 재관측 때 갱신하고 F9로 다시 켤 때도 지운다.
 global gEarnBunkerFull := false
 ; 지난 DJ 재고용 직전 인기도. 다음 DJ 작업이 Home 에서 이보다 높게 읽어야 재고용이 먹은 것이다(-1 이면 확인할 것 없음).
 global gEarnDJCheckAbove := -1
@@ -309,10 +309,9 @@ EarnBunkerTask(manageSession := true) {
             return false
         gEarnBunkerFull := plan.reason = "stock_full"
         if (gEarnBunkerFull) {
-            ; 현재 MCT를 먼저 닫고 CEO를 해제한 뒤 자동화를 멈춘다. 판매 뒤 F9로 다시 켜면 새 화면을 읽는다.
-            EarnRequestSellStop("벙커 재고 만재: 판매 필요")
-            EarnLog("벙커: 재고 가득 참. MCT 정리와 CEO 해제 뒤 판매를 위해 자동화 중단")
-            gEarnNextDue["bunker"] := A_TickCount + 7 * 86400000
+            EarnNotifyStockFull("벙커 재고 만재: 판매 필요")
+            EarnLog("벙커: 재고 가득 참. 보급 구매만 건너뛰고 다른 작업 계속, 5분 뒤 재확인")
+            gEarnNextDue["bunker"] := A_TickCount + plan.waitMs
             ok := true
         } else if (!plan.buy) {
             EarnLog("벙커: " plan.reason " → 다음 " plan.bars "칸 소모 경계에서 재확인")

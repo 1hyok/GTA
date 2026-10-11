@@ -52,15 +52,15 @@ function Invoke-EarnOfflineCheck {
 #Warn All, StdOut
 global transactionPending := Map()
 global gEarnSkipOcr := false
-global sellStopReasons := []
+global stockNotices := []
 EarnTransactionBegin(id, reason) {
     transactionPending[id] := reason
     return true
 }
 EarnTransactionConfirmed(id) => transactionPending.Delete(id)
-EarnRequestSellStop(reason) {
-    global sellStopReasons
-    sellStopReasons.Push(reason)
+EarnNotifyStockFull(reason) {
+    global stockNotices
+    stockNotices.Push(reason)
     return true
 }
 ; EarnTasks tests extract individual task functions, not EarnCore's screen helpers.
@@ -1265,8 +1265,8 @@ cases := [[0.4,1,8400,true,true,true,true,0,1,60000],
     [0.4,0.25,6720,true,true,true,true,0,1,60000],
     [0.4,0.24,6720,true,true,true,true,0,1,60000],
     [0.4,0.2,6720,true,true,true,true,1,1,60000],
-    [1,0,8400,true,true,true,true,0,1,604800000],
-    [0.97,0,8400,true,true,true,true,0,1,604800000],
+    [1,0,8400,true,true,true,true,0,1,300000],
+    [0.97,0,8400,true,true,true,true,0,1,300000],
     [0.4,0.75,1680,true,true,true,true,0,1,60000],
     [0.4,0,8400,true,true,true,true,1,1,60000],
     [0.4,0.8,1680,true,true,true,true,1,1,60000],
@@ -1280,7 +1280,7 @@ cases := [[0.4,1,8400,true,true,true,true,0,1,60000],
 for row in cases {
     c := row, config["Settings"]["EarnBunkerIntervalSec"] := c[3]
     gEarnNextDue := Map("bunker",0), buyCalls := 0, beginCalls := 0, endCalls := 0,
-        gEarnBunkerOrdered := true, gEarnBunkerFull := false, sellStopReasons := []
+        gEarnBunkerOrdered := true, gEarnBunkerFull := false, stockNotices := []
     before := A_TickCount
     result := EarnBunkerTask()
     after := A_TickCount
@@ -1289,10 +1289,10 @@ for row in cases {
         throw Error("Bunker task result/cleanup " A_Index)
     if (c[10] = 0 ? due != 0 : due < before+c[10] || due > after+c[10])
         throw Error("Bunker task scheduling " A_Index " due=" due)
-    expectedSellStop := c[1] >= 0.97 ? 1 : 0
-    if (gEarnBunkerFull != expectedSellStop || sellStopReasons.Length != expectedSellStop
-        || (expectedSellStop && sellStopReasons[1] != "벙커 재고 만재: 판매 필요"))
-        throw Error("Bunker task sell-stop " A_Index " full=" gEarnBunkerFull " count=" sellStopReasons.Length)
+    expectedFull := c[1] >= 0.97 ? 1 : 0
+    if (gEarnBunkerFull != expectedFull || stockNotices.Length != expectedFull
+        || (expectedFull && stockNotices[1] != "벙커 재고 만재: 판매 필요"))
+        throw Error("Bunker task stock notice " A_Index " full=" gEarnBunkerFull " count=" stockNotices.Length)
 }
 ; The grouped scheduler already owns the MCT session, including no-purchase and invalid-read paths.
 for row in [[0.4,1,8400,false,true,false,true,0,0,60000],
@@ -1350,7 +1350,7 @@ cases := [
     ["production paused stays bounded",Map(),true,0,10000,240000],
     ["accelerated supply reaches actual boundary",Map("supply",0.22,"at",11000,"next",0.2),true,1,60000,11000],
     ["new delivery resets prediction",Map("at",20000,"next",1),true,0,60000,22000],
-    ["stock fills during observation",Map("at",20000,"nextStock",1),true,0,604800000,22000],
+    ["stock fills during observation",Map("at",20000,"nextStock",1),true,0,300000,22000],
     ["missed boundary preserves spending limit",Map("at",20000,"next",0.19),true,0,60000,22000],
     ["scheduler late after another task",Map("beginMs",200000,"supply",0.19),true,0,60000,200000],
     ["invalid later supply stops",Map("at",20000,"next",-1),false,0,0,22000],
@@ -1369,7 +1369,7 @@ for scenario in cases {
     clockMs := 0, supplyNow := c.Get("supply",0.21), stockNow := 0.4,
         refreshes := 0, buys := 0, begins := 0, ends := 0, sleeps := [], reads := 0,
         abortNow := c.Get("abort",false), gEarnBunkerOrdered := true, gEarnBunkerFull := false,
-        gEarnNextDue := Map("bunker",0), sellStopReasons := []
+        gEarnNextDue := Map("bunker",0), stockNotices := []
     result := EarnBunkerTask()
     expectedDue := scenario[5] ? clockMs + scenario[5] : 0
     if (result != scenario[3] || buys != scenario[4] || gEarnNextDue["bunker"] != expectedDue
@@ -1381,10 +1381,10 @@ for scenario in cases {
     }
     if (scenario[6] >= 240000 && buys)
         throw Error("No deadline-late purchase permitted")
-    expectedSellStop := scenario[1] = "stock fills during observation" ? 1 : 0
-    if (gEarnBunkerFull != expectedSellStop || sellStopReasons.Length != expectedSellStop
-        || (expectedSellStop && sellStopReasons[1] != "벙커 재고 만재: 판매 필요"))
-        throw Error("Bunker observe sell-stop " scenario[1] " full=" gEarnBunkerFull " count=" sellStopReasons.Length)
+    expectedFull := scenario[1] = "stock fills during observation" ? 1 : 0
+    if (gEarnBunkerFull != expectedFull || stockNotices.Length != expectedFull
+        || (expectedFull && stockNotices[1] != "벙커 재고 만재: 판매 필요"))
+        throw Error("Bunker observe stock notice " scenario[1] " full=" gEarnBunkerFull " count=" stockNotices.Length)
 }
 FileAppend("PASS BunkerObserve cases=19`n", "*")
 ExitApp(0)
