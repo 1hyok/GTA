@@ -630,6 +630,13 @@ EarnCEO(on) {
     endBoss := false
     return true
 }
+EarnMCTFindChairPrompt() {
+    global endScene, endBoss
+    if (endBoss || endScene != "mct_standing")
+        throw Error("Chair alignment must follow CEO retirement")
+    endScene := "mct_sit"
+    return true
+}
 EarnFail(reason) {
     global gEarnFail, endLogs
     gEarnFail := reason
@@ -2206,6 +2213,7 @@ EarnLog(*) => true
     $closeWaitBody = (Get-EarnFunctionBody $sourceText 'EarnWaitSeen').Replace('EarnWaitSeen(', 'FixtureWaitSeen(').Replace('A_TickCount', 'CloseClock()')
     $mctCloseDriver += "`n" + $closeWaitBody + "`n" + (Get-EarnFunctionBody $sourceText 'EarnSleep').Replace('A_TickCount', 'CloseClock()')
     $mctCloseDriver += "`n" + (Get-EarnFunctionBody $sourceText 'EarnWaitCallEnd')
+    $mctCloseDriver += "`n" + (Get-EarnFunctionBody $sourceText 'EarnMCTFindChairPrompt')
     Invoke-EarnOfflineCheck 'MCTClose' 'EarnMCTClose' $mctCloseDriver 26
     $turnGuardDriver = @'
 global turnCase := [], moves := 0, movedX := 0, movedY := 0, turnMs := 0, menuChecks := 0, menuAbort := false
