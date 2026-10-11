@@ -260,12 +260,39 @@ gEarnTasks := [{id:"bunker",label:"bunker",on:true,every:300000,fn:RunTask.Bind(
 gEarnDue := Map("bunker", fakeTick - 1, "staff", fakeTick + 120000)
 gEarnDone := Map("bunker", 0, "staff", 0), taskModes := Map("bunker", "override-short"), endDelay := 180000
 EarnTick()
-Check(calls.Length = 1 && calls[1] = "bunker" && gEarnDue["bunker"] = fakeTick
+Check(calls.Length = 1 && calls[1] = "bunker" && gEarnDue["bunker"] = fakeTick + 60000
     && gEarnDue["staff"] < gEarnDue["bunker"],
-    "elapsed self-schedule loses stale priority after long MCT cleanup")
+    "expired bunker self-schedule waits one minute after long MCT cleanup")
 EarnTick()
 Check(calls.Length = 2 && calls[2] = "staff" && gEarnDone["staff"] = 1,
     "older staff due runs before repeated bunker observation")
+EarnTick()
+Check(calls.Length = 2, "completed bunker does not repeat immediately after the older task")
+fakeTick := gEarnDue["bunker"] - 1
+EarnTick()
+Check(calls.Length = 2, "expired bunker self-schedule waits the full post-cleanup minute")
+fakeTick++
+EarnTick()
+Check(calls.Length = 3 && calls[3] = "bunker" && gEarnDone["bunker"] = 2,
+    "expired bunker self-schedule runs after the post-cleanup minute")
+Reset()
+gEarnTasks := [{id:"dj",label:"dj",on:true,every:300000,fn:RunTask.Bind("dj")},
+    {id:"staff",label:"staff",on:true,every:300000,fn:RunTask.Bind("staff")}]
+gEarnDue := Map("dj", fakeTick - 1, "staff", fakeTick + 120000)
+gEarnDone := Map("dj", 0, "staff", 0), taskModes := Map("dj", "override-short"), endDelay := 180000
+EarnTick()
+Check(calls.Length = 1 && calls[1] = "dj" && gEarnDue["dj"] = fakeTick
+    && gEarnDue["staff"] < gEarnDue["dj"],
+    "expired non-bunker self-schedule still loses stale priority at completion")
+EarnTick()
+Check(calls.Length = 2 && calls[2] = "staff",
+    "older staff due still runs before the completed non-bunker task")
+Reset()
+gEarnTasks := [{id:"bunker",label:"bunker",on:true,every:300000,fn:RunTask.Bind("bunker")}]
+gEarnDue := Map("bunker", fakeTick - 1), gEarnDone := Map("bunker", 0), endDelay := 360000
+EarnTick()
+Check(gEarnDue["bunker"] = fakeTick,
+    "bunker fallback interval without an explicit reservation keeps the generic completion clamp")
 Reset()
 sellReason := "나이트클럽 창고 만재 1개: 판매 필요"
 gEarnTasks := [{id:"bunker",label:"bunker",on:true,every:300000,fn:RunTask.Bind("bunker")},
@@ -1020,7 +1047,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 128 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 134 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout
