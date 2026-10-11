@@ -204,6 +204,9 @@ SetupTrayMenu() {
     tray.Insert("1&", "AFK 방지 켜기/끄기", (*) => ToggleAntiAFK())
     tray.Insert("1&", "단축키 보기", (*) => ShowHelp())
     tray.Insert("1&", "설정 창 열기", (*) => OpenPanel())
-    tray.Insert("6&")
+    tray.Insert("1&", "외출 저부하 끄기 (일반 복귀)", (*) => SetAwayMode(false))
+    tray.Insert("1&", "외출 저부하 켜기 (30 FPS)", (*) => SetAwayMode(true))
+    tray.Insert("8&")
     tray.Default := "설정 창 열기"   ; 트레이 아이콘 더블클릭으로도 열린다
+    CpuBoostUpdateTray()
 }
