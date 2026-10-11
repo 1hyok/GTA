@@ -4,7 +4,7 @@
 global gAbort := false
 
 StopAll(reason := "hotkey") {
-    global gAbort, clawLoopRunning, clickRunning, wRunning, shiftWRunning, vellumDrivingRunning, cayoTimerRunning
+    global gAbort, clawLoopRunning, clickRunning, wRunning, shiftWRunning, vellumDrivingRunning, cayoTimerRunning, gEarnOn, gEarnBusy
     gAbort := true
     stopped := []
 
