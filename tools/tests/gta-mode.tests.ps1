@@ -125,6 +125,19 @@ public static class GtaModeInput {
     [IO.File]::WriteAllText($script:Config, '{"performance_mode":1,"skip_hotkeys":1}')
     Throws { Set-GHelperMode 2 } 'disabled shortcut blocks input'
     Check ($script:sendCalls -eq 1) 'disabled shortcut emitted nothing'
+
+    # Exercise real capture/parsing with a fixture, never the installed PresentMon.
+    $script:Game = 'FixtureGTA'
+    $script:PresentMon = Join-Path $fixture 'presentmon-fixture.ps1'
+    $script:PmOut = Join-Path $fixture 'presentmon-fixture.csv'
+    [IO.File]::WriteAllText($script:PresentMon, @'
+$outputIndex = [Array]::IndexOf($args, '--output_file')
+if ($outputIndex -lt 0) { throw 'fixture requires output_file' }
+Write-Error 'fixture non-fatal elevation warning'
+[IO.File]::WriteAllLines($args[$outputIndex + 1], @('MsBetweenDisplayChange') + (@('20') * 20))
+'@)
+    Check ((Get-Fps) -eq '50.0,50.0') 'non-fatal capture warning still returns average and low FPS'
+    Check ($ErrorActionPreference -eq 'Stop') 'capture restores caller Stop error preference'
     Write-Output "PASS G-Helper away policy cases=$checks"
 } finally {
     # Fixture only, never the real game or user settings.
