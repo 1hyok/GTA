@@ -309,8 +309,9 @@ EarnBunkerTask(manageSession := true) {
             return false
         gEarnBunkerFull := plan.reason = "stock_full"
         if (gEarnBunkerFull) {
-            ; 재고는 사용자가 직접 팔아야 줄고, 그 조작이 자동화를 멈춘다. 다시 켤 때(F9) 새로 보므로 이번 회차에는 더 보지 않는다.
-            EarnLog("벙커: 재고 가득 참. 판매 뒤 F9 로 다시 켤 때까지 확인하지 않고, MCT 갱신은 나이트클럽 카드로 한다")
+            ; 현재 MCT를 먼저 닫고 CEO를 해제한 뒤 자동화를 멈춘다. 판매 뒤 F9로 다시 켜면 새 화면을 읽는다.
+            EarnRequestSellStop("벙커 재고 만재: 판매 필요")
+            EarnLog("벙커: 재고 가득 참. MCT 정리와 CEO 해제 뒤 판매를 위해 자동화 중단")
             gEarnNextDue["bunker"] := A_TickCount + 7 * 86400000
             ok := true
         } else if (!plan.buy) {
@@ -488,8 +489,10 @@ EarnMCTSpotSweep() {
 }
 
 EarnTaskMCTBegin() {
-    global gEarnMCTCleanupOK
+    global gEarnMCTCleanupOK, gEarnManualStop
     gEarnMCTCleanupOK := true
+    probePassed := false, opened := false
+    try {
     ; 이 자동화는 사용자가 둔 MCT 앞에서만 동작한다. 부동산 재접속·임의 길찾기는 하지 않는다.
     ; 게임 알림 아이콘이 안내 위에 잠깐 겹치면 한 번은 빗나간다(1003 18:25 실측). 5초 다시 보고, 그래도 없으면 끄지 않고 3분 뒤 다시 한다.
     spotDeadline := A_TickCount + 5000, swept := false
@@ -501,18 +504,19 @@ EarnTaskMCTBegin() {
                 if (EarnMCTSpotSweep())
                     break
             }
-            EarnBossOffIfOn()
+            if (!gEarnManualStop)
+                EarnBossOffIfOn()
             return EarnSoftFail("MCT 앞에 서 있거나 사업장 목록을 연 상태에서 시작해야 함", 3)
         }
     }
-    opened := false
-    try {
+        probePassed := true
         opened := EarnMCTOpen() && EarnMCTRefresh()
         return opened
     } finally {
-        ; 등록 또는 화면 판독 예외에도 확인된 화면에서만 닫고 CEO를 해제한다.
-        if (!opened)
-            gEarnMCTCleanupOK := EarnTaskMCTEnd()
+        ; 초기 MCT 화면 판독 중 F9가 들어온 경우도 정상 종료로 오인하지 않는다. 확인된 화면을 다시 읽어 닫고 CEO를 해제한다.
+        ; 정상적인 "MCT 앞 아님" 실패는 기존처럼 보스 상태만 확인하고, 세션 진입을 통과했거나 수동 종료가 요청된 경우만 전체 정리를 한다.
+        if (!opened && (probePassed || gEarnManualStop))
+            gEarnMCTCleanupOK := EarnTaskMCTEndWithManualRetry()
     }
 }
 

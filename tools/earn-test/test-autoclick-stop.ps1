@@ -34,6 +34,11 @@ Check(clickRunning && TimerOn("DoClick") && !Held("LButton"), "normal autoclick 
 StopAll()
 Check(!clickRunning && !TimerOn("DoClick") && !Held("LButton"), "stopall stops established autoclick")
 
+Reset()
+gEarnBusy := true
+StopAll()
+Check(gAbort && setCalls = 1 && !setOn && setReason = "전체 멈춤", "stopall hard-stops an in-flight F9 cleanup even when earnings are already off")
+
 for phase in [1, 2] {
     Reset()
     injectSleep := phase
@@ -86,11 +91,13 @@ FileAppend((failures ? "FAIL" : "PASS") " movement/autoclick: " checks " checks 
 ExitApp(failures ? 1 : 0)
 
 Reset() {
-    global config, clickRunning, wRunning, shiftWRunning, vellumDrivingRunning, gAbort, clawLoopRunning, gEarnOn, cayoTimerRunning
+    global config, clickRunning, wRunning, shiftWRunning, vellumDrivingRunning, gAbort, clawLoopRunning, gEarnOn, gEarnBusy, cayoTimerRunning
+    global setCalls, setOn, setReason
     global focused, keyPressed, cursorExe, timers, heldKeys, events, downEvents, injectSleep, sleepCount
     config := Map("Settings", Map("ClickInterval", 1, "ClickHoldTime", 50, "KeyHoldTime", 50, "VellumDrivingCtrlInterval", 3000), "Hotkeys", Map("AutoClick", "F7"))
     clickRunning := false, wRunning := false, shiftWRunning := false, vellumDrivingRunning := false, gAbort := false
-    clawLoopRunning := false, gEarnOn := false, cayoTimerRunning := false
+    clawLoopRunning := false, gEarnOn := false, gEarnBusy := false, cayoTimerRunning := false
+    setCalls := 0, setOn := true, setReason := ""
     focused := true, keyPressed := false, cursorExe := "GTA5_Enhanced.exe"
     timers := Map(), heldKeys := Map(), events := [], downEvents := 0, injectSleep := 0, sleepCount := 0
 }
@@ -169,7 +176,10 @@ WinGetProcessName(*) {
 GetKeyState(key, mode := "") => mode = "P" ? false : Held(key)
 ShowTooltip(*) => 0
 MacroLog(*) => 0
-SetEarner(*) => 0
+SetEarner(on, reason := "", *) {
+    global setCalls, setOn, setReason
+    setCalls++, setOn := on, setReason := reason
+}
 ToggleCayoPericoTimer(*) => 0
 '@
 # Every input, timer, environment lookup and wait call is supplied above; Main is never loaded.

@@ -87,9 +87,10 @@ MemGuardTick() {
 }
 
 MemGuardCloseGame(pid, line) {
-    global gEarnOn
+    global gEarnOn, gEarnBusy
     EarnLog("메모리 보호: " line ", 블루스크린을 막으려고 수익 자동화를 끄고 GTA 를 닫음")
-    if (IsSet(gEarnOn) && gEarnOn)
+    ; F9 안전 정리 중에도 메모리 보호가 우선한다. 종료 사유를 남기고 정리 입력이 다시 시작되지 않게 한다.
+    if (IsSet(gEarnOn) && (gEarnOn || (IsSet(gEarnBusy) && gEarnBusy)))
         SetEarner(false, "메모리 보호")
     ReleaseHeldKeys()
     ProcessClose(pid)

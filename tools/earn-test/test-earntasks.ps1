@@ -52,11 +52,17 @@ function Invoke-EarnOfflineCheck {
 #Warn All, StdOut
 global transactionPending := Map()
 global gEarnSkipOcr := false
+global sellStopReasons := []
 EarnTransactionBegin(id, reason) {
     transactionPending[id] := reason
     return true
 }
 EarnTransactionConfirmed(id) => transactionPending.Delete(id)
+EarnRequestSellStop(reason) {
+    global sellStopReasons
+    sellStopReasons.Push(reason)
+    return true
+}
 ; EarnTasks tests extract individual task functions, not EarnCore's screen helpers.
 EarnMCTSitOcrSeen() => false
 EarnOcrLines(key, area, whiteText) => false
@@ -456,6 +462,7 @@ ExitApp(0)
     Invoke-EarnOfflineCheck 'DJRebook' 'EarnDJNeedsRebook' $djDriver 10
     $mctDriver = @'
 global config := Map("Settings", Map("EarnMCTOnly",1)), scene := "", failAt := "", order := "", softRetry := 0, spotClockMs := 0, sweepCalls := 0
+global gEarnManualStop := false
 for c in [["list","",true,"OR"],["stand","",true,"OR"],["chair","",true,"OR"],
     ["need-ceo","",true,"OR"],["away","",false,""],["list","O",false,"OE"],
     ["stand","O",false,"OE"],["stand","R",false,"ORE"],["flicker","",true,"OR"],["sweep","",true,"OR"]] {
@@ -494,6 +501,7 @@ EarnTaskMCTEnd() {
     order .= "E"
     return true
 }
+EarnTaskMCTEndWithManualRetry() => EarnTaskMCTEnd()
 EarnGoHome(*) {
     throw Error("MCT tasks must not travel")
 }
@@ -771,6 +779,7 @@ Sleep(ms) {
     Invoke-EarnOfflineCheck 'MCTEndPrompt' 'EarnTaskMCTEnd' $mctEndPromptDriver 9
     $mctBeginCleanupDriver = @'
 global config := Map(), endScene := "mct_sit", endFailure := "", endOrder := "", endAbort := false, endBoss := false, gEarnFail := "", endLogs := []
+global gEarnManualStop := false
 global beginFailure := "", beginFailedScene := ""
 cases := [
  ["open","mct_sit",false,"O-",false],
@@ -844,6 +853,7 @@ EarnMCTRefresh() {
     }
     return true
 }
+EarnTaskMCTEndWithManualRetry() => EarnTaskMCTEnd()
 '@
     $mctBeginCleanupDriver += "`n" + $mctCleanupSupport + "`n" + (Get-EarnFunctionBody $sourceText 'EarnTaskMCTEnd')
     $mctBeginCleanupDriver += "`nEarnSoftFail(reason, *) => EarnFail(reason)`n"
@@ -1247,6 +1257,7 @@ cases := [[0.4,1,8400,true,true,true,true,0,1,60000],
     [0.4,0.24,6720,true,true,true,true,0,1,60000],
     [0.4,0.2,6720,true,true,true,true,1,1,60000],
     [1,0,8400,true,true,true,true,0,1,604800000],
+    [0.97,0,8400,true,true,true,true,0,1,604800000],
     [0.4,0.75,1680,true,true,true,true,0,1,60000],
     [0.4,0,8400,true,true,true,true,1,1,60000],
     [0.4,0.8,1680,true,true,true,true,1,1,60000],
@@ -1259,7 +1270,8 @@ cases := [[0.4,1,8400,true,true,true,true,0,1,60000],
     [0.4,0,8400,true,true,false,false,1,1,60000]]
 for row in cases {
     c := row, config["Settings"]["EarnBunkerIntervalSec"] := c[3]
-    gEarnNextDue := Map("bunker",0), buyCalls := 0, beginCalls := 0, endCalls := 0, gEarnBunkerOrdered := true
+    gEarnNextDue := Map("bunker",0), buyCalls := 0, beginCalls := 0, endCalls := 0,
+        gEarnBunkerOrdered := true, gEarnBunkerFull := false, sellStopReasons := []
     before := A_TickCount
     result := EarnBunkerTask()
     after := A_TickCount
@@ -1268,6 +1280,10 @@ for row in cases {
         throw Error("Bunker task result/cleanup " A_Index)
     if (c[10] = 0 ? due != 0 : due < before+c[10] || due > after+c[10])
         throw Error("Bunker task scheduling " A_Index " due=" due)
+    expectedSellStop := c[1] >= 0.97 ? 1 : 0
+    if (gEarnBunkerFull != expectedSellStop || sellStopReasons.Length != expectedSellStop
+        || (expectedSellStop && sellStopReasons[1] != "벙커 재고 만재: 판매 필요"))
+        throw Error("Bunker task sell-stop " A_Index " full=" gEarnBunkerFull " count=" sellStopReasons.Length)
 }
 ; The grouped scheduler already owns the MCT session, including no-purchase and invalid-read paths.
 for row in [[0.4,1,8400,false,true,false,true,0,0,60000],
@@ -1283,7 +1299,7 @@ for row in [[0.4,1,8400,false,true,false,true,0,0,60000],
     if (c[10] = 0 ? due != 0 : due < before+c[10] || due > after+c[10])
         throw Error("Shared-session bunker scheduling changed")
 }
-FileAppend("PASS BunkerTask cases=18`n", "*")
+FileAppend("PASS BunkerTask cases=19`n", "*")
 ExitApp(0)
 EarnTaskMCTBegin() {
     global beginCalls
@@ -1313,7 +1329,7 @@ EarnSleep(*) {
 EarnLog(*) => true
 EarnFail(*) => false
 '@
-    Invoke-EarnOfflineCheck 'BunkerTask' 'EarnBunkerTask' ($bunkerTaskDriver + $bunkerPolicy + $bunkerObserve) 18
+    Invoke-EarnOfflineCheck 'BunkerTask' 'EarnBunkerTask' ($bunkerTaskDriver + $bunkerPolicy + $bunkerObserve) 19
     $bunkerObserveDriver = @'
 global config := Map("Settings",Map("EarnBunkerIntervalSec",6720)), gEarnNextDue := Map(), gEarnBunkerOrdered := false, gEarnBunkerFull := false
 global c := Map(), clockMs := 0, supplyNow := 0.21, stockNow := 0.4,
@@ -1343,7 +1359,8 @@ for scenario in cases {
     c := scenario[2], config["Settings"]["EarnBunkerIntervalSec"] := c.Get("interval",6720)
     clockMs := 0, supplyNow := c.Get("supply",0.21), stockNow := 0.4,
         refreshes := 0, buys := 0, begins := 0, ends := 0, sleeps := [], reads := 0,
-        abortNow := c.Get("abort",false), gEarnBunkerOrdered := true, gEarnNextDue := Map("bunker",0)
+        abortNow := c.Get("abort",false), gEarnBunkerOrdered := true, gEarnBunkerFull := false,
+        gEarnNextDue := Map("bunker",0), sellStopReasons := []
     result := EarnBunkerTask()
     expectedDue := scenario[5] ? clockMs + scenario[5] : 0
     if (result != scenario[3] || buys != scenario[4] || gEarnNextDue["bunker"] != expectedDue
@@ -1355,6 +1372,10 @@ for scenario in cases {
     }
     if (scenario[6] >= 240000 && buys)
         throw Error("No deadline-late purchase permitted")
+    expectedSellStop := scenario[1] = "stock fills during observation" ? 1 : 0
+    if (gEarnBunkerFull != expectedSellStop || sellStopReasons.Length != expectedSellStop
+        || (expectedSellStop && sellStopReasons[1] != "벙커 재고 만재: 판매 필요"))
+        throw Error("Bunker observe sell-stop " scenario[1] " full=" gEarnBunkerFull " count=" sellStopReasons.Length)
 }
 FileAppend("PASS BunkerObserve cases=19`n", "*")
 ExitApp(0)

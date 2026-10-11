@@ -43,6 +43,7 @@ global fixtureData := Map(), fixtureKey := ""
 global observedDeadlines := []
 global menuReads := 0, mainNames := [], bailMenuReads := 0, bailMenuReadsAtFirstKey := 0
 global hangarState := "ready", hangarRequests := 0, hangarReads := 0
+global sellStopRequests := 0, sellStopReasons := []
 global greyText := "", greyMissing := 0, flickerReads := 0
 OnError(TestUnhandledError)
 __FIXTURE_INIT__
@@ -315,29 +316,30 @@ RunCargoTests() {
     global hangarState, hangarRequests, hangarReads
     global mode, screenState, selected, statuses, requests, keys, config
     global cargoNames, cargoStatuses, cargoRequests, activeCount, opens
-    ; mode, statuses, success, per-run cargo request count.
+    global transactionPending, sellStopRequests, sellStopReasons
+    ; mode, statuses, success, per-run cargo request count, sell-stop request count.
     cases := [
-        ["normal",["ready","ready","full","ready","busy"],true,3],
-        ["normal",["busy","busy","full","busy","busy"],true,0],
-        ["cargo_gray_blank",["ready","ready","full","ready","busy"],true,3],
-        ["cargo_gray_blank",["busy","busy","full","busy","busy"],true,0],
-        ["cargo_all_blank",["ready","busy","full","busy","busy"],false,0],
-        ["delayed_cargo",["ready","busy","full","busy","busy"],true,1],
-        ["merged_price",["ready","busy","full","busy","busy"],true,1],
-        ["comma_price",["ready","busy","full","busy","busy"],true,1],
-        ["cargo_price_change",["ready","busy","full","busy","busy"],true,0],
-        ["cargo_selection_change",["ready","busy","full","busy","busy"],true,0],
-        ["cargo_full_change",["ready","busy","full","busy","busy"],true,0],
-        ["cargo_ocr_fail",["ready","busy","full","busy","busy"],false,0],
-        ["cargo_bad_price",["ready","busy","full","busy","busy"],false,0],
-        ["cargo_wrong_footer",["ready","busy","full","busy","busy"],false,0],
-        ["cargo_unconfirmed",["ready","busy","full","busy","busy"],false,1],
-        ["cargo_cancel",["ready","busy","full","busy","busy"],false,1],
-        ["cargo_after_full",["ready","busy","full","busy","busy"],false,1]
-        ,["transient_cargo_footer",["ready","busy","full","busy","busy"],true,1]
-        ,["unknown_cargo_footer",["ready","busy","full","busy","busy"],false,1]
-        ,["lost_cargo_identity",["ready","busy","full","busy","busy"],false,1]
-        ,["cargo_read_glitch",["ready","busy","full","busy","busy"],true,1]
+        ["normal",["ready","ready","busy","ready","busy"],true,3,0],
+        ["normal",["busy","busy","busy","busy","busy"],true,0,0],
+        ["cargo_gray_blank",["ready","ready","busy","ready","busy"],true,3,0],
+        ["cargo_gray_blank",["busy","busy","busy","busy","busy"],true,0,0],
+        ["cargo_all_blank",["ready","busy","busy","busy","busy"],false,0,0],
+        ["delayed_cargo",["ready","busy","busy","busy","busy"],true,1,0],
+        ["merged_price",["ready","busy","busy","busy","busy"],true,1,0],
+        ["comma_price",["ready","busy","busy","busy","busy"],true,1,0],
+        ["cargo_price_change",["ready","busy","busy","busy","busy"],true,0,0],
+        ["cargo_selection_change",["ready","busy","busy","busy","busy"],true,0,0],
+        ["cargo_full_change",["ready","busy","busy","busy","busy"],true,0,1],
+        ["cargo_ocr_fail",["ready","busy","busy","busy","busy"],false,0,0],
+        ["cargo_bad_price",["ready","busy","busy","busy","busy"],false,0,0],
+        ["cargo_wrong_footer",["ready","busy","busy","busy","busy"],false,0,0],
+        ["cargo_unconfirmed",["ready","busy","busy","busy","busy"],false,1,0],
+        ["cargo_cancel",["ready","busy","busy","busy","busy"],false,1,0],
+        ["cargo_after_full",["ready","busy","busy","busy","busy"],true,1,1]
+        ,["transient_cargo_footer",["ready","busy","busy","busy","busy"],true,1,0]
+        ,["unknown_cargo_footer",["ready","busy","busy","busy","busy"],false,1,0]
+        ,["lost_cargo_identity",["ready","busy","busy","busy","busy"],false,1,0]
+        ,["cargo_read_glitch",["ready","busy","busy","busy","busy"],true,1,0]
     ]
     for c in cases {
         Reset(c[1], ["busy","busy"])
@@ -345,6 +347,11 @@ RunCargoTests() {
         result := EarnStaffCargoWarehouses()
         Check(result = c[3], c[1] " cargo success=" result)
         Check(Sum(cargoRequests) = c[4], c[1] " cargo request count=" Sum(cargoRequests))
+        Check(sellStopRequests = c[5], c[1] " sell-stop request count=" sellStopRequests)
+        if (c[5])
+            Check(screenState = "staff", c[1] " full terminal leaves the cargo list")
+        if (c[1] = "cargo_after_full")
+            Check(!transactionPending.Has("staff"), "cargo_after_full clears transaction pending at the full terminal")
         for count in cargoRequests
             Check(count <= 1, c[1] " no duplicate warehouse request")
     }
@@ -373,27 +380,73 @@ RunCargoTests() {
     Check(!EarnStaffCargoDetail([TextLine("Send your Warehouse staff member out",350),TextLine("on a job.",377)],TextLine("THE VINEWOOD CLUB APP",144)), "footer between row positions rejected")
     for nextMode in ["cargo_repeat_name","cargo_stuck","cargo_no_selection","cargo_double_selection"] {
         Reset(nextMode,["busy","busy"])
-        cargoStatuses := ["busy","busy","full","busy","busy"]
+        cargoStatuses := ["busy","busy","busy","busy","busy"]
         skipped := EarnStaffCargoWarehouses()
         Check(Sum(cargoRequests) = 0, nextMode " does not order")
         if (skipped)
             Check(screenState = "staff", nextMode " soft skip leaves the warehouse list")
     }
     Reset("cargo_disabled_price",["busy","busy"])
-    cargoStatuses := ["busy","busy","full","busy","busy"]
+    cargoStatuses := ["busy","busy","busy","busy","busy"]
     Check(EarnStaffCargoWarehouses() && Sum(cargoRequests) = 0, "disabled price may be unreadable")
 
     ; Use actual task orchestration and actual bounded app-close implementation.
     for start in ["main","staff","bail","cargo"] {
         Reset("normal",["busy","ready"])
         screenState := start, selected := start = "bail" ? "Agent 1" : start = "cargo" ? cargoNames[1] : start = "main" ? "Claim Business Earnings" : "Hangar"
-        cargoStatuses := ["busy","ready","full","busy","ready"]
+        cargoStatuses := ["busy","ready","busy","busy","ready"]
         Check(EarnVinewoodStaffTask(), "combined task from " start)
         Check(screenState = "standing" && requests[2] = 1 && Sum(cargoRequests) = 2, "combined task final state " start)
         Check(opens = 1, "single app opening " start)
         for key in keys
             Check(key != "Esc", "combined task no Esc")
     }
+    ; A full special-cargo property requests one sell stop, then skips later cargo and Hangar dispatches.
+    Reset("normal",["busy","busy"])
+    config["Settings"]["EarnBailAgents"] := 0, config["Settings"]["EarnHangarStaff"] := 1
+    cargoStatuses := ["ready","full","ready","ready","ready"]
+    Check(EarnVinewoodStaffTask(), "full special cargo closes the app after requesting a sell stop")
+    Check(sellStopRequests = 1 && sellStopReasons.Length = 1
+        && sellStopReasons[1] = "스페셜 패키지 Railyard Warehouse 만재: 판매 필요",
+        "full special cargo requests the exact sell stop once")
+    Check(cargoRequests[1] = 1 && Sum(cargoRequests) = 1 && hangarRequests = 0,
+        "full special cargo permits no later procurement or dispatch")
+    Check(screenState = "standing" && keys.Length >= 3
+        && keys[keys.Length-2] = "Backspace" && keys[keys.Length-1] = "Backspace" && keys[keys.Length] = "Backspace",
+        "full special cargo leaves its list and follows the confirmed app-close path")
+
+    ; Full can appear during the no-input preflight reread or as the terminal result after one request.
+    for fullMode in ["cargo_full_change","cargo_after_full"] {
+        Reset(fullMode,["busy","busy"])
+        config["Settings"]["EarnBailAgents"] := 0, config["Settings"]["EarnHangarStaff"] := 1
+        cargoStatuses := ["ready","busy","busy","busy","busy"]
+        Check(EarnVinewoodStaffTask(), fullMode " ends successfully after confirmed full")
+        Check(sellStopRequests = 1 && sellStopReasons.Length = 1
+            && sellStopReasons[1] = "스페셜 패키지 Discount Retail Unit 만재: 판매 필요",
+            fullMode " requests the exact sell stop once")
+        expectedRequests := fullMode = "cargo_after_full" ? 1 : 0
+        Check(cargoRequests[1] = expectedRequests && Sum(cargoRequests) = expectedRequests && hangarRequests = 0,
+            fullMode " permits no procurement or dispatch after full")
+        Check(!transactionPending.Has("staff"), fullMode " leaves no transaction pending")
+        Check(screenState = "standing" && keys.Length >= 3
+            && keys[keys.Length-2] = "Backspace" && keys[keys.Length-1] = "Backspace" && keys[keys.Length] = "Backspace",
+            fullMode " follows the confirmed app-close path")
+    }
+
+    ; A full Hangar never dispatches and also returns through the confirmed app-close path.
+    Reset("normal",["busy","busy"])
+    config["Settings"]["EarnBailAgents"] := 0, config["Settings"]["EarnCargoStaff"] := 0, config["Settings"]["EarnHangarStaff"] := 1
+    hangarState := "full"
+    Check(EarnVinewoodStaffTask(), "full hangar closes the app after requesting a sell stop")
+    Check(sellStopRequests = 1 && sellStopReasons.Length = 1
+        && sellStopReasons[1] = "격납고 재고 만재: 판매 필요",
+        "full hangar requests the exact sell stop once")
+    Check(hangarRequests = 0 && Sum(cargoRequests) = 0 && Sum(requests) = 0,
+        "full hangar permits no procurement or dispatch")
+    for key in keys
+        Check(key != "Enter", "full hangar sends no dispatch Enter")
+    Check(screenState = "standing" && keys.Length = 2 && keys[1] = "Backspace" && keys[2] = "Backspace",
+        "full hangar follows the confirmed app-close path")
     Reset("normal",["ready","ready"])
     config["Settings"]["EarnCargoStaff"] := 0
     Check(EarnVinewoodStaffTask() && Sum(requests) = 2 && Sum(cargoRequests) = 0, "bail only")
@@ -457,7 +510,7 @@ RunCargoTests() {
     Reset("grey_bail_root",["busy","busy"])
     Check(EarnStaffRoot() && keys.Length = 0, "grey Bail Office list is still the staff list")
     Reset("grey_bail_root",["ready","ready"])
-    cargoStatuses := ["busy","busy","full","busy","busy"]
+    cargoStatuses := ["busy","busy","busy","busy","busy"]
     Check(EarnVinewoodStaffTask() && Sum(requests) = 0, "grey Bail Office skips bail agents without entering")
     Reset("garbled_list",["ready","ready"])
     config["Settings"]["EarnCargoStaff"] := 0
@@ -470,23 +523,39 @@ RunCargoTests() {
         ["Manage Staff Members","~Warehouse",0],["","~Hangar",0]]
         Check(!!EarnStaffTextMatch(item[1], item[2]) = item[3], "fuzzy " item[1] " vs " item[2])
     Reset("bail_busy_selected",["busy","busy"])
-    cargoStatuses := ["busy","busy","full","busy","busy"]
+    cargoStatuses := ["busy","busy","busy","busy","busy"]
     Check(EarnVinewoodStaffTask() && failure = "" && Sum(requests) = 0, "busy footer under a selected Bail Office skips agents (1006 20:04)")
     Reset("grey_warehouse_root",["busy","busy"])
     Check(EarnVinewoodStaffTask() && Sum(cargoRequests) = 0, "grey Warehouse skips cargo staff without entering")
-    for c in [["hangar_ready","ready",true,1,"busy"], ["hangar_busy","busy",true,0,"busy"],
-        ["hangar_bad_price","ready",true,0,"ready"], ["hangar_unknown","odd",true,0,"odd"],
-        ["hangar_unconfirmed","ready",false,1,"ready"], ["hangar_flaky","ready",true,0,"ready"],
+    for c in [["hangar_ready","ready",true,1,"busy",0], ["hangar_busy","busy",true,0,"busy",0],
+        ["hangar_bad_price","ready",true,0,"ready",0], ["hangar_unknown","odd",true,0,"odd",0],
+        ["hangar_unconfirmed","ready",false,1,"ready",0], ["hangar_flaky","ready",true,0,"ready",0],
         ; 1006 녹화: 설명 문구가 한두 글자 깨져도 보내고, 깨진 작업 중 문구에는 사지 않는다.
-        ["hangar_garbled","ready",true,1,"busy"], ["hangar_garbled_busy","busy",true,0,"busy"],
-        ["hangar_missing_busy","ready",true,1,"busy"], ["hangar_missing_busy","busy",true,0,"busy"],
+        ["hangar_garbled","ready",true,1,"busy",0], ["hangar_garbled_busy","busy",true,0,"busy",0],
+        ["hangar_missing_busy","ready",true,1,"busy",0], ["hangar_missing_busy","busy",true,0,"busy",0],
+        ["hangar_preflight_full","ready",true,0,"full",1],
+        ["hangar_after_full","ready",true,1,"full",1],
         ; 1010 19:09 실측: 만재면 첫 행 글자가 사라진 채 만재 문구만 남는다. 사지 않고 건너뛴다.
-        ["hangar_full","full",true,0,"full"], ["hangar_missing_full","full",true,0,"full"]] {
+        ["hangar_full","full",true,0,"full",1], ["hangar_missing_full","full",true,0,"full",1]] {
         Reset(c[1],["busy","busy"])
         hangarState := c[2]
         config["Settings"]["EarnBailAgents"] := 0, config["Settings"]["EarnCargoStaff"] := 0, config["Settings"]["EarnHangarStaff"] := 1
         result := EarnVinewoodStaffTask()
         Check(result = c[3] && hangarRequests = c[4] && hangarState = c[5], c[1] " hangar result=" result " requests=" hangarRequests)
+        Check(sellStopRequests = c[6], c[1] " sell-stop request count=" sellStopRequests)
+        if (c[1] = "hangar_preflight_full") {
+            Check(sellStopReasons.Length = 1 && sellStopReasons[1] = "격납고 재고 만재: 판매 필요",
+                "hangar_preflight_full requests the exact sell stop once")
+            Check(!transactionPending.Has("staff") && hangarRequests = 0 && Sum(cargoRequests) = 0 && Sum(requests) = 0,
+                "hangar_preflight_full starts no transaction or later procurement")
+            for key in keys
+                Check(key != "Enter", "hangar_preflight_full sends no dispatch Enter")
+            Check(screenState = "standing" && keys.Length = 2 && keys[1] = "Backspace" && keys[2] = "Backspace",
+                "hangar_preflight_full follows the confirmed app-close path")
+        }
+        if (c[1] = "hangar_after_full")
+            Check(!transactionPending.Has("staff") && screenState = "standing",
+                "hangar_after_full clears transaction pending and closes the app")
     }
     Reset("normal",["busy","busy"])
     selected := "Hangar"
@@ -515,7 +584,7 @@ RunCargoTests() {
     hangarState := "ready", screenState := "staff", selected := "Warehouse"
     Check(EarnStaffSelectText(EarnStaffHangarPattern(), 3) && selected = "Hangar", "app title dropped once after a key press is reread")
     Reset("close_fail",["busy","busy"])
-    cargoStatuses := ["busy","busy","full","busy","busy"]
+    cargoStatuses := ["busy","busy","busy","busy","busy"]
     Check(!EarnVinewoodStaffTask(), "app-close failure prevents success")
 }
 Sum(values) {
@@ -531,10 +600,12 @@ Reset(nextMode, initial) {
     global config, cargoNames, cargoStatuses, cargoRequests, cargoReads, activeCount, opens, postReads
     global observedDeadlines
     global menuReads, mainNames, hangarState, hangarRequests, hangarReads, greyMissing, flickerReads
+    global sellStopRequests, sellStopReasons
     global bailMenuReads, bailMenuReadsAtFirstKey
     greyMissing := 0, flickerReads := 0
     mode := nextMode, screenState := "staff", selected := "Hangar"
     hangarState := "ready", hangarRequests := 0, hangarReads := 0
+    sellStopRequests := 0, sellStopReasons := []
     statuses := initial.Clone(), requests := [0,0], keys := [], reads := 0, failure := ""
     config := Map("Settings",Map("EarnBailAgents",1,"EarnCargoStaff",1))
     cargoNames := ["Discount Retail Unit","Railyard Warehouse","Foreclosed Garage","Darnell Bros Warehouse","West Vinewood Backlot"]
@@ -573,7 +644,7 @@ EarnReadScreen(area, whiteText := false, deadline := 0) {
 MockReadScreen(area, whiteText) {
     global mode, screenState, selected, statuses, reads, requests
     global cargoNames, cargoStatuses, cargoRequests, cargoReads, postReads
-    global menuReads, mainNames, hangarReads, greyText, greyMissing, flickerReads, keys
+    global menuReads, mainNames, hangarState, hangarReads, greyText, greyMissing, flickerReads, keys
     global bailMenuReads
     if (screenState = "main") {
         if (area[4] = 263 || area[4] = 300)
@@ -620,6 +691,9 @@ MockReadScreen(area, whiteText) {
         ; 격납고 줄이 선택되면 같은 줄 오른쪽에 가격, 목록 아래에 상태 문구가 뜬다(1004 21:36 녹화).
         if (selected = "Hangar" && hangarState != "") {
             hangarReads += 1
+            ; Root/선택/첫 ready 판독 뒤 Enter 직전 fresh 판독에서만 만재로 바뀐다.
+            if (mode = "hangar_preflight_full" && hangarReads = 4)
+                hangarState := "full"
             if (hangarState = "ready")
                 rows.Push(TextLine(mode = "hangar_bad_price" || mode = "hangar_flaky" && hangarReads >= 2 ? "$250000" : "$25000",181,420,80))
             rows[5].text := hangarState = "ready" ? "Send your Hangar staff member out on a job."
@@ -922,7 +996,7 @@ EarnPress(key) {
                     throw Error("Attempt to dispatch busy hangar staff")
                 hangarRequests += 1
                 if (mode != "hangar_unconfirmed")
-                    hangarState := "busy"
+                    hangarState := mode = "hangar_after_full" ? "full" : "busy"
             } else
                 throw Error("Attempt to dispatch wrong business")
         } else if (screenState = "cargo") {
@@ -988,6 +1062,15 @@ EarnVinewoodOpen(manageMCT := true) {
     global mode, opens
     opens += 1
     return mode != "open_fail"
+}
+EarnRequestSellStop(reason) {
+    global sellStopRequests, sellStopReasons
+    sellStopRequests += 1
+    sellStopReasons.Push(reason)
+}
+EarnSellStopPending() {
+    global sellStopRequests
+    return sellStopRequests > 0
 }
 EarnScheduleNext(*) => true
 RunScheduleTests() {
