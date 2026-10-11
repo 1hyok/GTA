@@ -8,7 +8,7 @@ function Get-CiCheckPlan {
         'test-afk-notification-command','test-afk-input-lock','test-arrow-color','test-cpuboost','test-memguard','test-earndj',
         'test-phone-call-template','test-earnocr','test-notification-dismiss','test-mct-seated-template',
         'test-bunker-templates','test-earnwarehouse-templates','test-afk-overlays','test-session-guard',
-        'test-gui-input','test-perf-watch','test-fps-helper','test-screen-capture'
+        'test-gui-input','test-perf-watch','test-fps-helper','test-screen-capture','test-gta-mode'
     )
     $selected = [Collections.Generic.List[object]]::new()
     $packageRequired = [bool]$Full
@@ -54,6 +54,7 @@ function Get-CiCheckPlan {
         if ($path -match '^tools/frame-watch/' -or $path -match '^tools/gta-perf-watch\.(ps1|vbs)$') { $selected.Add('test-perf-watch'); continue }
         if ($path -match '^tools/tests/fps-helper\.tests\.ps1$') { $selected.Add('test-fps-helper'); continue }
         if ($path -match '^tools/tests/screen-capture\.tests\.ps1$') { $selected.Add('test-screen-capture'); continue }
+        if ($path -match '^tools/tests/gta-mode\.tests\.ps1$') { $selected.Add('test-gta-mode'); continue }
         if ($path -match '^Features/AntiAFK\.ahk$') {
             $selected.AddRange(@('test-antiafk','test-afk-overlays','test-afk-input-lock','test-afk-notification-command','test-notification-dismiss'))
             $packageRequired = $true
