@@ -190,21 +190,19 @@ $generated = $driver + "`n" + $production
 if ($generated -match '(?im)^#Include|\b(DllCall|SendInput|SendEvent|SendPlay|ControlSend|MouseMove|Run|WinActivate)\(') { throw 'Unsafe API in generated harness' }
 $info = [Diagnostics.ProcessStartInfo]::new()
 $info.FileName = $AhkPath
-$info.Arguments = '/ErrorStdOut /CP65001 *'
+$utf8NoBom = New-Object Text.UTF8Encoding($false)
+$scriptPath = Join-Path ([IO.Path]::GetTempPath()) ('gta-autoclick-stop-' + [guid]::NewGuid().ToString('N') + '.ahk')
+[IO.File]::WriteAllText($scriptPath, $generated, $utf8NoBom)
+$info.Arguments = '/ErrorStdOut /CP65001 "' + $scriptPath + '"'
 $info.UseShellExecute = $false
 $info.CreateNoWindow = $true
-$info.RedirectStandardInput = $true
 $info.RedirectStandardOutput = $true
 $info.RedirectStandardError = $true
-$previous = [Console]::InputEncoding
-[Console]::InputEncoding = New-Object Text.UTF8Encoding($false)
 try {
 $process = [Diagnostics.Process]::Start($info)
 try {
     $stdoutTask = $process.StandardOutput.ReadToEndAsync()
     $stderrTask = $process.StandardError.ReadToEndAsync()
-    $process.StandardInput.WriteLine($generated)
-    $process.StandardInput.Close()
     if (-not $process.WaitForExit(10000)) { $process.Kill(); throw 'Isolated test timed out' }
     $output = $stdoutTask.GetAwaiter().GetResult() + $stderrTask.GetAwaiter().GetResult()
     $output += "exit=$($process.ExitCode)`n"
@@ -212,4 +210,4 @@ try {
     exit $process.ExitCode
 } finally { $process.Dispose() }
 
-} finally { [Console]::InputEncoding = $previous }
+} finally { Remove-Item -LiteralPath $scriptPath -Force -ErrorAction SilentlyContinue }
