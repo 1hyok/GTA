@@ -296,14 +296,15 @@ EarnVinewoodAmountDebug(lines) {
     return out = "" ? "(해당 줄 없음)" : out
 }
 
-; 메뉴·전화·앱이 없는 맨 게임 화면(왼쪽 아래 체력 막대가 보임)이고, 사람 입력이 물리·원격 모두 EarnUserIdleSec 넘게 없을 때.
-; 물리 입력 훅이 조작을 놓친 적이 있어(1004 23:01 플레이 중 idle=2668s) 원격 입력까지 세는 쪽도 함께 본다.
-EarnVinewoodFreeHud() {
+; 메뉴·전화·앱이 없는 맨 게임 화면. 일반 HUD 는 물리·원격 입력이 모두 오래 없을 때만 허용한다.
+; MCT 의 '앉기' 안내는 정상 기립을 직접 확인하므로 원격 매크로 입력 직후에도 허용하되, 물리 입력과 아래 오버레이 배제는 유지한다.
+EarnVinewoodFreeHud(&mctStanding := false) {
     global config
     idleMs := config["Settings"]["EarnUserIdleSec"] * 1000
     others := A_TimeIdle
     try others := %"AFKOthersIdleMs"%()
-    if (A_TimeIdlePhysical < idleMs || others < idleMs || !(EarnHudVisible() || EarnVinewoodHealthHud()))
+    mctStanding := EarnSeen("mct_sit", [0,0,0.3,0.1])
+    if (A_TimeIdlePhysical < idleMs || (!mctStanding && (others < idleMs || !(EarnHudVisible() || EarnVinewoodHealthHud()))))
         return false
     ; HDR 에서 전화기 테두리 템플릿이 사라져도 제목 OCR 로 열린 홈을 식별한다.
     if (EarnVinewoodPhoneTitle() != "")
@@ -315,6 +316,26 @@ EarnVinewoodFreeHud() {
         if (EarnSeen(name, name = "mct_title" ? [0.3,0,0.7,0.1] : [0,0,0.27,0.55]))
             return false
     return true
+}
+
+; CEO 메뉴가 닫힌 직후 MCT 기립 안내가 한 박자 늦게 돌아올 수 있다. 입력 없이 짧게 기다려 준비 화면만 다시 판독한다.
+; 판독에 걸린 시간도 timeoutMs 안에 포함하고, 성공한 MCT 안내 결과를 호출자가 다시 판독하지 않게 전달한다.
+EarnVinewoodWaitFreeHud(timeoutMs := 3000, &mctStanding := false) {
+    mctStanding := false
+    deadline := A_TickCount + Max(0, timeoutMs)
+    Loop {
+        if (EarnAborted())
+            return false
+        if (EarnVinewoodFreeHud(&seenMCT)) {
+            mctStanding := seenMCT
+            return true
+        }
+        remainingMs := deadline - A_TickCount
+        if (remainingMs <= 0)
+            return false
+        if (!EarnSleep(Min(200, remainingMs)))
+            return false
+    }
 }
 
 ; HDR 에서 전화기 프레임 템플릿이 맞지 않을 때 홈 제목을 상태 앵커로 사용한다.
@@ -397,13 +418,17 @@ EarnVinewoodOpen(manageMCT := true) {
         atMCT := manageMCT && (EarnSeen("mct_sit", [0,0,0.3,0.1]) || EarnSeen("mct_terrorbyte"))
         ; MCT 앞이 아니어도 메뉴·전화 없는 맨 HUD 에서 손을 뗀 지 오래면 전화로 앱을 연다(1005 사용자 요청).
         ; 그때 CEO·MC 상태는 사용자가 정한 것이라 건드리지 않는다.
-        if (!atMCT && !EarnVinewoodFreeHud()) {
+        waitedAtMCT := false
+        if (!atMCT && !EarnVinewoodWaitFreeHud(3000, &waitedAtMCT)) {
             ; 아직 아무 입력도 안 보낸 단계다. MCT 작업처럼 끄지 않고 3분 뒤 다시 한다
             ; (1004 21:56 사용자가 일시정지 메뉴를 연 채 손을 떼자 MCT 작업은 미뤄졌는데 금고만 자동화를 껐다).
             global gEarnRetryIn
             gEarnRetryIn := 3 * 60000
             return EarnFail("Vinewood 앱: 사용자 입력 유휴 또는 메뉴 없는 게임 HUD 미확인")
         }
+        ; 대기 중 MCT 안내가 나타났다면 일반 금고 경로의 기존 CEO 정리 계약을 유지한다.
+        if (!atMCT && manageMCT && waitedAtMCT)
+            atMCT := true
         if (!atMCT)
             EarnLog("Vinewood 앱: 위치·보스 변경 없이 게임 HUD에서 전화로 앱을 연다")
         if ((atMCT && !EarnCEO(false)) || !EarnPress("Up") || !EarnSleep(700))
