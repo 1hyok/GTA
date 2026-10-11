@@ -586,8 +586,13 @@ EarnFinishScheduledTask(result) {
             gEarnFailures.Delete(task.id)
         ; 주기는 확인을 시작한 때부터 잰다. 다만 실행·공동 정리 중 이미 지난 예약은 완료 시각으로
         ; 당겨, 그 작업이 과거 due를 계속 쌓으며 그사이 due가 된 다른 작업을 굶기지 않게 한다.
-        nextDue := gEarnNextDue.Has(task.id) ? gEarnNextDue.Delete(task.id) : result.startTick + task.every
-        gEarnDue[task.id] := Max(A_TickCount, nextDue)
+        finishedTick := A_TickCount
+        explicitNext := gEarnNextDue.Has(task.id)
+        nextDue := explicitNext ? gEarnNextDue.Delete(task.id) : result.startTick + task.every
+        ; 벙커의 짧은 상태 관측 예약이 MCT 정리 중 만료됐으면 즉시 재진입하지 않는다.
+        if (task.id = "bunker" && explicitNext && nextDue <= finishedTick)
+            nextDue := finishedTick + 60000
+        gEarnDue[task.id] := Max(finishedTick, nextDue)
         gEarnDone[task.id] += 1
         secondsUntilDue := Floor(Max(0, gEarnDue[task.id] - A_TickCount) / 1000)
         EarnLog("끝: " task.label " (" gEarnDone[task.id] "회째, 다음 " FormatTime(DateAdd(A_Now, secondsUntilDue, "Seconds"), "HH:mm:ss") ")")
