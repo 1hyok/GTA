@@ -584,8 +584,10 @@ EarnFinishScheduledTask(result) {
         gEarnSoftFails[task.id] := 0
         if (gEarnFailures.Has(task.id))
             gEarnFailures.Delete(task.id)
-        ; 주기는 확인을 시작한 때부터 잰다. 작업이 현재 화면에서 정한 다음 확인 시각이 있으면 그 값을 쓴다.
-        gEarnDue[task.id] := gEarnNextDue.Has(task.id) ? gEarnNextDue.Delete(task.id) : result.startTick + task.every
+        ; 주기는 확인을 시작한 때부터 잰다. 다만 실행·공동 정리 중 이미 지난 예약은 완료 시각으로
+        ; 당겨, 그 작업이 과거 due를 계속 쌓으며 그사이 due가 된 다른 작업을 굶기지 않게 한다.
+        nextDue := gEarnNextDue.Has(task.id) ? gEarnNextDue.Delete(task.id) : result.startTick + task.every
+        gEarnDue[task.id] := Max(A_TickCount, nextDue)
         gEarnDone[task.id] += 1
         secondsUntilDue := Floor(Max(0, gEarnDue[task.id] - A_TickCount) / 1000)
         EarnLog("끝: " task.label " (" gEarnDone[task.id] "회째, 다음 " FormatTime(DateAdd(A_Now, secondsUntilDue, "Seconds"), "HH:mm:ss") ")")

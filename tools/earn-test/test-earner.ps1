@@ -255,6 +255,18 @@ gEarnDue["dj"] := A_TickCount + 121000
 EarnTick()
 Check(calls.Length = 1 && calls[1] = "bunker" && gEarnDone["dj"] = 0, "MCT task beyond batch window waits")
 Reset()
+gEarnTasks := [{id:"bunker",label:"bunker",on:true,every:300000,fn:RunTask.Bind("bunker")},
+    {id:"staff",label:"staff",on:true,every:300000,fn:RunTask.Bind("staff")}]
+gEarnDue := Map("bunker", fakeTick - 1, "staff", fakeTick + 120000)
+gEarnDone := Map("bunker", 0, "staff", 0), taskModes := Map("bunker", "override-short"), endDelay := 180000
+EarnTick()
+Check(calls.Length = 1 && calls[1] = "bunker" && gEarnDue["bunker"] = fakeTick
+    && gEarnDue["staff"] < gEarnDue["bunker"],
+    "elapsed self-schedule loses stale priority after long MCT cleanup")
+EarnTick()
+Check(calls.Length = 2 && calls[2] = "staff" && gEarnDone["staff"] = 1,
+    "older staff due runs before repeated bunker observation")
+Reset()
 sellReason := "나이트클럽 창고 만재 1개: 판매 필요"
 gEarnTasks := [{id:"bunker",label:"bunker",on:true,every:300000,fn:RunTask.Bind("bunker")},
     {id:"warehouse",label:"warehouse",on:true,every:300000,fn:RunTask.Bind("warehouse")},
@@ -700,6 +712,8 @@ RunTask(id, manageSession := true) {
     }
     if (taskMode = "override")
         gEarnNextDue[id] := A_TickCount + 300000
+    if (taskMode = "override-short")
+        gEarnNextDue[id] := fakeTick + 60000
     if (taskMode = "retry") {
         gEarnRetryIn := 60000
         return false
@@ -1006,7 +1020,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 126 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 128 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout
