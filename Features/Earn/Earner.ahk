@@ -149,15 +149,14 @@ EarnTick() {
     recovering := IsObject(gEarnRecovery)
     if (recovering && now < gEarnRecovery.nextTick)
         return
-    task := ""
-    if (recovering)
-        task := gEarnRecovery.task
-    for t in gEarnTasks {
-        if (recovering)
-            break
-        if (t.on && !gEarnHeld.Has(t.id) && gEarnDue[t.id] <= now) {
-            task := t
-            break
+    task := recovering ? gEarnRecovery.task : ""
+    if (!recovering) {
+        ; 짧은 재관측 주기의 앞 작업이 이미 만료돼도 더 오래 기다린 뒤쪽 작업을 계속 굶기지 않는다.
+        ; 예약 시각이 같으면 기존 목록 순서를 유지한다.
+        for t in gEarnTasks {
+            if (t.on && !gEarnHeld.Has(t.id) && gEarnDue[t.id] <= now
+                && (!IsObject(task) || gEarnDue[t.id] < gEarnDue[task.id]))
+                task := t
         }
     }
     if (!IsObject(task))
