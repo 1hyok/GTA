@@ -345,6 +345,16 @@ EarnTick()
 EarnTick()
 Check(calls.Length = 5 && calls[1] = "bunker" && calls[2] = "dj" && calls[3] = "warehouse"
     && calls[4] = "safe" && calls[5] = "staff" && lockReleases = 3, "real task list consumes MCT group then two app tasks")
+Reset()
+gEarnTasks := [
+    {id:"bunker", label:"bunker", on:true, every:300000, fn:RunTask.Bind("bunker")},
+    {id:"safe", label:"safe", on:true, every:300000, fn:RunTask.Bind("safe")},
+    {id:"staff", label:"staff", on:true, every:300000, fn:RunTask.Bind("staff")}
+]
+gEarnDue := Map("bunker", fakeTick - 1000, "safe", fakeTick - 5000, "staff", fakeTick - 3000)
+gEarnDone := Map("bunker", 0, "safe", 0, "staff", 0)
+EarnTick()
+Check(calls.Length = 1 && calls[1] = "safe", "oldest overdue task runs before a newer recurring MCT task")
 Check(EarnMCTSitOcrMatches(@MCT_PROMPT_LINES@), "recorded HDR MCT prompt OCR fragments are accepted")
 Check(!EarnMCTSitOcrMatches([{x:70,y:40,w:55,h:18,text:"Press"},{x:191,y:39,w:114,h:20,text:"to access terminal."}]),
     "different interaction prompt is rejected")
@@ -615,7 +625,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 94 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 95 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout
