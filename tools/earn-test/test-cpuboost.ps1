@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 Runs production CpuBoostTick, tray callbacks, and config persistence with isolated I/O.
 No Main.ahk, live timer, powercfg, RTSS profile, input, or foreground changes.
