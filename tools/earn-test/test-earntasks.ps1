@@ -597,8 +597,10 @@ EarnUIBackToMCT(guard,presses) {
         endScene := "mct_title"
     return true
 }
-EarnMCTClose() {
+EarnMCTClose(requireChairPrompt := true) {
     global endScene, endFailure, endOrder
+    if (requireChairPrompt)
+        throw Error("CEO retirement must not wait to reacquire the chair prompt")
     if (endScene != "mct_title" && endScene != "mct_seated" && endScene != "mct_need_ceo")
         throw Error("Close without confirmed MCT state")
     endOrder .= "C"
@@ -606,7 +608,7 @@ EarnMCTClose() {
         throw Error("cleanup close exception")
     if (endFailure = "close")
         return EarnFail("cleanup close failed")
-    endScene := "mct_sit"
+    endScene := "mct_standing"
     return true
 }
 EarnCEO(on) {
@@ -620,7 +622,7 @@ EarnCEO(on) {
             throw Error("registration exception")
         return true
     }
-    if (endScene != "mct_sit")
+    if (endScene != "mct_sit" && endScene != "mct_standing")
         throw Error("Retire attempted before returning to confirmed standing state")
     endOrder .= "-"
     if (endFailure = "retire")
@@ -2046,14 +2048,16 @@ cases := [
     ["game-call",Map("call",true),true,0,2,0,1],
     ["game-call-stuck",Map("call",true,"callStuck",true),false,0,2,0,0],
     ; 연결된 통화는 테두리 템플릿 대신 빨간 끊기 아이콘으로만 보인다(1006 19:26).
-    ["game-call-connected",Map("call",true,"connected",true),true,0,2,0,1]]
+    ["game-call-connected",Map("call",true,"connected",true),true,0,2,0,1],
+    ["retire-no-chair",Map("prompt",false,"chair",false),true,0,2,0,0],
+    ["retire-hud-missing",Map("chair",false,"hud",false),false,0,2,0,0]]
 for scenario in cases {
     closeCase := scenario[2], scene := closeCase.Get("scene","mct_seated")
     aborted := closeCase.Get("abortAt","") = "start", backspaces := 0, clicks := [], promptReads := 0, turns := 0, turnUnits := 0, turnList := [],
         closeClockMs := 0, seatedWaits := 0, seatedReads := 0, seatedAt := -1, stoodAt := -1, abortInputs := -1, steps := [],
         callActive := closeCase.Get("call",false), callWaits := 0
     config["Settings"]["EarnTurnUnitsPerDeg"] := closeCase.Get("sensitivity",29)
-    result := EarnMCTClose()
+    result := EarnMCTClose(closeCase.Get("chair",true))
     if (result != scenario[3] || backspaces != scenario[4] || clicks.Length != scenario[5]
         || turns != scenario[6] || promptReads != scenario[7])
         throw Error("MCT close " scenario[1] " result=" result " keys=" backspaces " clicks=" clicks.Length " turns=" turns " waits=" promptReads)
@@ -2079,6 +2083,10 @@ for scenario in cases {
         throw Error("Close allowed CEO menu entry before the stand animation finished")
     if (scenario[1] = "transient-stand-prompt" && closeClockMs - stoodAt != 3500)
         throw Error("A transient approach prompt must not bypass the stand animation wait")
+    if (scenario[1] = "retire-no-chair" && (turns || promptReads || !FixtureCEOEntryReady()))
+        throw Error("CEO retirement must proceed from confirmed standing HUD without searching for the chair")
+    if (scenario[1] = "retire-hud-missing" && (turns || promptReads || closeClockMs - stoodAt < 6500))
+        throw Error("CEO retirement must fail safely when standing HUD is missing")
     if (callWaits != (scenario[1] = "game-call" || scenario[1] = "game-call-connected" ? 1 : scenario[1] = "game-call-stuck" ? 3 : 0))
         throw Error("A game phone call must be hung up with Backspace, at most three times")
     if (scenario[1] = "abort-standing" && (closeClockMs - stoodAt != 700
@@ -2142,6 +2150,7 @@ Sleep(ms) {
 }
 CloseClock() => closeClockMs
 FixtureCEOEntryReady() => !aborted && stoodAt >= 0 && closeClockMs - stoodAt >= 3500
+EarnMCTRecoveryHud() => closeCase.Get("hud",true) && FixtureCEOEntryReady() && !callActive
 EarnWaitGone(name,area,timeoutMs) {
     global closeCase, aborted, stoodAt, scene, callActive, callWaits
     if (name = "afk_phone_frame" || name = "phone_call_end") {
@@ -2197,7 +2206,7 @@ EarnLog(*) => true
     $closeWaitBody = (Get-EarnFunctionBody $sourceText 'EarnWaitSeen').Replace('EarnWaitSeen(', 'FixtureWaitSeen(').Replace('A_TickCount', 'CloseClock()')
     $mctCloseDriver += "`n" + $closeWaitBody + "`n" + (Get-EarnFunctionBody $sourceText 'EarnSleep').Replace('A_TickCount', 'CloseClock()')
     $mctCloseDriver += "`n" + (Get-EarnFunctionBody $sourceText 'EarnWaitCallEnd')
-    Invoke-EarnOfflineCheck 'MCTClose' 'EarnMCTClose' $mctCloseDriver 24
+    Invoke-EarnOfflineCheck 'MCTClose' 'EarnMCTClose' $mctCloseDriver 26
     $turnGuardDriver = @'
 global turnCase := [], moves := 0, movedX := 0, movedY := 0, turnMs := 0, menuChecks := 0, menuAbort := false
 global EARN_PROMPT_AREA := [], goalAfter := -1, goalCost := 0, goalAbort := false, goalMenuOnly := false

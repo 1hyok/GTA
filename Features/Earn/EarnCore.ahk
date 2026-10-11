@@ -1119,8 +1119,8 @@ EarnMCTOpen() {
     return true
 }
 
-; 확인된 MCT 첫 화면에서 한 번 나간 뒤 앉은 상태 안내가 뜰 때까지 기다린다.
-EarnMCTClose() {
+; MCT를 닫고 일어선다. 다음 작업에 의자 안내가 필요한 호출만 위치를 다시 맞춘다.
+EarnMCTClose(requireChairPrompt := true) {
     global EARN_PROMPT_AREA, config
     if (!EarnSeen("mct_seated", EARN_PROMPT_AREA)) {
         if (!EarnSeen("mct_title", [0.3, 0, 0.7, 0.1]) && !EarnSeen("mct_need_ceo"))
@@ -1152,6 +1152,20 @@ EarnMCTClose() {
         return false
     if (!EarnWaitCallEnd())
         return false
+    ; CEO 해제는 의자에 다시 앉지 않는다. 일어선 HUD가 확인되면 즉시 메뉴로 진행한다.
+    ; 의자 안내 재탐색은 시점 회전·걷기와 여러 화면 판독이 필요해 정리 시간을 늘린다.
+    if (!requireChairPrompt) {
+        deadline := A_TickCount + 3000
+        Loop {
+            if (EarnAborted())
+                return false
+            if (EarnMCTRecoveryHud())
+                return true
+            if (A_TickCount >= deadline || !EarnSleep(200))
+                break
+        }
+        return EarnFail("MCT: 일어선 뒤 CEO 메뉴용 HUD 미확인")
+    }
     if (!EarnWaitSeen("mct_sit", EARN_PROMPT_AREA, 3000)) {
         ; 1인칭이면 저택 MCT에서 일어선 시선은 늘 의자 반대쪽 구석이고, 제자리 180도 회전만으로 접근 안내가 뜬다
         ; (1003 23:54~23:59 실측 7/7). 걷지 않으니 자리가 흐트러지지 않는다.
