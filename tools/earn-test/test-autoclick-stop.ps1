@@ -20,6 +20,9 @@ foreach ($entry in @(
         $production += $body + "`n"
     }
 }
+$hardStopReason = -join ([char[]]@(0xC804, 0xCCB4, 0x20, 0xBA48, 0xCDA4))
+$hardStopCall = 'SetEarner(false, "' + $hardStopReason + '")'
+if (-not $production.Contains($hardStopCall)) { throw 'StopAll must pass the explicit hard-stop reason to SetEarner.' }
 $driver = @'
 #Requires AutoHotkey v2.0
 #SingleInstance Off
@@ -33,6 +36,11 @@ ToggleAutoClick()
 Check(clickRunning && TimerOn("DoClick") && !Held("LButton"), "normal autoclick schedules timer and releases button")
 StopAll()
 Check(!clickRunning && !TimerOn("DoClick") && !Held("LButton"), "stopall stops established autoclick")
+
+Reset()
+gEarnBusy := true
+StopAll()
+Check(gAbort && setCalls = 1 && !setOn, "stopall hard-stops an in-flight F9 cleanup even when earnings are already off")
 
 for phase in [1, 2] {
     Reset()
@@ -86,11 +94,13 @@ FileAppend((failures ? "FAIL" : "PASS") " movement/autoclick: " checks " checks 
 ExitApp(failures ? 1 : 0)
 
 Reset() {
-    global config, clickRunning, wRunning, shiftWRunning, vellumDrivingRunning, gAbort, clawLoopRunning, gEarnOn, cayoTimerRunning
+    global config, clickRunning, wRunning, shiftWRunning, vellumDrivingRunning, gAbort, clawLoopRunning, gEarnOn, gEarnBusy, cayoTimerRunning
+    global setCalls, setOn, setReason
     global focused, keyPressed, cursorExe, timers, heldKeys, events, downEvents, injectSleep, sleepCount
     config := Map("Settings", Map("ClickInterval", 1, "ClickHoldTime", 50, "KeyHoldTime", 50, "VellumDrivingCtrlInterval", 3000), "Hotkeys", Map("AutoClick", "F7"))
     clickRunning := false, wRunning := false, shiftWRunning := false, vellumDrivingRunning := false, gAbort := false
-    clawLoopRunning := false, gEarnOn := false, cayoTimerRunning := false
+    clawLoopRunning := false, gEarnOn := false, gEarnBusy := false, cayoTimerRunning := false
+    setCalls := 0, setOn := true, setReason := ""
     focused := true, keyPressed := false, cursorExe := "GTA5_Enhanced.exe"
     timers := Map(), heldKeys := Map(), events := [], downEvents := 0, injectSleep := 0, sleepCount := 0
 }
@@ -169,7 +179,10 @@ WinGetProcessName(*) {
 GetKeyState(key, mode := "") => mode = "P" ? false : Held(key)
 ShowTooltip(*) => 0
 MacroLog(*) => 0
-SetEarner(*) => 0
+SetEarner(on, reason := "", *) {
+    global setCalls, setOn, setReason
+    setCalls++, setOn := on, setReason := reason
+}
 ToggleCayoPericoTimer(*) => 0
 '@
 # Every input, timer, environment lookup and wait call is supplied above; Main is never loaded.
@@ -180,21 +193,19 @@ $generated = $driver + "`n" + $production
 if ($generated -match '(?im)^#Include|\b(DllCall|SendInput|SendEvent|SendPlay|ControlSend|MouseMove|Run|WinActivate)\(') { throw 'Unsafe API in generated harness' }
 $info = [Diagnostics.ProcessStartInfo]::new()
 $info.FileName = $AhkPath
-$info.Arguments = '/ErrorStdOut /CP65001 *'
+$utf8NoBom = New-Object Text.UTF8Encoding($false)
+$scriptPath = Join-Path ([IO.Path]::GetTempPath()) ('gta-autoclick-stop-' + [guid]::NewGuid().ToString('N') + '.ahk')
+[IO.File]::WriteAllText($scriptPath, $generated, $utf8NoBom)
+$info.Arguments = '/ErrorStdOut /CP65001 "' + $scriptPath + '"'
 $info.UseShellExecute = $false
 $info.CreateNoWindow = $true
-$info.RedirectStandardInput = $true
 $info.RedirectStandardOutput = $true
 $info.RedirectStandardError = $true
-$previous = [Console]::InputEncoding
-[Console]::InputEncoding = New-Object Text.UTF8Encoding($false)
 try {
 $process = [Diagnostics.Process]::Start($info)
 try {
     $stdoutTask = $process.StandardOutput.ReadToEndAsync()
     $stderrTask = $process.StandardError.ReadToEndAsync()
-    $process.StandardInput.WriteLine($generated)
-    $process.StandardInput.Close()
     if (-not $process.WaitForExit(10000)) { $process.Kill(); throw 'Isolated test timed out' }
     $output = $stdoutTask.GetAwaiter().GetResult() + $stderrTask.GetAwaiter().GetResult()
     $output += "exit=$($process.ExitCode)`n"
@@ -202,4 +213,4 @@ try {
     exit $process.ExitCode
 } finally { $process.Dispose() }
 
-} finally { [Console]::InputEncoding = $previous }
+} finally { Remove-Item -LiteralPath $scriptPath -Force -ErrorAction SilentlyContinue }

@@ -4,7 +4,7 @@
 global gAbort := false
 
 StopAll(reason := "hotkey") {
-    global gAbort, clawLoopRunning, clickRunning, wRunning, shiftWRunning, vellumDrivingRunning, cayoTimerRunning
+    global gAbort, clawLoopRunning, clickRunning, wRunning, shiftWRunning, vellumDrivingRunning, cayoTimerRunning, gEarnOn, gEarnBusy
     gAbort := true
     stopped := []
 
@@ -29,7 +29,8 @@ StopAll(reason := "hotkey") {
         SetTimer(PressLCtrlForVellum, 0)
         stopped.Push("벨럼")
     }
-    if (IsSet(gEarnOn) && gEarnOn) {
+    ; F9 안전 정리가 이미 시작돼 gEarnOn이 false여도 End는 그 정리를 즉시 hard-stop으로 바꾼다.
+    if (gEarnOn || gEarnBusy) {
         SetEarner(false, "전체 멈춤")
         stopped.Push("수익 자동화")
     }

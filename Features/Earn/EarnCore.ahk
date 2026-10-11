@@ -86,11 +86,13 @@ EarnSoftFail(reason, retryMin) {
 
 ; 전체 멈춤(End)·GTA 가 앞이 아님·스케줄러가 꺼짐(F9 두 번). 시험 스크립트(earntest.ahk)는 gEarnOn 이 없어 IsSet 으로 본다
 EarnAborted() {
-    global gAbort, gEarnOn, gEarnInputGuard, gEarnAFKCleanup
+    global gAbort, gEarnOn, gEarnInputGuard, gEarnAFKCleanup, gEarnManualCleanupActive
     if (IsSet(gEarnInputGuard) && !gEarnInputGuard.Call())
         return true
     ; AFK 방지의 MCT 정리는 스케줄러가 꺼져 있어도 돈다(꺼진 채 MCT 화면에 방치되는 것이 그 정리가 막을 사고다).
-    return gAbort || !IsGTAActive() || (IsSet(gEarnOn) && !gEarnOn && !(IsSet(gEarnAFKCleanup) && gEarnAFKCleanup))
+    return gAbort || !IsGTAActive() || (IsSet(gEarnOn) && !gEarnOn
+        && !(IsSet(gEarnAFKCleanup) && gEarnAFKCleanup)
+        && !(IsSet(gEarnManualCleanupActive) && gEarnManualCleanupActive))
 }
 
 ; name 템플릿(Images\Earn\<해상도>\<name>.png)이 area(클라이언트 비율 [x1, y1, x2, y2]) 안에 보이면 true. 찾은 자리(화면 좌표)는 &fx, &fy.
@@ -1402,10 +1404,15 @@ EarnArrowCEOColor() {
 }
 
 ; 사장은 MCT 에서 벙커·DJ 를 만질 때만 필요하다. 작업이 못 끝나 정리가 사장 해제까지 못 갔을 때 켜진 채 남지 않도록,
-; 조직 색 화살표가 확실히 켜져 있으면(1) 상호작용 메뉴로 해제한다. 흰색·판독 불가면 아무것도 누르지 않는다.
-EarnBossOffIfOn() {
-    if (!EarnInputAllowed() || EarnArrowCEOColor() != 1)
-        return true
+; 조직 색 화살표가 확실히 켜져 있으면(1) 상호작용 메뉴로 해제한다.
+; requireConfirmed=true는 판매 중단 인계처럼 CEO 해제가 확인돼야만 종료할 수 있는 경로다.
+; 이 때는 입력 불허나 화살표 판독 불가(-1)를 성공으로 간주하지 않고 복구에서 다시 확인한다.
+EarnBossOffIfOn(requireConfirmed := false) {
+    if (!EarnInputAllowed())
+        return !requireConfirmed
+    state := EarnArrowCEOColor()
+    if (state != 1)
+        return state = 0 || !requireConfirmed
     EarnLog("사장이 켜진 채 남아 있어 해제")
     return EarnCEO(false)
 }
