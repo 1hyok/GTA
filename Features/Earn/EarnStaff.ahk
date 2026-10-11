@@ -20,14 +20,10 @@ EarnVinewoodStaffTask() {
         if (cargo) {
             if (!EarnStaffRoot() || !EarnStaffCargoWarehouses())
                 return false
-            if (EarnSellStopPending())
-                return EarnVinewoodClose()
         }
         if (hangar) {
             if (!EarnStaffRoot() || !EarnStaffHangar())
                 return false
-            if (EarnSellStopPending())
-                return EarnVinewoodClose()
         }
     }
     ms := EarnStaffTrack()
@@ -250,40 +246,38 @@ EarnStaffCargoWarehouses() {
         if (current.state = "busy" || current.state = "full") {
             EarnLog("직원: " displayName (current.state = "busy" ? " 조달 중" : " 만재") ", 건너뜀")
             EarnStaffTrack("cargo " displayName, current.state)
-            if (current.state = "full") {
-                EarnRequestSellStop("스페셜 패키지 " displayName " 만재: 판매 필요")
-                return EarnStaffCargoLeave()
-            }
+            if (current.state = "full")
+                EarnNotifyStockFull("스페셜 패키지 " displayName " 만재: 판매 필요")
         } else {
             if (current.state != "ready" || current.price != 7500)
                 return EarnFail("직원: " current.name " 준비 문구 또는 $7,500 미확인")
             fresh := EarnStaffReadCargo()
             if (EarnStaffSameWarehouse(fresh, current) && fresh.state = "full") {
-                EarnLog("직원: " displayName " 조달 직전 만재 확인, 이후 창고는 건너뛰고 판매 중단")
+                EarnLog("직원: " displayName " 조달 직전 만재 확인, 이 창고는 사지 않고 건너뜀")
                 EarnStaffTrack("cargo " displayName, "full")
-                EarnRequestSellStop("스페셜 패키지 " displayName " 만재: 판매 필요")
-                return EarnStaffCargoLeave()
-            }
-            if (!EarnStaffSameWarehouse(fresh, current) || fresh.state != "ready" || fresh.price != 7500) {
+                EarnNotifyStockFull("스페셜 패키지 " displayName " 만재: 판매 필요")
+            } else if (!EarnStaffSameWarehouse(fresh, current) || fresh.state != "ready" || fresh.price != 7500) {
                 EarnLog("직원: " current.name " 조달 직전 재확인 어긋남, 남은 창고는 사지 않고 건너뜀")
                 EarnStaffTrack("cargo all", "busy")
                 return EarnStaffCargoLeave()
+            } else {
+                deadline := A_TickCount + 60000
+                if (!EarnTransactionBegin("staff", current.name " $7,500 조달 결과 확인 필요"))
+                    return false
+                if (!EarnPress("Enter") || !EarnSleep(700))
+                    return false
+                if (!EarnStaffWaitBusy("cargo", current, deadline, &resultState))
+                    return EarnFail("직원: " current.name " 조달 결과 미확인, 재구매 중단")
+                EarnTransactionConfirmed("staff")
+                if (resultState = "full") {
+                    EarnLog("직원: " displayName " 조달 뒤 만재 확인, 다음 창고 계속")
+                    EarnStaffTrack("cargo " displayName, "full")
+                    EarnNotifyStockFull("스페셜 패키지 " displayName " 만재: 판매 필요")
+                } else {
+                    EarnLog("직원: " current.name " $7,500 조달 확인")
+                    EarnStaffTrack("cargo " current.name, "sent")
+                }
             }
-            deadline := A_TickCount + 60000
-            if (!EarnTransactionBegin("staff", current.name " $7,500 조달 결과 확인 필요"))
-                return false
-            if (!EarnPress("Enter") || !EarnSleep(700))
-                return false
-            if (!EarnStaffWaitBusy("cargo", current, deadline))
-                return EarnFail("직원: " current.name " 조달 결과 미확인, 재구매 중단")
-            EarnTransactionConfirmed("staff")
-            if (EarnSellStopPending()) {
-                EarnLog("직원: " displayName " 조달 뒤 만재 확인, 이후 창고는 건너뛰고 판매 중단")
-                EarnStaffTrack("cargo " displayName, "full")
-                return EarnStaffCargoLeave()
-            }
-            EarnLog("직원: " current.name " $7,500 조달 확인")
-            EarnStaffTrack("cargo " current.name, "sent")
         }
         if (A_Index < count && (!EarnPress("Down") || !EarnSleep(200)))
             return false
@@ -293,7 +287,8 @@ EarnStaffCargoWarehouses() {
 }
 
 ; 주문 처리 중에는 준비 문구가 남을 수 있다. 한 번만 요청하고 최대 60초 관측한다.
-EarnStaffWaitBusy(kind, target, deadline) {
+EarnStaffWaitBusy(kind, target, deadline, &resultState := "") {
+    resultState := ""
     deadline := Min(deadline, A_TickCount + 60000)
     glitches := 0
     Loop 121 {
@@ -324,11 +319,8 @@ EarnStaffWaitBusy(kind, target, deadline) {
         }
         if (A_TickCount >= deadline || EarnAborted())
             return false
-        if (state = "busy")
-            return true
-        if (kind = "cargo" && state = "full") {
-            displayName := target.name = "" ? "창고 " target.index " (이름 판독 불가)" : target.name
-            EarnRequestSellStop("스페셜 패키지 " displayName " 만재: 판매 필요")
+        if (state = "busy" || kind = "cargo" && state = "full") {
+            resultState := state
             return true
         }
         ; 같은 앱·대상 선택이 유지되면 일시적인 설명 OCR 실패에는 읽기만 재시도한다.
@@ -350,15 +342,15 @@ EarnStaffHangar() {
         EarnLog("직원: 격납고 " (state = "busy" ? "조달 중" : state = "full" ? "만재" : "상태 미확인") ", 건너뜀")
         EarnStaffTrack("hangar", state = "full" ? "full" : "busy")
         if (state = "full")
-            EarnRequestSellStop("격납고 재고 만재: 판매 필요")
+            EarnNotifyStockFull("격납고 재고 만재: 판매 필요")
         return true
     }
     ; 재확인이 어긋나도 아직 Enter 전이라 산 것이 없다. 자동화를 끄지 않고 5분 뒤 다시 본다(1005 04:20 실측).
     recheck := EarnStaffReadHangar()
     if (recheck = "full") {
-        EarnLog("직원: 격납고 조달 직전 만재 확인, 사지 않고 판매 중단")
+        EarnLog("직원: 격납고 조달 직전 만재 확인, 사지 않고 건너뜀")
         EarnStaffTrack("hangar", "full")
-        EarnRequestSellStop("격납고 재고 만재: 판매 필요")
+        EarnNotifyStockFull("격납고 재고 만재: 판매 필요")
         return true
     }
     if (recheck != "ready") {
@@ -379,9 +371,9 @@ EarnStaffHangar() {
         if (state = "busy" || state = "full") {
             EarnTransactionConfirmed("staff")
             EarnLog("직원: 격납고 $25,000 조달 확인")
-            EarnStaffTrack("hangar", "sent")
+            EarnStaffTrack("hangar", state = "full" ? "full" : "sent")
             if (state = "full")
-                EarnRequestSellStop("격납고 재고 만재: 판매 필요")
+                EarnNotifyStockFull("격납고 재고 만재: 판매 필요")
             return true
         }
         if (!EarnSleep(500))

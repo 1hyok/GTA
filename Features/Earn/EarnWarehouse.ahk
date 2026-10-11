@@ -20,11 +20,7 @@ EarnWarehouseManage() {
         goods := EarnWarehouseObserve(&stockOnly)
         if (!goods)
             return false
-        fullCount := EarnWarehouseSellNotice(goods)
-        if (fullCount) {
-            EarnRequestSellStop("나이트클럽 창고 만재 " fullCount "개: 판매 필요")
-            return EarnWarehouseReturn()
-        }
+        EarnWarehouseSellNotice(goods)
         if (A_Index = 1)
             EarnWarehouseTrack(goods)
         if (stockOnly) {
@@ -340,7 +336,7 @@ EarnWarehouseDialogClick(x, y) {
     }
 }
 
-; 만재 품목이 하나라도 있으면 사용자가 판매할 수 있도록 알리고 이번 회차를 중단한다.
+; 만재 품목은 판매 알림만 표시하고, 생산 가능한 다른 품목으로의 직원 배정은 계속한다.
 ; 만재 수가 바뀔 때만 로그·툴팁을 다시 띄우고, 오버레이에는 계속 표시한다.
 EarnWarehouseSellNotice(goods) {
     global gEarnSellNotice

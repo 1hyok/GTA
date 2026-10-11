@@ -52,7 +52,7 @@ RunWarehouseTests() {
         ["missing_staff",false,0], ["ambiguous_identity",false,0],
         ["end_rejected",false,1], ["begin_rejected",false,0],
         ["dialog_missing",false,1], ["stock_none_full",true,0],
-        ["stock_one_full",true,0], ["stock_all_full",true,0]
+        ["stock_one_full",true,1], ["stock_all_full",true,0]
     ]
     for scenario in scenarios {
         ResetWarehouse(scenario[1])
@@ -60,21 +60,12 @@ RunWarehouseTests() {
         Check(actual = scenario[2] && whAttempts = scenario[3], scenario[1] " result=" actual " attempts=" whAttempts)
         Check(whBegins = 1 && whEnds = (scenario[1] = "begin_rejected" ? 0 : 1), scenario[1] " MCT lifetime")
         Check(whAttempts <= 2, scenario[1] " no repeated assignment requests")
-        sellStopExpected := scenario[1] = "stock_one_full" || scenario[1] = "stock_all_full"
-        Check(whSellStops.Length = (sellStopExpected ? 1 : 0), scenario[1] " sell-stop request count")
-        if (sellStopExpected) {
-            expectedFullCount := scenario[1] = "stock_one_full" ? 1 : 7
-            Check(whSellStops[1] = "나이트클럽 창고 만재 " expectedFullCount "개: 판매 필요",
-                scenario[1] " exact sell-stop reason")
-            Check(whAttempts = 0 && whMoves = 0 && whState = "mct",
-                scenario[1] " returns without an assignment request or technician move"
-                    " attempts=" whAttempts " moves=" whMoves " state=" whState)
-        }
+        Check(whSellStops.Length = 0, scenario[1] " never requests an automation stop")
         if (scenario[1] = "stock_none_full" || scenario[1] = "stock_all_full")
             Check(whSelections = 0 && whState = "mct", scenario[1] " decides from Sell Goods stock without opening staff management")
         if (scenario[1] = "stock_one_full")
-            Check(whSelections <= 5 && whState = "mct",
-                "one full good returns after at most one identity observation and never starts another loop")
+            Check(whMoves = 1 && whHistory[1] = "cargo:pharmaceutical" && whState = "mct",
+                "full cargo technician moves to a non-full target and the task returns normally")
         if (scenario[1] = "no_full")
             Check(whMoves = 1 && whHistory[1] = "printing:pharmaceutical" && whState = "mct",
                 "cheapest producing technician moves to empty higher value Pharmaceutical")
@@ -90,7 +81,7 @@ RunWarehouseTests() {
             Check(whCancels = 1 && whState = "warehouse", "unconfirmed assignment dialog is cancelled once before cleanup")
     }
 
-    ; Any full good: notify once per change and keep it for the overlay until safe cleanup finishes.
+    ; Any full good: notify once per change without stopping automation.
     global gEarnSellNotice := ""
     three := [{id:"south_american",count:10,capacity:10}, {id:"organic",count:80,capacity:80},
         {id:"cash",count:40,capacity:40}, {id:"cargo",count:31,capacity:50}]
@@ -105,7 +96,7 @@ RunWarehouseTests() {
     Check(EarnWarehouseSellNotice(none) = 0 && gEarnSellNotice = "", "zero full goods clear the sell notice")
     Check(EarnWarehouseSellNotice(one) = 1 && whTooltips = 3, "notice returns after goods fill again")
 
-    ; The gray full-person icon parser remains conservative even though the task now stops from Sell Goods first.
+    ; The gray full-person icon parser must remain conservative when moving full-stock staff.
     for identityCase in [["full_staff","organic"], ["full_missing",""], ["full_ambiguous",""]] {
         ResetWarehouse(identityCase[1])
         whState := "warehouse", whSelected := 3
@@ -129,7 +120,7 @@ RunWarehouseTests() {
     ; A scheduler batch owns the already-open MCT session. The same real body
     ; must run, return failures and propagate exceptions without acquiring or
     ; closing that session, even when either standalone lifetime hook rejects.
-    for scenario in [["normal",true,1,""], ["stock_one_full",true,0,""], ["stock_noocr",false,0,""],
+    for scenario in [["normal",true,1,""], ["stock_one_full",true,1,""], ["stock_noocr",false,0,""],
         ["begin_rejected",true,1,""], ["end_rejected",true,1,""],
         ["entry_throw",false,0,"warehouse native exception"],
         ["assignment_throw",false,1,"warehouse native exception"]] {
@@ -143,8 +134,8 @@ RunWarehouseTests() {
         Check(whAttempts = scenario[3] && (!actual || whState = "mct"),
             "batch " scenario[1] " executes the body once and returns successful work to MCT")
         if (scenario[1] = "stock_one_full")
-            Check(whSellStops.Length = 1 && whSellStops[1] = "나이트클럽 창고 만재 1개: 판매 필요",
-                "batch full stock requests a sell-stop while leaving cleanup to its caller")
+            Check(whSellStops.Length = 0 && whMoves = 1,
+                "batch full stock reassigns to a productive target without requesting a stop")
     }
 
     ResetWarehouse("normal")
@@ -462,7 +453,7 @@ try {
     }
     $stdout = $process.StandardOutput.ReadToEnd().Trim()
     $stderr = $process.StandardError.ReadToEnd().Trim()
-    if ($process.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnWarehouse cases=149 (no game input)') {
+    if ($process.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnWarehouse cases=145 (no game input)') {
         throw "Warehouse flow failed (exit=$($process.ExitCode))`nstdout: $stdout`nstderr: $stderr"
     }
     Write-Output $stdout
