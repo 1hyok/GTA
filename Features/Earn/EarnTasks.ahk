@@ -662,7 +662,8 @@ EarnTaskMCTEnd() {
                 return EarnCEO(false)
             return EarnFail("MCT 정리: 확인된 복귀 경로 없음. 화면 확인 후 보스 해제 필요")
         }
-        return EarnMCTClose(false) && EarnCEO(false)
+        ; CEO를 먼저 해제하고, 다음 회차가 오래 시점을 훑지 않도록 의자 안내를 다시 맞춘다.
+        return EarnMCTClose(false) && EarnCEO(false) && EarnMCTFindChairPrompt()
     } catch as e {
         return EarnFail("MCT 정리 오류: " e.Message)
     } finally {

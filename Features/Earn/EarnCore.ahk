@@ -1166,6 +1166,12 @@ EarnMCTClose(requireChairPrompt := true) {
         }
         return EarnFail("MCT: 일어선 뒤 CEO 메뉴용 HUD 미확인")
     }
+    return EarnMCTFindChairPrompt()
+}
+
+; CEO 해제 뒤 또는 의자 앞에서 계속 작업할 때만 안내를 다시 찾는다.
+EarnMCTFindChairPrompt() {
+    global EARN_PROMPT_AREA, config
     if (!EarnWaitSeen("mct_sit", EARN_PROMPT_AREA, 3000)) {
         ; 1인칭이면 저택 MCT에서 일어선 시선은 늘 의자 반대쪽 구석이고, 제자리 180도 회전만으로 접근 안내가 뜬다
         ; (1003 23:54~23:59 실측 7/7). 걷지 않으니 자리가 흐트러지지 않는다.
