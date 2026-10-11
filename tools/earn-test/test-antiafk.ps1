@@ -1,8 +1,11 @@
 ﻿#Requires -Version 5.1
-param([string]$AhkPath = "$env:LOCALAPPDATA\Programs\AutoHotkey\v2\AutoHotkey64.exe")
+param(
+    [string]$AhkPath = "$env:LOCALAPPDATA\Programs\AutoHotkey\v2\AutoHotkey64.exe",
+    [string]$SourceRoot = (Join-Path $PSScriptRoot '..\..')
+)
 $ErrorActionPreference = 'Stop'
-$source = Get-Content (Join-Path $PSScriptRoot '..\..\Features\AntiAFK.ahk') -Raw -Encoding UTF8
-$screenSource = Get-Content (Join-Path $PSScriptRoot '..\..\Core\Screen.ahk') -Raw -Encoding UTF8
+$source = Get-Content (Join-Path $SourceRoot 'Features\AntiAFK.ahk') -Raw -Encoding UTF8
+$screenSource = Get-Content (Join-Path $SourceRoot 'Core\Screen.ahk') -Raw -Encoding UTF8
 $source += "`n" + $screenSource
 $functions = @('AntiAFKTick', 'AFKInputAllowed', 'AFKMousePulse', 'AFKKeysHeld', 'AFKMenuSeen', 'AFKFreeHud', 'AFKPhoneOrAppOpen', 'AFKHudVisible',
     'AFKRefocusGTA', 'AFKRefocusFailed', 'AFKForegroundLabel', 'AFKPhysicalIdleMs', 'AFKOthersIdleMs', 'AFKSelfInput',
@@ -15,6 +18,25 @@ $functions = @('AntiAFKTick', 'AFKInputAllowed', 'AFKMousePulse', 'AFKKeysHeld',
 # A_TickCount 는 AFKWait 만 앞으로 미는 가짜 시계 FakeTick() 으로 바꾼다. 실제 시계를 쓰면 idleMs 를 고정한 채
 # 틱 사이에 2초 넘게 흐를 때(병렬 CI 부하) AFKRefocusGTA 가 새 유휴 구간으로 보고 실패 횟수를 비운다.
 $production = ($functions -join "`n").Replace('A_TimeIdlePhysical', 'idleMs').Replace('A_TimeIdle', 'AnyIdle()').Replace('A_TickCount', 'FakeTick()')
+# Main의 실제 유지보수 등록을 가짜 스케줄러로 실행한다. 과거 소스의 F24 probe도
+# 같은 테스트에 넣어 AFK 복귀가 영구 연기되는 회귀를 재현할 수 있다.
+$mainSource = Get-Content (Join-Path $SourceRoot 'Main.ahk') -Raw -Encoding UTF8
+$hotkeySource = Get-Content (Join-Path $SourceRoot 'Core\HotkeyManager.ahk') -Raw -Encoding UTF8
+$maintenanceBodies = @()
+foreach ($name in @('KeyHookWatchdog', 'KeyHookProbe', 'KeyProbeSeen')) {
+    $body = [regex]::Match($hotkeySource, ('(?ms)^' + $name + '\([^\r\n]*\) \{.*?^\}')).Value
+    if (-not $body -and $name -eq 'KeyHookWatchdog') { throw 'KeyHookWatchdog missing' }
+    if ($body) { $maintenanceBodies += $body }
+}
+$maintenance = ($maintenanceBodies -join "`n").Replace('A_TickCount', 'FakeTick()')
+$maintenance = $maintenance.Replace('InstallKeybdHook(', 'HarnessInstallKeybdHook(').Replace('SendEvent(', 'HarnessSendEvent(').Replace('SendLevel(', 'HarnessSendLevel(').Replace('MacroLog(', 'HarnessMacroLog(')
+$maintenanceCalls = @('KeyHookWatchdog', 'KeyHookProbe', 'KeyProbeSeen', 'FakeTick', 'HarnessInstallKeybdHook', 'HarnessSendEvent', 'HarnessSendLevel', 'HarnessMacroLog', 'if')
+$maintenanceCode = [regex]::Replace($maintenance, '(?m);[^\r\n]*', '')
+foreach ($call in [regex]::Matches($maintenanceCode, '(?<![\w.])([A-Za-z_]\w*)\s*\(')) {
+    if ($call.Groups[1].Value -cnotin $maintenanceCalls) { throw "Unsafe maintenance call: $($call.Groups[1].Value)" }
+}
+$timerLines = @([regex]::Matches($mainSource, '(?m)^SetTimer\(KeyHook(?:Watchdog|Probe),\s*-?\d+\)\s*$') | ForEach-Object { $_.Value.Trim().Replace('SetTimer(', 'HarnessSetTimer(') })
+$production += "`n" + $maintenance + "`nRegisterMaintenanceTimers() {`n" + ($timerLines -join "`n") + "`n}`n"
 $driver = @'
 #Requires AutoHotkey v2.0
 #SingleInstance Off
@@ -254,6 +276,54 @@ Reset()
 stealBack := true
 AntiAFKTick()
 Check(events.Length = 1 && releases = 1 && !gAFKBusy, "focus loss cancels return movement")
+Reset()
+focused := false, idleMs := 900000, anyIdleMs := 900000
+config["Settings"]["AFKRefocusIdleSec"] := 60
+config["Settings"]["AwayMode"] := 1
+RegisterMaintenanceTimers()
+Check(maintenanceTimers.Has("KeyHookWatchdog") && maintenanceTimers["KeyHookWatchdog"].period = 60000,
+    "Main keeps the real sixty-second key-hook watchdog registration")
+maintenanceStart := FakeTick()
+Loop 49 {
+    elapsed := (A_Index - 1) * 5000
+    fakeNow := maintenanceStart + elapsed
+    idleMs := 900000 + elapsed, anyIdleMs := 900000 + elapsed
+    RunMaintenanceTimers()
+    ; 실제 장애처럼 정기 probe가 이미 돈 뒤 포커스 복귀를 검사한다.
+    if (elapsed >= 65000)
+        AntiAFKTick()
+}
+Check(maintenanceWatchdogs = 4, "watchdog runs on the actual Main schedule without installing real hooks")
+Check(activations = 1 && events.Length = 2 && LogHas("refocus ok") && AFKOthersIdleMs() >= 60000,
+    "scheduled maintenance must not starve AFK refocus: activations=" activations " probe_sends=" maintenanceProbeSends " other_idle=" AFKOthersIdleMs())
+Check(maintenanceProbeSends = 0, "background diagnostics never inject keys into the desktop")
+Reset()
+focused := false, idleMs := 900000, anyIdleMs := 900000
+config["Settings"]["AFKRefocusIdleSec"] := 60
+config["Settings"]["AwayMode"] := 1
+RegisterMaintenanceTimers()
+maintenanceStart := FakeTick()
+Loop 49 {
+    elapsed := (A_Index - 1) * 5000
+    fakeNow := maintenanceStart + elapsed
+    idleMs := 900000 + elapsed, anyIdleMs := 900000 + elapsed
+    if (Mod(elapsed, 15000) = 0)
+        anyInjectedAt := FakeTick() ; 다른 실행기·원격 입력은 계속 보호해야 한다.
+    RunMaintenanceTimers()
+    AntiAFKTick()
+}
+Check(activations = 0 && events.Length = 0 && maintenanceProbeSends = 0 && AFKOthersIdleMs() < 60000,
+    "away mode and maintenance still defer to recent external injected input")
+Reset()
+focused := false, idleMs := 0
+config["Settings"]["AFKRefocusIdleSec"] := 60
+config["Settings"]["AwayMode"] := 1
+RegisterMaintenanceTimers()
+fakeNow += 60000
+RunMaintenanceTimers()
+AntiAFKTick()
+Check(activations = 0 && events.Length = 0 && maintenanceProbeSends = 0,
+    "away mode and maintenance still defer to physical user input")
 FileAppend("PASS AntiAFK: " checkCount " cases; no game input`n", "*")
 ExitApp(0)
 Reset() {
@@ -270,6 +340,8 @@ Reset() {
     notificationCalls := 0, notificationResult := "dismissed", toastRescue := false, notificationDone := false
     interruptNotification := false, interruptActivate := false, interruptRestore := false
     externalNotificationInput := false
+    maintenanceTimers := Map(), maintenanceWatchdogs := 0, maintenanceProbeSends := 0
+    gProbeSent := 0, gProbeSeen := 0
     lockAvailable := true, lockError := false, releases := 0
     menuState := "mct_title", menuReads := 0, hideBeforeMenuKey := false, menuOpenWorks := true, menuCloseWorks := true, menuChanges := 0, failMenuWaitAt := 0
     seatedTarget := "mct_seated", seatedReturnState := "mct_seated"
@@ -282,6 +354,39 @@ Reset() {
 }
 ; 전체 입력 유휴(GetLastInputInfo). 물리 입력도 세므로 훅이 본 물리 유휴(+훅 설치 전 유휴)보다 길 수 없고, 주입 입력마다 0 이 된다.
 FakeTick() => fakeNow
+HarnessSetTimer(callback, period) {
+    if (!(callback.Name = "KeyHookWatchdog" || callback.Name = "KeyHookProbe") || period != 60000)
+        throw Error("Unexpected maintenance timer registration")
+    maintenanceTimers[callback.Name] := {callback:callback,period:period,due:FakeTick()+period}
+}
+RunMaintenanceTimers() {
+    for name, timer in maintenanceTimers {
+        if (FakeTick() >= timer.due) {
+            timer.due += timer.period
+            timer.callback.Call()
+        }
+    }
+}
+HarnessInstallKeybdHook(install, force) {
+    global maintenanceWatchdogs
+    if (!install || !force)
+        throw Error("Unexpected watchdog hook arguments")
+    maintenanceWatchdogs++
+}
+HarnessSendLevel(level) {
+    if (level != 1)
+        throw Error("Unexpected probe input level")
+}
+HarnessSendEvent(value) {
+    global maintenanceProbeSends, anyInjectedAt, gProbeSeen
+    if (value != "{F24}")
+        throw Error("Unexpected diagnostic key")
+    maintenanceProbeSends++
+    anyInjectedAt := FakeTick() ; GetLastInputInfo가 주입 키마다 초기화되는 효과만 재현한다.
+    gProbeSeen := FakeTick()
+}
+HarnessMacroLog(*) {
+}
 FakeScreenGuard(idleSec) {
     global guardCalls, idleMs
     guardCalls++

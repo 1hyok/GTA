@@ -86,8 +86,6 @@ OnScriptError(err, mode) {
 LoadConfig()
 SetupHotkeys()
 SetTimer(KeyHookWatchdog, 60000)
-Hotkey("*$F24", KeyProbeSeen)
-SetTimer(KeyHookProbe, 60000)
 SetupTrayMenu()
 if (config["Features"]["AntiAFK"] && config["Settings"]["AFKOnStart"])
     SetAntiAFK(true)
