@@ -20,7 +20,8 @@ foreach ($entry in @(
         $production += $body + "`n"
     }
 }
-$hardStopCall = 'SetEarner(false, "전체 멈춤")'
+$hardStopReason = -join ([char[]]@(0xC804, 0xCCB4, 0x20, 0xBA48, 0xCDA4))
+$hardStopCall = 'SetEarner(false, "' + $hardStopReason + '")'
 if (-not $production.Contains($hardStopCall)) { throw 'StopAll must pass the explicit hard-stop reason to SetEarner.' }
 $driver = @'
 #Requires AutoHotkey v2.0
