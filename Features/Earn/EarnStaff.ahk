@@ -243,11 +243,13 @@ EarnStaffCargoWarehouses() {
         if (current.name != "")
             visited[StrLower(current.name)] := true
         displayName := current.name = "" ? "창고 " A_Index " (이름 판독 불가)" : current.name
+        ; 이름 OCR이 빠져도 순번·총 개수를 확인한 같은 선택 슬롯의 알림을 갱신한다.
+        noticeKey := "cargo:" current.index
         if (current.state = "busy" || current.state = "full") {
             EarnLog("직원: " displayName (current.state = "busy" ? " 조달 중" : " 만재") ", 건너뜀")
             EarnStaffTrack("cargo " displayName, current.state)
             if (current.state = "full")
-                EarnNotifyStockFull("스페셜 패키지 " displayName " 만재: 판매 필요")
+                EarnNotifyStockFull(noticeKey, "스페셜 패키지 " displayName " 만재: 판매 필요")
         } else {
             if (current.state != "ready" || current.price != 7500)
                 return EarnFail("직원: " current.name " 준비 문구 또는 $7,500 미확인")
@@ -255,12 +257,13 @@ EarnStaffCargoWarehouses() {
             if (EarnStaffSameWarehouse(fresh, current) && fresh.state = "full") {
                 EarnLog("직원: " displayName " 조달 직전 만재 확인, 이 창고는 사지 않고 건너뜀")
                 EarnStaffTrack("cargo " displayName, "full")
-                EarnNotifyStockFull("스페셜 패키지 " displayName " 만재: 판매 필요")
+                EarnNotifyStockFull(noticeKey, "스페셜 패키지 " displayName " 만재: 판매 필요")
             } else if (!EarnStaffSameWarehouse(fresh, current) || fresh.state != "ready" || fresh.price != 7500) {
                 EarnLog("직원: " current.name " 조달 직전 재확인 어긋남, 남은 창고는 사지 않고 건너뜀")
                 EarnStaffTrack("cargo all", "busy")
                 return EarnStaffCargoLeave()
             } else {
+                EarnClearStockNotice(noticeKey)
                 deadline := A_TickCount + 60000
                 if (!EarnTransactionBegin("staff", current.name " $7,500 조달 결과 확인 필요"))
                     return false
@@ -272,7 +275,7 @@ EarnStaffCargoWarehouses() {
                 if (resultState = "full") {
                     EarnLog("직원: " displayName " 조달 뒤 만재 확인, 다음 창고 계속")
                     EarnStaffTrack("cargo " displayName, "full")
-                    EarnNotifyStockFull("스페셜 패키지 " displayName " 만재: 판매 필요")
+                    EarnNotifyStockFull(noticeKey, "스페셜 패키지 " displayName " 만재: 판매 필요")
                 } else {
                     EarnLog("직원: " current.name " $7,500 조달 확인")
                     EarnStaffTrack("cargo " current.name, "sent")
@@ -342,7 +345,7 @@ EarnStaffHangar() {
         EarnLog("직원: 격납고 " (state = "busy" ? "조달 중" : state = "full" ? "만재" : "상태 미확인") ", 건너뜀")
         EarnStaffTrack("hangar", state = "full" ? "full" : "busy")
         if (state = "full")
-            EarnNotifyStockFull("격납고 재고 만재: 판매 필요")
+            EarnNotifyStockFull("hangar", "격납고 재고 만재: 판매 필요")
         return true
     }
     ; 재확인이 어긋나도 아직 Enter 전이라 산 것이 없다. 자동화를 끄지 않고 5분 뒤 다시 본다(1005 04:20 실측).
@@ -350,7 +353,7 @@ EarnStaffHangar() {
     if (recheck = "full") {
         EarnLog("직원: 격납고 조달 직전 만재 확인, 사지 않고 건너뜀")
         EarnStaffTrack("hangar", "full")
-        EarnNotifyStockFull("격납고 재고 만재: 판매 필요")
+        EarnNotifyStockFull("hangar", "격납고 재고 만재: 판매 필요")
         return true
     }
     if (recheck != "ready") {
@@ -358,6 +361,7 @@ EarnStaffHangar() {
         EarnStaffTrack("hangar", "busy")
         return true
     }
+    EarnClearStockNotice("hangar")
     deadline := A_TickCount + 60000
     if (!EarnTransactionBegin("staff", "격납고 $25,000 조달 결과 확인 필요"))
         return false
@@ -373,7 +377,7 @@ EarnStaffHangar() {
             EarnLog("직원: 격납고 $25,000 조달 확인")
             EarnStaffTrack("hangar", state = "full" ? "full" : "sent")
             if (state = "full")
-                EarnNotifyStockFull("격납고 재고 만재: 판매 필요")
+                EarnNotifyStockFull("hangar", "격납고 재고 만재: 판매 필요")
             return true
         }
         if (!EarnSleep(500))

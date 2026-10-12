@@ -22,6 +22,12 @@ if ([regex]::Matches($production, $dialogPattern).Count -ne 1) { throw 'Expected
 $production = [regex]::Replace($production, $dialogPattern, '')
 $production += "`n" + (Get-Content -LiteralPath (Join-Path $root 'Features\Earn\EarnPolicy.ahk') -Raw -Encoding UTF8)
 $production += "`n" + (Get-Content -LiteralPath (Join-Path $root 'Features\Earn\EarnWarehouseRead.ahk') -Raw -Encoding UTF8)
+$earner = Get-Content -LiteralPath (Join-Path $root 'Features\Earn\Earner.ahk') -Raw -Encoding UTF8
+foreach ($functionName in @('EarnNotifyStockFull', 'EarnClearStockNotice')) {
+    $match = [regex]::Matches($earner, ('(?ms)^' + $functionName + '\([^\r\n]*\) \{.*?^\}'))
+    if ($match.Count -ne 1) { throw "Expected one production function: $functionName" }
+    $production += "`n" + $match[0].Value
+}
 $fixture = Join-Path $PSScriptRoot 'test-earnwarehouse-read-fixtures\stock.tsv'
 $driver = @'
 #Requires AutoHotkey v2.0
@@ -30,7 +36,8 @@ $driver = @'
 #Warn All, StdOut
 global whTests := 0, whMode, whState, whAssigned, whCounts, whActive, whSelected,
     whSelections, whAttempts, whMoves, whBegins, whEnds, whError, whHistory,
-    whPending := "", whCancels := 0, whTooltips := 0, whSellStops := [], whNoticeLogs := 0
+    whPending := "", whCancels := 0, whTooltips := 0, whSellStops := [], whNoticeLogs := 0, whNoticeClears := 0
+global gEarnSellNotices := Map()
 try {
     RunWarehouseTests()
     RunScheduleTests()
@@ -81,23 +88,43 @@ RunWarehouseTests() {
             Check(whCancels = 1 && whState = "warehouse", "unconfirmed assignment dialog is cancelled once before cleanup")
     }
 
-    ; Only three or more full goods notify. Keep counting and reassigning below the threshold.
-    global gEarnSellNotice := ""
-    global whNoticeLogs := 0
+    ; The real source-aware notifier and Nightclub observer must preserve a simultaneous Bunker warning.
+    global gEarnSellNotices := Map(), whNoticeLogs := 0, whNoticeClears := 0
     whTooltips := 0
-    for noticeCase in [[0,0], [1,0], [2,0], [3,1], [3,1], [4,2], [7,3], [2,3], [1,3], [0,3], [3,4]] {
-        goods := [], fullCount := noticeCase[1], expectedNotices := noticeCase[2]
+    bunkerReason := "벙커 재고 만재: 판매 필요"
+    EarnNotifyStockFull("bunker", bunkerReason)
+    Check(gEarnSellNotices.Count = 1 && gEarnSellNotices["bunker"] = bunkerReason
+        && whNoticeLogs = 1 && whTooltips = 1,
+        "actual notifier seeds the independent bunker warning")
+    Loop 8 {
+        fullCount := A_Index - 1, goods := []
         Loop 7
             goods.Push({id:"good" A_Index, count:A_Index <= fullCount ? 10 : 9, capacity:10})
         expectedText := fullCount >= 3 ? "나이트클럽 창고 만재 " fullCount "개: 판매 필요" : ""
-        Check(EarnWarehouseSellNotice(goods) = fullCount && gEarnSellNotice = expectedText
-            && whTooltips = expectedNotices && whNoticeLogs = expectedNotices,
-            "three-full threshold count=" fullCount " notices=" expectedNotices)
+        expectedCreates := 1 + (fullCount >= 3 ? fullCount - 2 : 0)
+        Check(EarnWarehouseSellNotice(goods) = fullCount
+            && gEarnSellNotices["bunker"] = bunkerReason
+            && gEarnSellNotices.Get("nightclub", "") = expectedText
+            && gEarnSellNotices.Count = (fullCount >= 3 ? 2 : 1)
+            && whTooltips = expectedCreates && whNoticeLogs = expectedCreates && whNoticeClears = 0,
+            "bunker plus nightclub threshold count=" fullCount " preserves both sources")
     }
-    gEarnSellNotice := "나이트클럽 창고 만재 1개: 판매 필요"
-    Check(EarnWarehouseSellNotice([{id:"south_american",count:10,capacity:10}]) = 1
-        && gEarnSellNotice = "" && whTooltips = 4 && whNoticeLogs = 4,
-        "stale one-full notice clears without another alert")
+    Check(EarnWarehouseSellNotice([{id:"good1",count:10,capacity:10},{id:"good2",count:10,capacity:10},
+            {id:"good3",count:10,capacity:10},{id:"good4",count:10,capacity:10},
+            {id:"good5",count:10,capacity:10},{id:"good6",count:10,capacity:10},
+            {id:"good7",count:10,capacity:10}]) = 7
+        && whTooltips = 6 && whNoticeLogs = 6 && whNoticeClears = 0,
+        "same nightclub count is deduplicated")
+    Check(EarnWarehouseSellNotice([{id:"good1",count:10,capacity:10},{id:"good2",count:10,capacity:10}]) = 2
+        && gEarnSellNotices.Count = 1 && !gEarnSellNotices.Has("nightclub")
+        && gEarnSellNotices["bunker"] = bunkerReason
+        && whTooltips = 6 && whNoticeLogs = 6 && whNoticeClears = 1,
+        "nightclub below threshold clears only the nightclub warning")
+    Check(EarnWarehouseSellNotice([{id:"good1",count:10,capacity:10}]) = 1
+        && EarnWarehouseSellNotice([]) = 0 && gEarnSellNotices.Count = 1
+        && gEarnSellNotices["bunker"] = bunkerReason
+        && whTooltips = 6 && whNoticeLogs = 6 && whNoticeClears = 1,
+        "repeated zero-to-two nightclub observations do not clear another source")
 
     ; The gray full-person icon parser must remain conservative when moving full-stock staff.
     for identityCase in [["full_staff","organic"], ["full_missing",""], ["full_ambiguous",""]] {
@@ -427,10 +454,13 @@ RunScheduleTests() {
     EarnWarehouseTrack([{id: "cargo", count: 49, capacity: 50}], base)
     EarnWarehouseTrack([{id: "cargo", count: 50, capacity: 50}], base + 10*m)
     Check(EarnWarehouseTrack(, base + 20*m) = 0, "schedule: rising good without a rate uses default interval")
-}EarnLog(reason) {
-    global whNoticeLogs
-    if (InStr(reason, "창고: 나이트클럽 창고 만재 ") = 1)
+}
+EarnLog(reason) {
+    global whNoticeLogs, whNoticeClears
+    if (InStr(reason, "재고 만재 알림: ") = 1)
         whNoticeLogs++
+    else if (InStr(reason, "재고 만재 알림 해제: ") = 1)
+        whNoticeClears++
 }
 Check(condition, description) {
     global whTests, whError

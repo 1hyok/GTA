@@ -25,6 +25,12 @@ $vinewood = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\..\Features\Ea
 $closeMatch = [regex]::Matches($vinewood, '(?ms)^EarnVinewoodClose\(\) \{.*?^\}')
 if ($closeMatch.Count -ne 1) { throw 'Expected actual Vinewood close function' }
 $production += "`n" + $closeMatch[0].Value
+$earner = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\..\Features\Earn\Earner.ahk') -Raw -Encoding UTF8
+foreach ($functionName in @('EarnNotifyStockFull', 'EarnClearStockNotice')) {
+    $match = [regex]::Matches($earner, ('(?ms)^' + $functionName + '\([^\r\n]*\) \{.*?^\}'))
+    if ($match.Count -ne 1) { throw "Expected one production function: $functionName" }
+    $production += "`n" + $match[0].Value
+}
 if (-not (Test-Path -LiteralPath $AhkPath -PathType Leaf)) { throw "AutoHotkey executable not found: $AhkPath" }
 $driver = @'
 #Requires AutoHotkey v2.0
@@ -43,7 +49,7 @@ global fixtureData := Map(), fixtureKey := ""
 global observedDeadlines := []
 global menuReads := 0, mainNames := [], bailMenuReads := 0, bailMenuReadsAtFirstKey := 0
 global hangarState := "ready", hangarRequests := 0, hangarReads := 0
-global stockFullNotices := 0, stockFullReasons := []
+global stockFullNotices := 0, stockFullReasons := [], stockNoticeClears := 0, gEarnSellNotices := Map()
 global greyText := "", greyMissing := 0, flickerReads := 0
 OnError(TestUnhandledError)
 __FIXTURE_INIT__
@@ -316,7 +322,7 @@ RunCargoTests() {
     global hangarState, hangarRequests, hangarReads
     global mode, screenState, selected, statuses, requests, keys, config
     global cargoNames, cargoStatuses, cargoRequests, activeCount, opens
-    global transactionPending, stockFullNotices, stockFullReasons
+    global transactionPending, stockFullNotices, stockFullReasons, stockNoticeClears, gEarnSellNotices
     ; mode, statuses, success, per-run cargo request count, full-stock notification count.
     cases := [
         ["normal",["ready","ready","busy","ready","busy"],true,3,0],
@@ -424,6 +430,61 @@ RunCargoTests() {
     Check(EarnVinewoodStaffTask() && Sum(cargoRequests) = 0 && hangarRequests = 1,
         "all full cargo still permits hangar dispatch without buying cargo")
     Check(stockFullNotices = 5 && screenState = "standing", "all full cargo reports every property and closes normally")
+    Check(gEarnSellNotices.Count = 5, "all five cargo properties retain independent notice keys")
+    Loop 5 {
+        key := "cargo:" A_Index
+        Check(gEarnSellNotices.Get(key, "") = "스페셜 패키지 " cargoNames[A_Index] " 만재: 판매 필요",
+            "cargo notice key " key " maps to its verified property")
+    }
+
+    ; Re-observation deduplicates one property without affecting another business.
+    Reset("normal",["busy","busy"])
+    activeCount := 1, cargoStatuses[1] := "full"
+    Check(EarnStaffCargoWarehouses() && EarnStaffCargoWarehouses(), "same full cargo can be re-observed safely")
+    Check(stockFullNotices = 1 && gEarnSellNotices.Count = 1 && gEarnSellNotices.Has("cargo:1"),
+        "same cargo full notice is deduplicated by its stable slot key")
+
+    ; Only a confirmed ready/$7,500 reread clears that cargo slot. Busy and unreadable states preserve it.
+    Reset("normal",["busy","busy"])
+    activeCount := 1
+    gEarnSellNotices := Map("cargo:1", "기존 창고 경고", "hangar", "기존 격납고 경고")
+    Check(EarnStaffCargoWarehouses() && !gEarnSellNotices.Has("cargo:1")
+        && gEarnSellNotices.Get("hangar", "") = "기존 격납고 경고" && stockNoticeClears = 1,
+        "confirmed ready cargo clears only its own slot")
+    Reset("normal",["busy","busy"])
+    activeCount := 1, cargoStatuses[1] := "busy", gEarnSellNotices := Map("cargo:1", "기존 창고 경고")
+    Check(EarnStaffCargoWarehouses() && gEarnSellNotices.Get("cargo:1", "") = "기존 창고 경고"
+        && stockNoticeClears = 0,
+        "busy cargo preserves its prior full notice")
+    Reset("cargo_ocr_fail",["busy","busy"])
+    activeCount := 1, gEarnSellNotices := Map("cargo:1", "기존 창고 경고")
+    Check(!EarnStaffCargoWarehouses() && gEarnSellNotices.Get("cargo:1", "") = "기존 창고 경고"
+        && stockNoticeClears = 0,
+        "unconfirmed cargo observation preserves its prior full notice")
+
+    ; Cargo and Hangar warnings overlap, then Hangar clears only after a confirmed ready reread.
+    Reset("normal",["busy","busy"])
+    config["Settings"]["EarnBailAgents"] := 0, config["Settings"]["EarnHangarStaff"] := 1
+    cargoStatuses := ["full","full","full","full","full"], hangarState := "full"
+    Check(EarnVinewoodStaffTask() && gEarnSellNotices.Count = 6
+        && gEarnSellNotices.Has("cargo:1") && gEarnSellNotices.Has("cargo:5") && gEarnSellNotices.Has("hangar"),
+        "five cargo notices and a hangar notice coexist")
+    Reset("normal",["busy","busy"])
+    config["Settings"]["EarnCargoStaff"] := 0, config["Settings"]["EarnHangarStaff"] := 1
+    gEarnSellNotices := Map("hangar", "기존 격납고 경고", "cargo:1", "기존 창고 경고")
+    Check(EarnStaffHangar() && !gEarnSellNotices.Has("hangar")
+        && gEarnSellNotices.Get("cargo:1", "") = "기존 창고 경고" && stockNoticeClears = 1,
+        "confirmed ready hangar clears only the hangar warning")
+    Reset("normal",["busy","busy"])
+    hangarState := "busy", gEarnSellNotices := Map("hangar", "기존 격납고 경고")
+    Check(EarnStaffHangar() && gEarnSellNotices.Get("hangar", "") = "기존 격납고 경고"
+        && stockNoticeClears = 0,
+        "busy hangar preserves its prior full notice")
+    Reset("normal",["busy","busy"])
+    hangarState := "odd", gEarnSellNotices := Map("hangar", "기존 격납고 경고")
+    Check(EarnStaffHangar() && gEarnSellNotices.Get("hangar", "") = "기존 격납고 경고"
+        && stockNoticeClears = 0,
+        "unconfirmed hangar observation preserves its prior full notice")
 
     ; Full can appear during the no-input preflight reread or as the terminal result after one request.
     for fullMode in ["cargo_full_change","cargo_after_full"] {
@@ -619,12 +680,12 @@ Reset(nextMode, initial) {
     global config, cargoNames, cargoStatuses, cargoRequests, cargoReads, activeCount, opens, postReads
     global observedDeadlines
     global menuReads, mainNames, hangarState, hangarRequests, hangarReads, greyMissing, flickerReads
-    global stockFullNotices, stockFullReasons
+    global stockFullNotices, stockFullReasons, stockNoticeClears, gEarnSellNotices
     global bailMenuReads, bailMenuReadsAtFirstKey
     greyMissing := 0, flickerReads := 0
     mode := nextMode, screenState := "staff", selected := "Hangar"
     hangarState := "ready", hangarRequests := 0, hangarReads := 0
-    stockFullNotices := 0, stockFullReasons := []
+    stockFullNotices := 0, stockFullReasons := [], stockNoticeClears := 0, gEarnSellNotices := Map()
     statuses := initial.Clone(), requests := [0,0], keys := [], reads := 0, failure := ""
     config := Map("Settings",Map("EarnBailAgents",1,"EarnCargoStaff",1))
     cargoNames := ["Discount Retail Unit","Railyard Warehouse","Foreclosed Garage","Darnell Bros Warehouse","West Vinewood Backlot"]
@@ -1082,11 +1143,6 @@ EarnVinewoodOpen(manageMCT := true) {
     opens += 1
     return mode != "open_fail"
 }
-EarnNotifyStockFull(reason) {
-    global stockFullNotices, stockFullReasons
-    stockFullNotices += 1
-    stockFullReasons.Push(reason)
-}
 EarnScheduleNext(*) => true
 RunScheduleTests() {
     EarnStaffTrack("reset")
@@ -1105,7 +1161,16 @@ RunScheduleTests() {
     ms := EarnStaffTrack()
     Check(ms > 48 * 60000 && ms <= 49 * 60000, "schedule: known busy agent keeps its return time")
 }
-EarnLog(*) {
+ShowTooltip(*) {
+}
+EarnLog(reason) {
+    global stockFullNotices, stockFullReasons, stockNoticeClears
+    if (InStr(reason, "재고 만재 알림: ") = 1) {
+        stockFullNotices += 1
+        stockFullReasons.Push(RegExReplace(reason, "^재고 만재 알림: (.*?) · 나머지 작업 계속$", "$1"))
+    } else if (InStr(reason, "재고 만재 알림 해제: ") = 1) {
+        stockNoticeClears += 1
+    }
 }
 EarnFail(message) {
     global failure

@@ -52,17 +52,28 @@ function Invoke-EarnOfflineCheck {
 #Warn All, StdOut
 global transactionPending := Map()
 global gEarnSkipOcr := false
-global stockNotices := []
+global stockNotices := [], stockNoticeSources := [], stockNoticeClears := [], gEarnSellNotices := Map()
 global fixtureHudHidden := false, requireHudBeforeCEO := false
 EarnTransactionBegin(id, reason) {
     transactionPending[id] := reason
     return true
 }
 EarnTransactionConfirmed(id) => transactionPending.Delete(id)
-EarnNotifyStockFull(reason) {
-    global stockNotices
+EarnNotifyStockFull(source, reason) {
+    global stockNotices, stockNoticeSources, gEarnSellNotices
+    if (gEarnSellNotices.Get(source, "") = reason)
+        return true
+    gEarnSellNotices[source] := reason
+    stockNoticeSources.Push(source)
     stockNotices.Push(reason)
     return true
+}
+EarnClearStockNotice(source) {
+    global stockNoticeClears, gEarnSellNotices
+    if (gEarnSellNotices.Has(source)) {
+        stockNoticeClears.Push(source)
+        gEarnSellNotices.Delete(source)
+    }
 }
 ; EarnTasks tests extract individual task functions, not EarnCore's screen helpers.
 EarnMCTSitOcrSeen() => false
@@ -1289,7 +1300,8 @@ cases := [[0.4,1,8400,true,true,true,true,0,1,60000],
 for row in cases {
     c := row, config["Settings"]["EarnBunkerIntervalSec"] := c[3]
     gEarnNextDue := Map("bunker",0), buyCalls := 0, beginCalls := 0, endCalls := 0,
-        gEarnBunkerOrdered := true, gEarnBunkerFull := false, stockNotices := []
+        gEarnBunkerOrdered := true, gEarnBunkerFull := false, stockNotices := [], stockNoticeSources := [], stockNoticeClears := [],
+        gEarnSellNotices := Map("bunker", "기존 벙커 경고", "nightclub", "나이트클럽 경고")
     before := A_TickCount
     result := EarnBunkerTask()
     after := A_TickCount
@@ -1300,15 +1312,29 @@ for row in cases {
         throw Error("Bunker task scheduling " A_Index " due=" due)
     expectedFull := c[1] >= 0.97 ? 1 : 0
     if (gEarnBunkerFull != expectedFull || stockNotices.Length != expectedFull
-        || (expectedFull && stockNotices[1] != "벙커 재고 만재: 판매 필요"))
+        || (expectedFull && (stockNoticeSources[1] != "bunker" || stockNotices[1] != "벙커 재고 만재: 판매 필요")))
         throw Error("Bunker task stock notice " A_Index " full=" gEarnBunkerFull " count=" stockNotices.Length)
+    validObservation := c[4] && c[1] >= 0 && c[1] <= 1 && c[2] >= 0 && c[2] <= 1
+        && c[3] >= 1680 && c[3] <= 8400 && Mod(c[3], 1680) = 0
+    if (gEarnSellNotices.Get("nightclub", "") != "나이트클럽 경고")
+        throw Error("Bunker task changed another source " A_Index)
+    if (expectedFull) {
+        if (gEarnSellNotices.Get("bunker", "") != "벙커 재고 만재: 판매 필요" || stockNoticeClears.Length)
+            throw Error("Bunker task full notice state " A_Index)
+    } else if (validObservation) {
+        if (gEarnSellNotices.Has("bunker") || stockNoticeClears.Length != 1 || stockNoticeClears[1] != "bunker")
+            throw Error("Bunker task confirmed non-full clear " A_Index)
+    } else if (gEarnSellNotices.Get("bunker", "") != "기존 벙커 경고" || stockNoticeClears.Length) {
+        throw Error("Bunker task unconfirmed observation must preserve notice " A_Index)
+    }
 }
 ; The grouped scheduler already owns the MCT session, including no-purchase and invalid-read paths.
 for row in [[0.4,1,8400,false,true,false,true,0,0,60000],
     [0.4,0,8400,false,true,false,true,1,0,60000],
     [-1,0,8400,false,true,false,false,0,0,0]] {
     c := row, config["Settings"]["EarnBunkerIntervalSec"] := c[3]
-    gEarnNextDue := Map("bunker",0), buyCalls := 0, beginCalls := 0, endCalls := 0, gEarnBunkerOrdered := true
+    gEarnNextDue := Map("bunker",0), buyCalls := 0, beginCalls := 0, endCalls := 0, gEarnBunkerOrdered := true,
+        stockNotices := [], stockNoticeSources := [], stockNoticeClears := [], gEarnSellNotices := Map("bunker", "기존 벙커 경고")
     before := A_TickCount
     result := EarnBunkerTask(false)
     after := A_TickCount, due := gEarnNextDue["bunker"]
@@ -1316,6 +1342,8 @@ for row in [[0.4,1,8400,false,true,false,true,0,0,60000],
         throw Error("Shared-session bunker task reopened or closed the caller's session")
     if (c[10] = 0 ? due != 0 : due < before+c[10] || due > after+c[10])
         throw Error("Shared-session bunker scheduling changed")
+    if (c[1] < 0 ? gEarnSellNotices.Get("bunker", "") != "기존 벙커 경고" : gEarnSellNotices.Has("bunker"))
+        throw Error("Shared-session bunker notice confirmation changed")
 }
 FileAppend("PASS BunkerTask cases=19`n", "*")
 ExitApp(0)
@@ -1378,7 +1406,8 @@ for scenario in cases {
     clockMs := 0, supplyNow := c.Get("supply",0.21), stockNow := 0.4,
         refreshes := 0, buys := 0, begins := 0, ends := 0, sleeps := [], reads := 0,
         abortNow := c.Get("abort",false), gEarnBunkerOrdered := true, gEarnBunkerFull := false,
-        gEarnNextDue := Map("bunker",0), stockNotices := []
+        gEarnNextDue := Map("bunker",0), stockNotices := [], stockNoticeSources := [], stockNoticeClears := [],
+        gEarnSellNotices := Map("bunker", "기존 벙커 경고", "nightclub", "나이트클럽 경고")
     result := EarnBunkerTask()
     expectedDue := scenario[5] ? clockMs + scenario[5] : 0
     if (result != scenario[3] || buys != scenario[4] || gEarnNextDue["bunker"] != expectedDue
@@ -1392,8 +1421,19 @@ for scenario in cases {
         throw Error("No deadline-late purchase permitted")
     expectedFull := scenario[1] = "stock fills during observation" ? 1 : 0
     if (gEarnBunkerFull != expectedFull || stockNotices.Length != expectedFull
-        || (expectedFull && stockNotices[1] != "벙커 재고 만재: 판매 필요"))
+        || (expectedFull && (stockNoticeSources[1] != "bunker" || stockNotices[1] != "벙커 재고 만재: 판매 필요")))
         throw Error("Bunker observe stock notice " scenario[1] " full=" gEarnBunkerFull " count=" stockNotices.Length)
+    if (gEarnSellNotices.Get("nightclub", "") != "나이트클럽 경고")
+        throw Error("Bunker observe changed another source " scenario[1])
+    if (expectedFull) {
+        if (gEarnSellNotices.Get("bunker", "") != "벙커 재고 만재: 판매 필요" || stockNoticeClears.Length)
+            throw Error("Bunker observe full notice state " scenario[1])
+    } else if (result) {
+        if (gEarnSellNotices.Has("bunker") || stockNoticeClears.Length != 1 || stockNoticeClears[1] != "bunker")
+            throw Error("Bunker observe confirmed non-full clear " scenario[1])
+    } else if (gEarnSellNotices.Get("bunker", "") != "기존 벙커 경고" || stockNoticeClears.Length) {
+        throw Error("Bunker observe unconfirmed state must preserve notice " scenario[1])
+    }
 }
 FileAppend("PASS BunkerObserve cases=19`n", "*")
 ExitApp(0)

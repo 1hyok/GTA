@@ -308,8 +308,10 @@ EarnBunkerTask(manageSession := true) {
         if (!IsObject(plan))
             return false
         gEarnBunkerFull := plan.reason = "stock_full"
+        if (!gEarnBunkerFull)
+            EarnClearStockNotice("bunker")
         if (gEarnBunkerFull) {
-            EarnNotifyStockFull("벙커 재고 만재: 판매 필요")
+            EarnNotifyStockFull("bunker", "벙커 재고 만재: 판매 필요")
             EarnLog("벙커: 재고 가득 참. 보급 구매만 건너뛰고 다른 작업 계속, 5분 뒤 재확인")
             gEarnNextDue["bunker"] := A_TickCount + plan.waitMs
             ok := true
