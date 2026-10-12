@@ -10,6 +10,19 @@ using System;
 using System.Drawing;
 using System.Collections.Generic;
 public static class AFKOverlayTest {
+    public static string FirstPixelDifference(Bitmap expected, Bitmap actual) {
+        if (expected.Width != actual.Width || expected.Height != actual.Height)
+            return String.Format("dimensions expected={0}x{1} actual={2}x{3}",
+                expected.Width, expected.Height, actual.Width, actual.Height);
+        for (int y = 0; y < expected.Height; y++) for (int x = 0; x < expected.Width; x++) {
+            int expectedArgb = expected.GetPixel(x, y).ToArgb();
+            int actualArgb = actual.GetPixel(x, y).ToArgb();
+            if (expectedArgb != actualArgb)
+                return String.Format("pixel ({0},{1}) expected=0x{2:X8} actual=0x{3:X8}",
+                    x, y, expectedArgb, actualArgb);
+        }
+        return "";
+    }
     public static Bitmap Brighten(Bitmap source, double gain) {
         var result = new Bitmap(source.Width, source.Height);
         for (int y = 0; y < source.Height; y++) for (int x = 0; x < source.Width; x++) {
@@ -131,12 +144,34 @@ try {
     & (Join-Path $root 'Core\TemplateGain.ps1') -Source $originalDirectory -Destination $gainDirectory -Gain 1.55
     & (Join-Path $PSScriptRoot 'build-afk-overlay-templates.ps1') -OutputDirectory $rebuiltDirectory
     $rebuiltTitle = Join-Path $rebuiltDirectory $titleName
-    if ((Get-FileHash -LiteralPath $committedTitle -Algorithm SHA256).Hash -ne
-        (Get-FileHash -LiteralPath $rebuiltTitle -Algorithm SHA256).Hash) {
-        throw 'The committed app-title mask is not reproducible from its recorded fixture'
+    # GDI+ may encode identical pixels into different PNG bytes across Windows
+    # versions. Compare every decoded ARGB pixel, including transparent colors.
+    $committedBitmap = [Drawing.Bitmap]::FromFile($committedTitle)
+    $rebuiltBitmap = [Drawing.Bitmap]::FromFile($rebuiltTitle)
+    $mutatedBitmap = $null
+    try {
+        $difference = [AFKOverlayTest]::FirstPixelDifference($committedBitmap, $rebuiltBitmap)
+        if ($difference) { throw "The app-title mask is not reproducible: $difference" }
+        $script:cases++
+        Write-Output 'PASS app-title mask exactly reproduces its decoded dimensions and ARGB pixels'
+
+        # Change only the alpha channel of the final pixel. This proves the
+        # comparator reaches the end of the image and checks ARGB, not just RGB.
+        $mutatedBitmap = [Drawing.Bitmap]$rebuiltBitmap.Clone()
+        $lastX = $mutatedBitmap.Width - 1; $lastY = $mutatedBitmap.Height - 1
+        $before = $mutatedBitmap.GetPixel($lastX, $lastY)
+        $after = [Drawing.Color]::FromArgb(($before.A -bxor 1), $before.R, $before.G, $before.B)
+        $mutatedBitmap.SetPixel($lastX, $lastY, $after)
+        $difference = [AFKOverlayTest]::FirstPixelDifference($committedBitmap, $mutatedBitmap)
+        $expectedDifference = 'pixel ({0},{1}) expected=0x{2:X8} actual=0x{3:X8}' -f $lastX, $lastY, $before.ToArgb(), $after.ToArgb()
+        if ($difference -ne $expectedDifference) { throw "Pixel-comparison mutation check failed: $difference" }
+        $script:cases++
+        Write-Output "PASS app-title pixel comparison rejects one alpha mutation: $difference"
     }
-    $script:cases++
-    Write-Output 'PASS app-title mask exactly reproduces from its recorded fixture'
+    finally {
+        if ($null -ne $mutatedBitmap) { $mutatedBitmap.Dispose() }
+        $rebuiltBitmap.Dispose(); $committedBitmap.Dispose()
+    }
 
     foreach ($spec in @(@('original', $originalDirectory, 1.0), @('gain-1.55', $gainDirectory, 1.55))) {
         $templatePath = Join-Path $spec[1] $titleName
