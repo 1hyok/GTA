@@ -16,6 +16,7 @@ $guards = @('EarnAFKCloseMCT', 'EarnInputGuardStart', 'EarnInputGuardStop', 'Ear
     }
     $body
 }
+$guards += [regex]::Match($source, '(?ms)^EarnAFKCloseMCTGuarded\([^\r\n]*\) \{.*?^\}').Value
 $production = ($tick + "`n" + ($guards -join "`n")).Replace('A_TimeIdlePhysical', 'idleMs').Replace('A_TickCount', 'fakeTick')
 $production = $production.Replace('DllCall("GetForegroundWindow", "ptr")', 'FakeForegroundWindow()')
 $core = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnCore.ahk') -Raw -Encoding UTF8
@@ -78,6 +79,7 @@ global gEarnFeedSeen, beginStopInjected, gEarnSellNotice, tooltips
 global lifecycleTrace, lifecycleEvents, finalizerProbeStages
 global gEarnInputAbortReason, metadataFailure, metadataCalls
 global recoveryHud, recoveryHudAfter, recoveryMenuCloseOK, visibleModal
+global hudDepth := 0, hudTakes := 0, hudReturns := 0, hudInject := ""
 global state := Map(), stateWritable := true
 Reset()
 endOK := false, endNoScreen := true, recoveryHud := false, recoveryHudAfter := false
@@ -801,15 +803,52 @@ gEarnBusy := true
 SetEarner(false, "전체 멈춤")
 Check(gAbort && releaseCount > 0 && !gEarnManualStop && gEarnFail = "전체 멈춤",
     "hard stop releases held keys without starting manual cleanup")
+Reset()
+hudInject := "throw"
+EarnTick()
+Check(!gEarnOn && calls.Length = 0 && lockReleases = 1 && hudDepth = 0,
+    "HUD hiding failure stops before business work and releases input ownership")
+Reset()
+hudInject := "physical"
+EarnTick()
+Check(calls.Length = 0 && gEarnOn && hudDepth = 0 && gEarnUserAbort,
+    "input while hiding HUD is guarded from before acquisition")
+Reset()
+hudInject := "physical"
+Check(EarnAFKCloseMCT(300) = "" && endCount = 0 && hudDepth = 0,
+    "AFK input during HUD acquisition prevents screen cleanup")
+Reset()
+hudInject := "focus"
+Check(EarnAFKCloseMCT(300) = "" && endCount = 0 && hudDepth = 0,
+    "AFK focus loss during HUD acquisition prevents screen cleanup")
 FileAppend("PASS Earner: " checkCount " cases; no game input`n", "*")
+if (hudDepth != 0 || hudTakes = 0 || hudTakes != hudReturns)
+    throw Error("HUD scopes must balance across scheduler, stop, exception and AFK cases")
 ExitApp(0)
 
+DiscordHUDVisibilityAcquire() {
+    global hudDepth, hudTakes, fakeTick, idleMs, focused
+    if (hudInject = "throw")
+        throw Error("HUD hide failed")
+    hudDepth += 1, hudTakes += 1
+    if (hudInject = "physical")
+        fakeTick += 200, idleMs := 0
+    if (hudInject = "focus")
+        focused := false
+}
+DiscordHUDVisibilityRelease() {
+    global hudDepth, hudReturns
+    if (hudDepth != 1)
+        throw Error("Unexpected HUD scope release")
+    hudDepth -= 1, hudReturns += 1
+}
 AFKSelfInput(start) {
     global selfMarks
     selfMarks .= start ? "S" : "E"
 }
 Reset() {
     global
+    hudInject := ""
     selfMarks := ""
     fakeTick := 100000, idleMs := 60000, gEarnGuardArmed := false, gEarnGuardStartedTick := 0, gEarnUserAbort := false
     gEarnInputAbortReason := "", metadataFailure := false, metadataCalls := 0
@@ -841,7 +880,7 @@ Reset() {
 }
 RunTask(id, manageSession := true) {
     global calls, mode, gEarnNextDue, gEarnRetryIn, idleMs, focused, fakePID, fakeTick
-    if (!lockHeld || !gEarnBusy || !gEarnGuardArmed)
+    if (!lockHeld || !gEarnBusy || !gEarnGuardArmed || hudDepth != 1)
         throw Error("Every body must share the live input lock and guard")
     if (EarnIsMCTTask(id) ? manageSession || !mctOpen : mctOpen)
         throw Error("MCT bodies require the shared session; apps require it closed")
@@ -1240,7 +1279,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 171 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 175 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout

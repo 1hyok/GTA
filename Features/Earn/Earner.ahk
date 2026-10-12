@@ -30,6 +30,20 @@ global gEarnAFKCleanup := false
 ; AFK 방지가 오래 방치된 MCT 화면을 만나면 수익 작업과 같은 확인된 정리 경로(확인창 취소 → MCT 닫기 → 일어서기 → 사장 해제)로 닫는다.
 ; 수익 작업이 도는 중에는 건드리지 않는다. 열린 MCT 화면이 안 보이면 아무 입력도 하지 않고 빈 문자열을 돌려준다.
 EarnAFKCloseMCT(idleSec) {
+    global gEarnBusy, gAbort
+    if ((IsSet(gEarnBusy) && gEarnBusy) || gAbort)
+        return ""
+    started := A_TickCount
+    DiscordHUDVisibilityAcquire()
+    try {
+        if (!IsGTAActive() || A_TimeIdlePhysical < A_TickCount - started)
+            return ""
+        return EarnAFKCloseMCTGuarded(idleSec)
+    }
+    finally DiscordHUDVisibilityRelease()
+}
+
+EarnAFKCloseMCTGuarded(idleSec) {
     global gEarnBusy, gEarnFail, gAbort, gEarnAFKCleanup, gEarnGuardArmed, gEarnGuardStartedTick, gEarnGamePID, gEarnUserAbort, gEarnManualStop, gEarnInputAbortReason
     if ((IsSet(gEarnBusy) && gEarnBusy) || gAbort)
         return ""
@@ -263,9 +277,12 @@ EarnTick() {
     ; 방치 5분에 닿지 못해 CPU 부스트·프레임 제한이 한 번도 안 걸렸다(1005 13:10~16:30, 핫스팟 95°C. 제한 때는 62~67°C).
     try %"AFKSelfInput"%(true)
     outcome := {results: [], cleanupOK: true}
+    hudLease := false
     fatalReason := ""
     try {
         EarnInputGuardStart()
+        DiscordHUDVisibilityAcquire()
+        hudLease := true
         if (EarnInputAllowed()) {
             if (recovering) {
                 outcome := gEarnRecovery.outcome
@@ -301,7 +318,11 @@ EarnTick() {
             gEarnBusy := false
             gEarnTaskActive := false
             gEarnCurrent := ""
-            EarnInputLockRelease(inputLock)
+            try EarnInputLockRelease(inputLock)
+            finally {
+                if (hudLease)
+                    DiscordHUDVisibilityRelease()
+            }
         }
     }
     ; F9 수동 종료는 새 작업 입력을 즉시 막되, 이미 연 MCT의 확인된 정리와 CEO 해제까지 끝낸 뒤 꺼진다.

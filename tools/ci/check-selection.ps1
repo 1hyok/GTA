@@ -5,7 +5,7 @@ function Get-CiCheckPlan {
         'test-earner','test-antiafk','test-altf4teleport','test-botwarp-stop','test-claw-stop','test-autoclick-stop',
         'test-earnnav','test-earntasks','test-earnblip','test-earnpolicy','test-earnscreen','test-earnscreen-command',
         'test-earnvinewood','test-earnwarehouse-read','test-earnwarehouse','test-earnstaff',
-        'test-afk-notification-command','test-afk-input-lock','test-arrow-color','test-cpuboost','test-memguard','test-earndj',
+        'test-afk-notification-command','test-afk-input-lock','test-arrow-color','test-cpuboost','test-discord-hud','test-memguard','test-earndj',
         'test-phone-call-template','test-earnocr','test-notification-dismiss','test-mct-seated-template',
         'test-bunker-templates','test-dj-templates','test-earnwarehouse-templates','test-afk-overlays','test-session-guard',
         'test-gui-input','test-perf-watch','test-fps-helper','test-screen-capture','test-gta-mode'
@@ -38,7 +38,7 @@ function Get-CiCheckPlan {
             switch -Regex ($path) {
                 '^Features/Earn/EarnStaff\.ahk$' { $selected.AddRange(@('test-earnstaff','test-earner','test-earnvinewood')); break }
                 '^Features/Earn/EarnVinewood\.ahk$' { $selected.AddRange(@('test-earnvinewood','test-earner','test-earnstaff')); break }
-                '^Features/Earn/Earner\.ahk$' { $selected.Add('test-earner'); break }
+                '^Features/Earn/Earner\.ahk$' { $selected.AddRange(@('test-earner','test-discord-hud')); break }
                 '^Features/Earn/EarnWarehouse(Read)?\.ahk$' { $selected.AddRange(@('test-earnwarehouse-read','test-earnwarehouse','test-earnwarehouse-templates','test-earner')); break }
                 default { $selected.AddRange($earnSuites); break }
             }
@@ -65,6 +65,7 @@ function Get-CiCheckPlan {
         if ($path -match '^Features/Teleport/AltF4Teleport\.ahk$') { $selected.Add('test-altf4teleport'); $packageRequired = $true; continue }
         if ($path -match '^Features/SessionSwitch\.ahk$') { $selected.Add('test-session-guard'); $packageRequired = $true; continue }
         if ($path -match '^Features/CpuBoost\.ahk$') { $selected.Add('test-cpuboost'); $packageRequired = $true; continue }
+        if ($path -match '^Features/DiscordHUD\.ahk$') { $selected.AddRange(@('test-earner','test-discord-hud')); $packageRequired = $true; continue }
         if ($path -match '^Features/MemoryGuard\.ahk$') { $selected.Add('test-memguard'); $packageRequired = $true; continue }
         if ($path -match '^Images/MCT/') { $selected.Add('test-mct-seated-template'); $packageRequired = $true; continue }
         if ($path -match '^Images/Bunker/') { $selected.Add('test-bunker-templates'); $packageRequired = $true; continue }
