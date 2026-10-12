@@ -27,7 +27,7 @@ $ahkSuites = @('test-earner', 'test-antiafk', 'test-altf4teleport', 'test-botwar
     'test-earnpolicy', 'test-earnscreen', 'test-earnscreen-command', 'test-earnvinewood', 'test-earnwarehouse-read', 'test-earnwarehouse',
     'test-earnstaff', 'test-afk-notification-command', 'test-afk-input-lock', 'test-arrow-color', 'test-cpuboost', 'test-memguard', 'test-earndj', 'test-phone-call-template')
 $allAuxChecks = @(
-    'test-earnocr', 'test-mct-seated-template', 'test-bunker-templates', 'test-earnwarehouse-templates', 'test-afk-overlays', 'test-notification-dismiss', 'test-session-guard', 'test-gui-input', 'test-perf-watch', 'test-fps-helper', 'test-screen-capture', 'test-gta-mode')
+    'test-earnocr', 'test-mct-seated-template', 'test-bunker-templates', 'test-dj-templates', 'test-earnwarehouse-templates', 'test-afk-overlays', 'test-notification-dismiss', 'test-session-guard', 'test-gui-input', 'test-perf-watch', 'test-fps-helper', 'test-screen-capture', 'test-gta-mode')
 $selectionScript = Join-Path $PSScriptRoot 'check-selection.ps1'
 . $selectionScript
 if ($ChangedFilesPath) {
@@ -179,6 +179,7 @@ try {
     if ('test-notification-dismiss' -in $selectedSuites) { Invoke-LoggedCheck 'test-notification-dismiss' $powershell ($psArguments + @((Join-Path $repositoryRoot 'tools\earn-test\test-notification-dismiss.ps1'))) }
     if ('test-mct-seated-template' -in $selectedSuites) { Invoke-LoggedCheck 'test-mct-seated-template' $powershell ($psArguments + @((Join-Path $repositoryRoot 'tools\earn-test\test-mct-seated-template.ps1'))) }
     if ('test-bunker-templates' -in $selectedSuites) { Invoke-LoggedCheck 'test-bunker-templates' $powershell ($psArguments + @((Join-Path $repositoryRoot 'tools\earn-test\test-bunker-templates.ps1'))) }
+    if ('test-dj-templates' -in $selectedSuites) { Invoke-LoggedCheck 'test-dj-templates' $powershell ($psArguments + @((Join-Path $repositoryRoot 'tools\earn-test\test-dj-templates.ps1'))) }
     if ('test-earnwarehouse-templates' -in $selectedSuites) { Invoke-LoggedCheck 'test-earnwarehouse-templates' $powershell ($psArguments + @((Join-Path $repositoryRoot 'tools\earn-test\test-earnwarehouse-templates.ps1'))) }
     if ('test-afk-overlays' -in $selectedSuites) { Invoke-LoggedCheck 'test-afk-overlays' $powershell ($psArguments + @((Join-Path $repositoryRoot 'tools\earn-test\test-afk-overlays.ps1'))) }
     if ('test-session-guard' -in $selectedSuites) { Invoke-LoggedCheck 'test-session-guard' $AhkPath @('/ErrorStdOut', '/CP65001', (Join-Path $repositoryRoot 'tools\earn-test\test-session-guard.ahk')) 30 }

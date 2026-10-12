@@ -34,7 +34,8 @@ EarnAFKCloseMCT(idleSec) {
     if ((IsSet(gEarnBusy) && gEarnBusy) || gAbort)
         return ""
     if (!EarnAtMCT() && !EarnSeen("nc_dj_menu") && !EarnSeen("bunker_page") && !EarnSeen("bunker_entry")
-        && !EarnSeen("dj_solomun") && !EarnSeen("bunker_confirm") && !EarnSeen("bunker_pending"))
+        && !EarnSeen("dj_solomun") && !EarnSeen("dj_confirm_solomun") && !EarnSeen("dj_confirm_tale")
+        && !EarnSeen("bunker_confirm") && !EarnSeen("bunker_pending"))
         return ""
     ; 수익 작업과 같은 입력 감시를 건다. 정리 중 사람이 키보드·마우스를 만지면 바로 멈춘다.
     prevArmed := gEarnGuardArmed, prevStarted := gEarnGuardStartedTick, prevPID := gEarnGamePID, prevUserAbort := gEarnUserAbort
@@ -278,9 +279,9 @@ EarnTick() {
             }
         }
         ; no-screen 복구의 CEO 해제도 다른 화면 입력과 같은 mutex·물리 입력 guard 안에서만 시도한다.
-        if (recovering && !outcome.cleanupOK && gEarnCleanupNoScreen
+        if (recovering && mctSession && !outcome.cleanupOK && gEarnCleanupNoScreen
             && gEarnRecovery.attempts + 1 >= 2) {
-            if (EarnBossOffWithManualRetry())
+            if (EarnBossOffWithManualRetry(true))
                 outcome.cleanupOK := true
         }
         ; 마지막 단계에서 사용자가 개입한 경우 성공/자동 재시도로 덮지 않는다.
@@ -348,17 +349,8 @@ EarnTick() {
         EarnStopAfterFailure(fatalReason)
         return
     }
-    if (!outcome.cleanupOK) {
-        attempts := recovering ? gEarnRecovery.attempts + 1 : 1
-        ; 복구를 두 번 시도해도 열린 MCT 화면이 하나도 안 보이면 정리할 것이 없다(세션이 바뀌었거나 이미 나온 상태, 1010 01:32 실측).
-        ; 그대로 두면 복구가 수익 작업을 영영 막는다. 풀고 나머지를 이어 가며, MCT 작업은 시작할 때 위치를 다시 확인한다.
-        if (recovering && attempts >= 2 && gEarnCleanupNoScreen) {
-            gEarnRecovery := ""
-            EarnLog("복구 해제: " task.id " 열린 MCT 화면 없음이 반복됨, 다음 작업 시작 때 위치 재확인")
-            outcome.cleanupOK := true
-            recovering := false
-        }
-    }
+    ; 템플릿이 모두 안 보인다는 사실은 메뉴가 닫혔다는 증거가 아니다.
+    ; DJ 확인창이 남아도 no-screen으로 판독된 1012 방치 추방처럼, 실제 정리 확인 전에는 복구를 유지한다.
     if (!outcome.cleanupOK) {
         attempts := recovering ? gEarnRecovery.attempts + 1 : 1
         delay := Min(300000, 30000 * 2 ** Min(4, attempts - 1))
@@ -474,12 +466,22 @@ EarnTaskMCTEndWithManualRetry() {
 ; no-screen recovery에서 CEO 해제 중 F9가 들어와도 같은 input lock·guard 안에서 기준점을 새로 잡고 딱 한 번만 다시 확인한다.
 EarnBossOffWithManualRetry(requireConfirmed := false) {
     global gEarnManualStop
-    cleaned := EarnBossOffIfOn(requireConfirmed)
+    cleaned := requireConfirmed ? EarnConfirmNoScreenCleanup() : EarnBossOffIfOn()
     if (!cleaned && gEarnManualStop) {
         EarnLog("끄기 정리 재확인: CEO 해제 도중 F9 감지")
         return EarnManualBossOffCleanup(requireConfirmed)
     }
     return cleaned
+}
+
+; no-screen은 HUD 복귀와 실제 보스 메뉴 확인이 모두 있어야 정리 완료다.
+; 화살표 판독 불가뿐 아니라 MCT 아이콘에 가려진 흰 화살표도 CEO 해제 증거로 쓰지 않는다.
+EarnConfirmNoScreenCleanup() {
+    if (!EarnInputAllowed() || !EarnMCTRecoveryHud())
+        return false
+    if (!EarnCEO(false) || !EarnMenuClose())
+        return false
+    return EarnInputAllowed() && EarnMCTRecoveryHud()
 }
 
 EarnManualBossOffCleanup(requireConfirmed := false) {
@@ -491,7 +493,7 @@ EarnManualBossOffCleanup(requireConfirmed := false) {
     gEarnInputAbortReason := ""
     gEarnGuardStartedTick := A_TickCount - A_TimeIdlePhysical
     gEarnFail := ""
-    try return EarnBossOffIfOn(requireConfirmed)
+    try return requireConfirmed ? EarnConfirmNoScreenCleanup() : EarnBossOffIfOn()
     finally gEarnManualCleanupActive := false
 }
 

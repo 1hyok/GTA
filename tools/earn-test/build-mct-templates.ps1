@@ -24,8 +24,10 @@ $items = @(
  @('mansion-dj-list','dj_solomun',886,246,116,30),
  @('mansion-dj-list','dj_rebook_10k',893,557,101,57),
  @('mansion-dj-right','dj_rebook_10k_right',1337,557,103,57),
- @('mansion-dj-confirm','dj_confirm_solomun',605,505,710,56),
- @('mansion-dj-confirm-tale','dj_confirm_tale',595,505,730,56),
+ # Keep the complete DJ name, $10000 and second sentence. The trailing
+ # "and make" is not transaction identity and can be covered by chat HUDs.
+ @('mansion-dj-confirm','dj_confirm_solomun',605,505,630,56),
+ @('mansion-dj-confirm-tale','dj_confirm_tale',595,505,630,56),
  @('mansion-dj-after','dj_resident',886,572,114,28),
  @('mansion-dj-right-after','dj_resident_right',1330,572,116,28),
  @('mansion-dj-after','nc_home',328,582,80,31),

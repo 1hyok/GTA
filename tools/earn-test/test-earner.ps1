@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 $source = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\Earner.ahk') -Raw -Encoding UTF8
 $tick = [regex]::Match($source, '(?ms)^EarnTick\(\) \{.*?^\}').Value
 if (-not $tick) { throw 'EarnTick missing' }
-$guards = @('EarnAFKCloseMCT', 'EarnInputGuardStart', 'EarnInputGuardStop', 'EarnInputWatch', 'EarnInputAllowed', 'EarnInputAbortEvidence', 'EarnInputWindowEvidence', 'EarnInputEvidenceText', 'EarnGamePID', 'EarnTaskList', 'EarnEnabledText', 'ToggleEarner', 'SetEarner', 'EarnStatusText', 'EarnIsMCTTask', 'EarnRunScheduledTask', 'EarnRunMCTBatch', 'EarnTaskMCTEndWithManualRetry', 'EarnManualStopCleanup', 'EarnBossOffWithManualRetry', 'EarnManualBossOffCleanup', 'EarnFinishManualStop', 'EarnNotifyStockFull', 'EarnFinishScheduledTask', 'EarnStopAfterFailure') | ForEach-Object {
+$guards = @('EarnAFKCloseMCT', 'EarnInputGuardStart', 'EarnInputGuardStop', 'EarnInputWatch', 'EarnInputAllowed', 'EarnInputAbortEvidence', 'EarnInputWindowEvidence', 'EarnInputEvidenceText', 'EarnGamePID', 'EarnTaskList', 'EarnEnabledText', 'ToggleEarner', 'SetEarner', 'EarnStatusText', 'EarnIsMCTTask', 'EarnRunScheduledTask', 'EarnRunMCTBatch', 'EarnTaskMCTEndWithManualRetry', 'EarnManualStopCleanup', 'EarnBossOffWithManualRetry', 'EarnConfirmNoScreenCleanup', 'EarnManualBossOffCleanup', 'EarnFinishManualStop', 'EarnNotifyStockFull', 'EarnFinishScheduledTask', 'EarnStopAfterFailure') | ForEach-Object {
     $functionName = $_
     $body = [regex]::Match($source, ('(?ms)^' + $functionName + '\([^\r\n]*\) \{.*?^\}')).Value
     if (-not $body) { throw "Production function missing: $functionName" }
@@ -77,7 +77,47 @@ global gEarnManualStop, gEarnManualCleanupActive, gEarnManualCleanupAttempted, g
 global gEarnFeedSeen, beginStopInjected, gEarnSellNotice, tooltips
 global lifecycleTrace, lifecycleEvents, finalizerProbeStages
 global gEarnInputAbortReason, metadataFailure, metadataCalls
+global recoveryHud, recoveryHudAfter, recoveryMenuCloseOK, visibleModal
 global state := Map(), stateWritable := true
+Reset()
+endOK := false, endNoScreen := true, recoveryHud := false, recoveryHudAfter := false
+EarnTick()
+fakeTick := gEarnRecovery.nextTick
+EarnTick()
+Check(IsObject(gEarnRecovery) && gEarnRecovery.attempts = 2 && gEarnDone["bunker"] = 0
+    && bossOffCount = 0 && !HasLog("복구 완료:") && !HasLog("복구 해제:"),
+    "unknown no-screen recovery cannot report cleanup or finish transactions even when the arrow probe succeeds")
+fakeTick := gEarnRecovery.nextTick
+EarnTick()
+Check(IsObject(gEarnRecovery) && gEarnRecovery.attempts = 3 && calls.Length = 2 && bossOffCount = 0,
+    "repeated unknown screens keep guarded recovery without transactions or speculative menu input")
+recoveryHud := true, recoveryHudAfter := true
+fakeTick := gEarnRecovery.nextTick
+EarnTick()
+Check(!IsObject(gEarnRecovery) && calls.Length = 2 && bossOffCount = 1
+    && gEarnDone["bunker"] = 1 && gEarnDone["dj"] = 1 && HasLog("복구 완료:"),
+    "real HUD and CEO confirmation release the original batch exactly once after unknown screens")
+for boundary in ["boss-unconfirmed", "menu-close-failed", "hud-lost"] {
+    Reset()
+    endOK := false, endNoScreen := true
+    bossProbeOK := boundary != "boss-unconfirmed"
+    recoveryMenuCloseOK := boundary != "menu-close-failed"
+    recoveryHudAfter := boundary != "hud-lost"
+    EarnTick()
+    fakeTick := gEarnRecovery.nextTick
+    EarnTick()
+    Check(IsObject(gEarnRecovery) && gEarnRecovery.attempts = 2 && gEarnDone["bunker"] = 0
+        && calls.Length = 2 && bossOffCount = 1 && !HasLog("복구 완료:"),
+        "no-screen confirmation rejects " boundary " without repeating task bodies")
+}
+for modal in ["dj_confirm_solomun", "dj_confirm_tale"] {
+    Reset()
+    visibleModal := modal
+    afkResult := EarnAFKCloseMCT(600)
+    Check(afkResult = "MCT 화면 정리 완료 idle=600s" && endCount = 1 && bossOffCount = 1
+        && !gEarnBusy && !gEarnAFKCleanup,
+        "AFK cleanup recognizes the isolated " modal " without a visible background page")
+}
 Reset()
 gEarnInputAbortReason := "stale"
 EarnInputGuardStart()
@@ -460,15 +500,15 @@ EarnTick()
 lifecycleTrace := false
 Check(bossProbeGuardedCount = 1 && lifecycleEvents.Length = 5
     && lifecycleEvents[1] = "lock-acquire" && lifecycleEvents[2] = "guard-start"
-    && lifecycleEvents[3] = "boss-probe" && lifecycleEvents[4] = "guard-stop"
+    && lifecycleEvents[3] = "boss-strict" && lifecycleEvents[4] = "guard-stop"
     && lifecycleEvents[5] = "lock-release",
     "ordinary no-screen CEO probe runs before guard stop and input lock release")
-Check(gEarnOn && !IsObject(gEarnRecovery) && gEarnSellNotice = sellReason
-    && calls.Length = 3 && endCount = 2 && bossProbeCount = 1 && bossProbeStrictCount = 0
-    && gEarnDone["bunker"] = 1 && gEarnDone["warehouse"] = 1 && gEarnDone["dj"] = 1 && stopped = 0,
-    "stock-full uses the existing general no-screen recovery policy, with no special stop latch")
-Check(HasLog("복구 해제:") && !HasLog("복구 완료:") && !HasLog("꺼짐"),
-    "no-screen release is logged separately from a confirmed cleanup or a stop")
+Check(gEarnOn && IsObject(gEarnRecovery) && gEarnSellNotice = sellReason
+    && calls.Length = 3 && endCount = 2 && bossProbeCount = 1 && bossProbeStrictCount = 1
+    && gEarnDone["bunker"] = 0 && gEarnDone["warehouse"] = 0 && gEarnDone["dj"] = 0 && stopped = 0,
+    "stock-full waits for confirmed cleanup without stopping or repeating transactions")
+Check(!HasLog("복구 해제:") && !HasLog("복구 완료:") && !HasLog("꺼짐"),
+    "unconfirmed cleanup never reports release or completion")
 Reset()
 sellReason := "나이트클럽 창고 만재 1개: 판매 필요"
 gEarnTasks := [{id:"bunker",label:"bunker",on:true,every:300000,fn:RunTask.Bind("bunker")},
@@ -482,10 +522,10 @@ bossProbeMode := "manual-retry-success", lifecycleTrace := true, lifecycleEvents
 fakeTick := gEarnRecovery.nextTick, idleMs := 60000
 EarnTick()
 lifecycleTrace := false
-Check(bossStopInjected && bossProbeCount = 2 && bossProbeStrictCount = 0 && bossProbeGuardedCount = 2
+Check(bossStopInjected && bossProbeCount = 2 && bossProbeStrictCount = 2 && bossProbeGuardedCount = 2
     && bossRetryBaselineOK && bossRetryCleanupStateOK && lifecycleEvents.Length = 6
     && lifecycleEvents[1] = "lock-acquire" && lifecycleEvents[2] = "guard-start"
-    && lifecycleEvents[3] = "boss-probe" && lifecycleEvents[4] = "boss-probe"
+    && lifecycleEvents[3] = "boss-strict" && lifecycleEvents[4] = "boss-strict"
     && lifecycleEvents[5] = "guard-stop" && lifecycleEvents[6] = "lock-release"
     && lockCalls = 2 && lockReleases = 2 && calls.Length = 3 && endCount = 2,
     "F9 during ordinary CEO retirement retries exactly once under the same guarded input lock")
@@ -508,9 +548,9 @@ bossProbeMode := "manual-retry-fail", lifecycleTrace := true, lifecycleEvents :=
 fakeTick := gEarnRecovery.nextTick, idleMs := 60000
 EarnTick()
 lifecycleTrace := false
-Check(bossStopInjected && bossProbeCount = 2 && bossProbeStrictCount = 0 && bossProbeGuardedCount = 2
+Check(bossStopInjected && bossProbeCount = 2 && bossProbeStrictCount = 2 && bossProbeGuardedCount = 2
     && bossRetryBaselineOK && bossRetryCleanupStateOK && lifecycleEvents.Length = 6
-    && lifecycleEvents[3] = "boss-probe" && lifecycleEvents[4] = "boss-probe"
+    && lifecycleEvents[3] = "boss-strict" && lifecycleEvents[4] = "boss-strict"
     && lifecycleEvents[5] = "guard-stop" && lifecycleEvents[6] = "lock-release"
     && lockCalls = 2 && lockReleases = 2 && calls.Length = 3 && endCount = 2,
     "failed ordinary CEO retry is still bounded to one retry under the same guard and lock")
@@ -572,7 +612,9 @@ EarnTick()
 Check(IsObject(gEarnRecovery) && gEarnRecovery.attempts = 1, "no-screen cleanup failure first waits in recovery")
 fakeTick := gEarnRecovery.nextTick
 EarnTick()
-Check(!IsObject(gEarnRecovery) && gEarnOn && gEarnDone["bunker"] = 1 && endCount = 2, "repeated no-screen cleanup failure releases recovery and finishes the batch")
+Check(!IsObject(gEarnRecovery) && gEarnOn && gEarnDone["bunker"] = 1 && endCount = 2
+    && bossOffCount = 1 && bossProbeStrictCount = 1 && HasLog("복구 완료:"),
+    "no-screen recovery finishes only after free HUD and actual CEO retirement confirmation")
 Reset()
 endOK := false, endNoScreen := false
 EarnTick()
@@ -585,9 +627,13 @@ gEarnDue := Map("staff",0), gEarnDone := Map("staff",0)
 mode := "fail", appCloseOK := false
 EarnTick()
 Check(gEarnOn && IsObject(gEarnRecovery) && appCloseCount = 1 && calls.Length = 1, "failed app schedules known close recovery")
+gEarnCleanupNoScreen := true, fakeTick := gEarnRecovery.nextTick
+EarnTick()
+Check(IsObject(gEarnRecovery) && appCloseCount = 2 && bossOffCount = 0 && calls.Length = 1,
+    "app cleanup cannot consume stale MCT no-screen state or change CEO registration")
 appCloseOK := true, fakeTick := gEarnRecovery.nextTick
 EarnTick()
-Check(gEarnOn && !IsObject(gEarnRecovery) && appCloseCount = 2 && calls.Length = 1 && gEarnFailures.Has("staff"), "app recovery does not repeat staff request")
+Check(gEarnOn && !IsObject(gEarnRecovery) && appCloseCount = 3 && calls.Length = 1 && gEarnFailures.Has("staff"), "app recovery does not repeat staff request")
 Reset()
 mode := "throw"
 EarnTick()
@@ -780,6 +826,8 @@ Reset() {
     endStopMode := "", bossOffCount := 0, bossProbeOK := true, bossProbeCount := 0, bossProbeStrictCount := 0, bossProbeGuardedCount := 0
     bossProbeMode := "", bossStopInjected := false, bossInitialGuardTick := 0, bossRetryBaselineOK := false, bossRetryCleanupStateOK := false
     staleFailInjected := false, blockedRestartObserved := false
+    recoveryHud := true, recoveryHudAfter := true, recoveryMenuCloseOK := true, visibleModal := ""
+    gEarnCleanupNoScreen := false
     lifecycleTrace := false, lifecycleEvents := [], finalizerProbeStages := []
     gEarnDue := Map("bunker", A_TickCount - 1, "dj", A_TickCount - 1)
     gEarnHeld := Map(), gEarnFailures := Map(), gEarnRecovery := "", appCloseOK := true, appCloseCount := 0, state := Map(), stateWritable := true
@@ -1035,7 +1083,9 @@ EarnAtMCT() {
     }
     return mctOpen
 }
-EarnSeen(*) => false
+EarnSeen(name, *) => name = visibleModal
+EarnMCTRecoveryHud() => bossOffCount > 0 ? recoveryHudAfter : recoveryHud
+EarnMenuClose() => recoveryMenuCloseOK
 EarnSleep(*) => !gAbort
 EarnAborted() => gAbort || !gEarnOn
 EarnMCTSpotSweep() => false
@@ -1067,7 +1117,7 @@ EarnTaskMCTBegin() {
 }
 EarnTaskMCTEnd() {
     global endCount, mctOpen, fakeTick, idleMs, endNoScreen, endStopMode, stopStatus, staleFailInjected, blockedRestartObserved, gEarnFail
-    if ((!lockHeld && !gEarnAFKCleanup) || !gEarnGuardArmed || !mctOpen)
+    if ((!lockHeld && !gEarnAFKCleanup) || !gEarnGuardArmed || (!mctOpen && visibleModal = ""))
         throw Error("Group end must retain its single input lock and guard")
     endCount++, events.Push("end")
     fakeTick += endDelay, idleMs += endDelay
@@ -1128,6 +1178,8 @@ EarnCEO(on) {
     if (on || (!lockHeld && !gEarnAFKCleanup) || !gEarnGuardArmed)
         throw Error("CEO retirement must remain inside the guarded input lock")
     bossOffCount++
+    if (endNoScreen)
+        return EarnBossOffIfOn(true)
     return true
 }
 FocusWaitLogCount() {
@@ -1188,7 +1240,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 162 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 171 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout
