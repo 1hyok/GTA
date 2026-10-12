@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 $source = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\Earner.ahk') -Raw -Encoding UTF8
 $tick = [regex]::Match($source, '(?ms)^EarnTick\(\) \{.*?^\}').Value
 if (-not $tick) { throw 'EarnTick missing' }
-$guards = @('EarnAFKCloseMCT', 'EarnInputGuardStart', 'EarnInputGuardStop', 'EarnInputWatch', 'EarnInputAllowed', 'EarnInputAbortEvidence', 'EarnInputWindowEvidence', 'EarnInputEvidenceText', 'EarnGamePID', 'EarnTaskList', 'EarnEnabledText', 'ToggleEarner', 'SetEarner', 'EarnStatusText', 'EarnIsMCTTask', 'EarnRunScheduledTask', 'EarnRunMCTBatch', 'EarnTaskMCTEndWithManualRetry', 'EarnManualStopCleanup', 'EarnBossOffWithManualRetry', 'EarnConfirmNoScreenCleanup', 'EarnManualBossOffCleanup', 'EarnFinishManualStop', 'EarnNotifyStockFull', 'EarnFinishScheduledTask', 'EarnStopAfterFailure') | ForEach-Object {
+$guards = @('EarnAFKCloseMCT', 'EarnInputGuardStart', 'EarnInputGuardStop', 'EarnInputWatch', 'EarnInputAllowed', 'EarnInputAbortEvidence', 'EarnInputWindowEvidence', 'EarnInputEvidenceText', 'EarnGamePID', 'EarnTaskList', 'EarnEnabledText', 'ToggleEarner', 'SetEarner', 'EarnStatusText', 'EarnIsMCTTask', 'EarnRunScheduledTask', 'EarnRunMCTBatch', 'EarnTaskMCTEndWithManualRetry', 'EarnManualStopCleanup', 'EarnBossOffWithManualRetry', 'EarnConfirmNoScreenCleanup', 'EarnManualBossOffCleanup', 'EarnFinishManualStop', 'EarnNotifyStockFull', 'EarnClearStockNotice', 'EarnFinishScheduledTask', 'EarnStopAfterFailure') | ForEach-Object {
     $functionName = $_
     $body = [regex]::Match($source, ('(?ms)^' + $functionName + '\([^\r\n]*\) \{.*?^\}')).Value
     if (-not $body) { throw "Production function missing: $functionName" }
@@ -19,6 +19,10 @@ $guards = @('EarnAFKCloseMCT', 'EarnInputGuardStart', 'EarnInputGuardStop', 'Ear
 $guards += [regex]::Match($source, '(?ms)^EarnAFKCloseMCTGuarded\([^\r\n]*\) \{.*?^\}').Value
 $production = ($tick + "`n" + ($guards -join "`n")).Replace('A_TimeIdlePhysical', 'idleMs').Replace('A_TickCount', 'fakeTick')
 $production = $production.Replace('DllCall("GetForegroundWindow", "ptr")', 'FakeForegroundWindow()')
+$overlay = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Overlay.ahk') -Raw -Encoding UTF8
+$runningItems = [regex]::Match($overlay, '(?ms)^RunningItems\(\) \{.*?^\}').Value
+if (-not $runningItems) { throw 'Production RunningItems missing' }
+$production += "`n" + $runningItems
 $core = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnCore.ahk') -Raw -Encoding UTF8
 foreach ($functionName in @('EarnTransactionBegin','EarnTransactionConfirmed')) {
     $production += "`n" + [regex]::Match($core, ('(?ms)^' + $functionName + '\([^\r\n]*\) \{.*?^\}')).Value
@@ -75,11 +79,14 @@ global beginCount, endCount, beginCleanupCount, beginOK, endOK, endNoScreen, beg
 global endStopMode, bossOffCount, bossProbeOK, bossProbeCount, bossProbeStrictCount, bossProbeGuardedCount, bossProbeMode, bossStopInjected, bossInitialGuardTick, bossRetryBaselineOK, bossRetryCleanupStateOK, staleFailInjected, blockedRestartObserved
 global gEarnHeld, gEarnFailures, gEarnRecovery, appCloseOK, appCloseCount
 global gEarnManualStop, gEarnManualCleanupActive, gEarnManualCleanupAttempted, gEarnTaskActive, gEarnAFKCleanup, gEarnMCTCleanupOK, stopStatus
-global gEarnFeedSeen, beginStopInjected, gEarnSellNotice, tooltips
+global gEarnFeedSeen, beginStopInjected, gEarnSellNotices, tooltips
 global lifecycleTrace, lifecycleEvents, finalizerProbeStages
 global gEarnInputAbortReason, metadataFailure, metadataCalls
 global recoveryHud, recoveryHudAfter, recoveryMenuCloseOK, visibleModal
 global hudDepth := 0, hudTakes := 0, hudReturns := 0, hudInject := ""
+global clawLoopRunning := false, clawTries := 0, clickRunning := false, wRunning := false, shiftWRunning := false
+global vellumDrivingRunning := false, cayoTimerRunning := false, cayoEndTick := 0, altF4Running := false
+global gJobWarpStart := 0, gJobWarpMinMs := 0, mcRunning := false, gMenuBusy := false
 global state := Map(), stateWritable := true
 Reset()
 endOK := false, endNoScreen := true, recoveryHud := false, recoveryHudAfter := false
@@ -420,15 +427,32 @@ Check(gEarnDue["bunker"] = fakeTick,
 Reset()
 sellReason := "나이트클럽 창고 만재 3개: 판매 필요"
 gEarnFail := "existing failure", gEarnRetryIn := 1234
-EarnNotifyStockFull(sellReason)
-Check(gEarnSellNotice = sellReason && logs.Length = 1 && tooltips.Length = 1
+EarnNotifyStockFull("nightclub", sellReason)
+Check(gEarnSellNotices.Count = 1 && gEarnSellNotices["nightclub"] = sellReason && logs.Length = 1 && tooltips.Length = 1
     && gEarnOn && !gAbort && !gEarnManualStop && gEarnFail = "existing failure" && gEarnRetryIn = 1234,
     "stock-full notification changes only notice and output, not control flow or failure state")
-EarnNotifyStockFull(sellReason)
+EarnNotifyStockFull("nightclub", sellReason)
 Check(logs.Length = 1 && tooltips.Length = 1, "unchanged stock-full notice is deduplicated")
-EarnNotifyStockFull("벙커 재고 만재: 판매 필요")
-Check(logs.Length = 2 && tooltips.Length = 2 && gEarnSellNotice = "벙커 재고 만재: 판매 필요",
-    "changed stock-full notice is reported without stopping")
+EarnNotifyStockFull("nightclub", "나이트클럽 창고 만재 4개: 판매 필요")
+Check(logs.Length = 2 && tooltips.Length = 2 && gEarnSellNotices["nightclub"] = "나이트클럽 창고 만재 4개: 판매 필요",
+    "changed stock-full notice for the same source is reported")
+EarnNotifyStockFull("bunker", "벙커 재고 만재: 판매 필요")
+Check(logs.Length = 3 && tooltips.Length = 3 && gEarnSellNotices.Count = 2
+    && gEarnSellNotices["nightclub"] = "나이트클럽 창고 만재 4개: 판매 필요"
+    && gEarnSellNotices["bunker"] = "벙커 재고 만재: 판매 필요",
+    "different stock-full sources coexist without overwriting")
+runningNotices := RunningItems()
+Check(runningNotices.Length >= 2 && HasItem(runningNotices, gEarnSellNotices["nightclub"])
+    && HasItem(runningNotices, gEarnSellNotices["bunker"]),
+    "actual overlay consumer displays every concurrent stock notice")
+EarnClearStockNotice("nightclub")
+Check(gEarnSellNotices.Count = 1 && !gEarnSellNotices.Has("nightclub")
+    && gEarnSellNotices["bunker"] = "벙커 재고 만재: 판매 필요"
+    && logs.Length = 4 && tooltips.Length = 3,
+    "clearing one source preserves the other source and emits no tooltip")
+EarnClearStockNotice("nightclub")
+Check(logs.Length = 4 && tooltips.Length = 3 && gEarnSellNotices.Count = 1,
+    "clearing an already absent source is idempotent")
 Reset()
 sellReason := "나이트클럽 창고 만재 3개: 판매 필요"
 gEarnTasks := [{id:"bunker",label:"bunker",on:true,every:300000,fn:RunTask.Bind("bunker")},
@@ -447,7 +471,7 @@ Check(gEarnDue["bunker"] = sellStart + 300000 && gEarnDue["warehouse"] = sellSta
     "stock-full batch keeps ordinary scheduling for every completed task")
 Check(gEarnOn && !gAbort && !gEarnBusy && !gEarnGuardArmed && !lockHeld && lockReleases = 1
     && endCount = 1 && bossOffCount = 1 && !mctOpen && stopped = 0
-    && gEarnSellNotice = sellReason && gEarnFail = "" && !InStr(EarnStatusText(), "수익 멈춤:"),
+    && gEarnSellNotices.Get("nightclub", "") = sellReason && gEarnFail = "" && !InStr(EarnStatusText(), "수익 멈춤:"),
     "stock-full batch remains enabled after guarded MCT cleanup without a stopped overlay")
 EarnTick()
 Check(calls.Length = 4 && calls[4] = "safe" && gEarnDone["safe"] = 1 && gEarnOn,
@@ -461,6 +485,8 @@ ToggleEarner()
 EarnTick()
 Check(!gEarnOn && calls.Length = 7 && stopped = 1 && !gEarnManualStop,
     "manual F9 still stops automation after stock-full detection and later ticks do not restart it")
+Check(gEarnSellNotices.Get("nightclub", "") = sellReason,
+    "manual F9 off preserves the last confirmed stock notice")
 Reset()
 sellReason := "나이트클럽 창고 만재 3개: 판매 필요"
 gEarnTasks := [{id:"bunker",label:"bunker",on:true,every:300000,fn:RunTask.Bind("bunker")},
@@ -470,7 +496,7 @@ gEarnDue := Map("bunker", fakeTick - 1, "warehouse", fakeTick - 1, "dj", fakeTic
 gEarnDone := Map("bunker", 0, "warehouse", 0, "dj", 0), taskModes := Map("warehouse", "stock-full")
 sellStart := fakeTick, endOK := false
 EarnTick()
-Check(gEarnOn && IsObject(gEarnRecovery) && gEarnSellNotice = sellReason
+Check(gEarnOn && IsObject(gEarnRecovery) && gEarnSellNotices.Get("nightclub", "") = sellReason
     && calls.Length = 3 && gEarnDone["bunker"] = 0 && gEarnDone["warehouse"] = 0 && gEarnDone["dj"] = 0,
     "stock-full batch still waits for cleanup recovery before finalizing work")
 Check(endCount = 1 && bossOffCount = 0 && mctOpen && lockReleases = 1 && stopped = 0,
@@ -480,7 +506,7 @@ EarnTick()
 Check(calls.Length = 3 && endCount = 2 && bossOffCount = 1 && lockReleases = 2
     && gEarnDone["bunker"] = 1 && gEarnDone["warehouse"] = 1 && gEarnDone["dj"] = 1,
     "stock-full recovery retries only End and finalizes each completed body once")
-Check(gEarnOn && !IsObject(gEarnRecovery) && gEarnSellNotice = sellReason && stopped = 0
+Check(gEarnOn && !IsObject(gEarnRecovery) && gEarnSellNotices.Get("nightclub", "") = sellReason && stopped = 0
     && !InStr(EarnStatusText(), "수익 멈춤:"),
     "stock-full recovery resumes normal scheduling without a sale stop")
 fakeTick := gEarnDue["bunker"], idleMs := 60000
@@ -505,7 +531,7 @@ Check(bossProbeGuardedCount = 1 && lifecycleEvents.Length = 5
     && lifecycleEvents[3] = "boss-strict" && lifecycleEvents[4] = "guard-stop"
     && lifecycleEvents[5] = "lock-release",
     "ordinary no-screen CEO probe runs before guard stop and input lock release")
-Check(gEarnOn && IsObject(gEarnRecovery) && gEarnSellNotice = sellReason
+Check(gEarnOn && IsObject(gEarnRecovery) && gEarnSellNotices.Get("nightclub", "") = sellReason
     && calls.Length = 3 && endCount = 2 && bossProbeCount = 1 && bossProbeStrictCount = 1
     && gEarnDone["bunker"] = 0 && gEarnDone["warehouse"] = 0 && gEarnDone["dj"] = 0 && stopped = 0,
     "stock-full waits for confirmed cleanup without stopping or repeating transactions")
@@ -739,8 +765,11 @@ config["Settings"]["EarnCargoStaff"] := 1
 Check(EarnTaskList()[5].on, "cargo alone enables staff")
 Reset()
 start := A_TickCount
+gEarnSellNotices["bunker"] := "벙커 재고 만재: 판매 필요"
 SetEarner(true)
-Check(gEarnOn && gEarnGamePID = fakePID && hooks = 2 && timers[timers.Length] = 1000, "enable binds current game and one-second timer")
+Check(gEarnOn && gEarnGamePID = fakePID && hooks = 2 && timers[timers.Length] = 1000
+    && gEarnSellNotices.Get("bunker", "") = "벙커 재고 만재: 판매 필요",
+    "enable binds current game and one-second timer without clearing confirmed notices")
 Check(feedTimer = 4000, "enable starts the safe deposit feed watch")
 Check(gEarnDue["safe"] >= start && gEarnDue["safe"] <= A_TickCount
     && gEarnDue["warehouse"] >= start && gEarnDue["warehouse"] <= A_TickCount, "safe and warehouse first check immediately")
@@ -866,7 +895,7 @@ Reset() {
     gEarnManualStop := false, gEarnManualCleanupActive := false, gEarnManualCleanupAttempted := false
     gEarnTaskActive := false, gEarnAFKCleanup := false, gEarnMCTCleanupOK := true, stopStatus := ""
     gEarnFeedSeen := Map(), beginStopInjected := false
-    gEarnSellNotice := "", tooltips := []
+    gEarnSellNotices := Map(), tooltips := []
     endStopMode := "", bossOffCount := 0, bossProbeOK := true, bossProbeCount := 0, bossProbeStrictCount := 0, bossProbeGuardedCount := 0
     bossProbeMode := "", bossStopInjected := false, bossInitialGuardTick := 0, bossRetryBaselineOK := false, bossRetryCleanupStateOK := false
     staleFailInjected := false, blockedRestartObserved := false
@@ -906,7 +935,7 @@ RunTask(id, manageSession := true) {
         return EarnFail("화면 판독 중단 또는 시간 초과")
     }
     if (taskMode = "stock-full") {
-        EarnNotifyStockFull("나이트클럽 창고 만재 3개: 판매 필요")
+        EarnNotifyStockFull("nightclub", "나이트클럽 창고 만재 3개: 판매 필요")
         return true
     }
     if (taskMode = "long-readonly") {
@@ -968,6 +997,14 @@ Check(ok, name) {
         ExitApp(1)
     }
 }
+HasItem(items, expected) {
+    for item in items
+        if (item = expected)
+            return true
+    return false
+}
+JobWarpArmedText() => ""
+BotWarpStatusText() => ""
 WinExist(*) => windowExists
 WinGetPID(selector) {
     if (selector = "ahk_id 777") {
@@ -1284,7 +1321,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 175 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 180 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout

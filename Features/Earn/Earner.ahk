@@ -8,7 +8,7 @@ global gEarnOn := false
 global gEarnDue := Map()        ; 작업 id → 다음 실행 시각(A_TickCount)
 global gEarnDone := Map()       ; 작업 id → 켠 뒤 성공 횟수
 global gEarnCurrent := ""       ; 지금 하는 작업 이름
-global gEarnSellNotice := ""    ; 자동화를 중단하지 않고 표시할 재고 만재 알림
+global gEarnSellNotices := Map() ; 사업장별 판매 알림. 다른 사업장 관측이나 F9 토글로 지우지 않는다.
 global gEarnTasks := []
 global gEarnNextDue := Map()   ; 작업이 스스로 정한 다음 실행 시각(A_TickCount). 없으면 시작 시각 + 간격
 global gEarnSoftFails := Map()   ; 작업별 연속 실패 횟수. 빠른 재시도 뒤 최대 30분으로 간격을 늘린다
@@ -111,7 +111,7 @@ ToggleEarner(*) {
 }
 
 SetEarner(on, reason := "", stopMode := "hard") {
-    global gEarnOn, gEarnDue, gEarnDone, gEarnFail, gEarnTasks, gEarnNextDue, gEarnSoftFails, gEarnHeld, gEarnFailures, gEarnRecovery, gEarnRetryIn, gEarnBusy, gAbort, gEarnGamePID, gEarnBunkerFull, gEarnManualStop, gEarnManualCleanupActive, gEarnManualCleanupAttempted, gEarnTaskActive, gEarnAFKCleanup, gEarnUserAbort, gEarnSellNotice, gEarnInputAbortReason, config, afkOn
+    global gEarnOn, gEarnDue, gEarnDone, gEarnFail, gEarnTasks, gEarnNextDue, gEarnSoftFails, gEarnHeld, gEarnFailures, gEarnRecovery, gEarnRetryIn, gEarnBusy, gAbort, gEarnGamePID, gEarnBunkerFull, gEarnManualStop, gEarnManualCleanupActive, gEarnManualCleanupAttempted, gEarnTaskActive, gEarnAFKCleanup, gEarnUserAbort, gEarnInputAbortReason, config, afkOn
     if (on && (gEarnBusy || gEarnManualStop)) {
         ShowTooltip("💰 수익 자동화 끄기 정리 중: 다시 켤 수 없음", 2000)
         EarnLog("켜기 무시: 종료 정리 중 직접 재활성화 요청")
@@ -138,7 +138,6 @@ SetEarner(on, reason := "", stopMode := "hard") {
         gAbort := false
         gEarnUserAbort := false
         gEarnInputAbortReason := ""
-        gEarnSellNotice := ""
         ; 끈 사이에 벙커를 팔았을 수 있다. 첫 확인은 벙커 카드로 새로 읽는다.
         gEarnBunkerFull := false
         now := A_TickCount
@@ -565,14 +564,23 @@ EarnFinishManualStop(cleanupOK, cleanupAttempted, mctSession := true) {
 }
 
 ; 만재는 알림만 남긴다. 구매·조달을 건너뛸지는 각 작업이 판단하고, 전체 자동화 중단은 사용자가 결정한다.
-EarnNotifyStockFull(reason) {
-    global gEarnSellNotice
-    if (gEarnSellNotice != reason) {
-        gEarnSellNotice := reason
+EarnNotifyStockFull(source, reason) {
+    global gEarnSellNotices
+    if (gEarnSellNotices.Get(source, "") != reason) {
+        gEarnSellNotices[source] := reason
         EarnLog("재고 만재 알림: " reason " · 나머지 작업 계속")
         ShowTooltip("💰 " reason " · 자동화 계속, 중단은 직접", 10000)
     }
     return true
+}
+
+; 해당 대상의 비만재 상태를 확인한 소비처만 호출한다. 미확인·다른 사업장 관측에서는 보존한다.
+EarnClearStockNotice(source) {
+    global gEarnSellNotices
+    if (gEarnSellNotices.Has(source)) {
+        EarnLog("재고 만재 알림 해제: " gEarnSellNotices[source])
+        gEarnSellNotices.Delete(source)
+    }
 }
 
 EarnFinishScheduledTask(result) {

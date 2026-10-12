@@ -205,8 +205,10 @@ RunningItems() {
         items.Push("메뉴 매크로 진행 중")
     if (IsSet(gEarnOn) && (earn := EarnStatusText()) != "")
         items.Push(earn)
-    ; 창고 작업이 남긴 판매 필요 알림은 다음 관측에서 풀릴 때까지 계속 보인다.
-    if (IsSet(gEarnSellNotice) && gEarnSellNotice != "")
-        items.Push(gEarnSellNotice)
+    ; 사업장별 판매 알림을 함께 표시한다. 해당 재고의 해소가 확인될 때까지 유지한다.
+    if (IsSet(gEarnSellNotices)) {
+        for source, notice in gEarnSellNotices
+            items.Push(notice)
+    }
     return items
 }
