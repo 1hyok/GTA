@@ -804,26 +804,26 @@ SetEarner(false, "전체 멈춤")
 Check(gAbort && releaseCount > 0 && !gEarnManualStop && gEarnFail = "전체 멈춤",
     "hard stop releases held keys without starting manual cleanup")
 Reset()
-hudInject := "throw"
 EarnTick()
-Check(!gEarnOn && calls.Length = 0 && lockReleases = 1 && hudDepth = 0,
-    "HUD hiding failure stops before business work and releases input ownership")
+Check(calls.Length = 2 && lockReleases = 1 && hudDepth = 0 && hudTakes = 0,
+    "scheduler does not hide whole MCT batch or CEO cleanup")
 Reset()
-hudInject := "physical"
+gEarnTasks := [{id:"staff", label:"staff", on:true, every:300000, fn:RunTask.Bind("staff")}]
+gEarnDue := Map("staff", fakeTick-1), gEarnDone := Map("staff",0)
 EarnTick()
-Check(calls.Length = 0 && gEarnOn && hudDepth = 0 && gEarnUserAbort,
-    "input while hiding HUD is guarded from before acquisition")
+Check(calls.Length = 1 && calls[1] = "staff" && hudDepth = 0 && hudTakes = 0,
+    "phone staff task never acquires broad HUD hiding")
 Reset()
-hudInject := "physical"
-Check(EarnAFKCloseMCT(300) = "" && endCount = 0 && hudDepth = 0,
-    "AFK input during HUD acquisition prevents screen cleanup")
+Check(EarnAFKCloseMCT(300) = "" && endCount = 0 && hudDepth = 0 && hudTakes = 0,
+    "AFK first screen check leaves idle HUD visible")
 Reset()
-hudInject := "focus"
-Check(EarnAFKCloseMCT(300) = "" && endCount = 0 && hudDepth = 0,
-    "AFK focus loss during HUD acquisition prevents screen cleanup")
+mctOpen := true
+EarnAFKCloseMCT(300)
+Check(endCount = 1 && hudDepth = 0 && hudTakes = 0,
+    "AFK relies on MCT screen boundaries rather than whole cleanup lease")
 FileAppend("PASS Earner: " checkCount " cases; no game input`n", "*")
-if (hudDepth != 0 || hudTakes = 0 || hudTakes != hudReturns)
-    throw Error("HUD scopes must balance across scheduler, stop, exception and AFK cases")
+if (hudDepth != 0 || hudTakes != 0 || hudReturns != 0)
+    throw Error("Scheduler must not acquire task-wide HUD hiding")
 ExitApp(0)
 
 DiscordHUDVisibilityAcquire() {
@@ -835,6 +835,11 @@ DiscordHUDVisibilityAcquire() {
         fakeTick += 200, idleMs := 0
     if (hudInject = "focus")
         focused := false
+}
+DiscordHUDMCTSet(open) {
+    if (open)
+        throw Error("Scheduler may restore confirmed free HUD, but never hide a whole task")
+    return true
 }
 DiscordHUDVisibilityRelease() {
     global hudDepth, hudReturns
@@ -880,7 +885,7 @@ Reset() {
 }
 RunTask(id, manageSession := true) {
     global calls, mode, gEarnNextDue, gEarnRetryIn, idleMs, focused, fakePID, fakeTick
-    if (!lockHeld || !gEarnBusy || !gEarnGuardArmed || hudDepth != 1)
+    if (!lockHeld || !gEarnBusy || !gEarnGuardArmed || hudDepth != 0)
         throw Error("Every body must share the live input lock and guard")
     if (EarnIsMCTTask(id) ? manageSession || !mctOpen : mctOpen)
         throw Error("MCT bodies require the shared session; apps require it closed")

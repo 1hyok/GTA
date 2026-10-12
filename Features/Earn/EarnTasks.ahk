@@ -658,7 +658,7 @@ EarnTaskMCTEnd() {
             && !EarnUIReady("mct_seated", [0,0,0.3,0.1]) && !EarnUIReady("mct_need_ceo")) {
             ; 등록 메뉴가 닫히는 동안 숨었던 접근 안내만 기다린다. 미확인 화면에는 입력하지 않는다.
             if (EarnWaitSeen("mct_sit", [0,0,0.3,0.1], 3000))
-                return EarnCEO(false)
+                return DiscordHUDMCTSet(false) && EarnCEO(false)
             return EarnFail("MCT 정리: 확인된 복귀 경로 없음. 화면 확인 후 보스 해제 필요")
         }
         ; CEO를 먼저 해제하고, 다음 회차가 오래 시점을 훑지 않도록 의자 안내를 다시 맞춘다.
@@ -770,7 +770,7 @@ EarnPopularityHomePct() {
 }
 
 EarnUIReady(name, area := "") {
-    return !EarnAborted() && EarnSeen(name, area)
+    return !EarnAborted() && DiscordHUDMCTObserved(name, EarnSeen(name, area)) && !EarnAborted()
 }
 
 ; 인기도는 게임 하루(48분)마다 한 단계씩 떨어진다(1005 실측: 02:53~12:30 하락 간격 46~50분, 100→95→91 하루 한 번).

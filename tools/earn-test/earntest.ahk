@@ -13,6 +13,7 @@ InstallMouseHook()
 #Include %A_ScriptDir%\..\..\Features\SessionSwitch.ahk
 #Include %A_ScriptDir%\SessionGuard.ahk
 #Include %A_ScriptDir%\..\..\Features\Earn\EarnCore.ahk
+#Include %A_ScriptDir%\..\..\Features\DiscordHUD.ahk
 #Include %A_ScriptDir%\..\..\Features\Earn\EarnScreen.ahk
 #Include %A_ScriptDir%\..\..\Features\Earn\EarnPolicy.ahk
 #Include %A_ScriptDir%\..\..\Features\Earn\EarnTasks.ahk
@@ -36,6 +37,7 @@ global gTestInputMutex := 0
 global gEarnInputGuard := EarnTestInputAllowed
 global gSessionInputGuard := EarnTestSessionAllowed
 OnExit(EarnTestExit)
+OnExit(DiscordHUDVisibilityExit)
 OnError(EarnTestError)
 Hotkey("~End", StopAll)
 ; Earner.ahk 는 포함하지 않는다(핫키·타이머). 그 파일의 전역만 여기서 선언한다

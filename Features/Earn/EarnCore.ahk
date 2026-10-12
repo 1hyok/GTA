@@ -1079,9 +1079,10 @@ EarnNavTo(name, prompt := "", stopPx := 12, maxSteps := 40) {
 EarnMCTOpen() {
     global EARN_PROMPT_AREA
     if (EarnSeen("mct_title", [0.3, 0, 0.7, 0.1]))
-        return true
+        return DiscordHUDMCTSet(true)
     ; 테러바이트 MCT는 터치스크린 앞에 선 채 Space 로 연다. 앉고 일어서는 단계가 없다(1003 실측).
     if (EarnSeen("mct_terrorbyte")) {
+        DiscordHUDMCTSet(true)
         if (!EarnPress("Space"))
             return false
         if (!EarnWaitSeen("mct_title", [0.3, 0, 0.7, 0.1], 8000)) {
@@ -1107,6 +1108,7 @@ EarnMCTOpen() {
     }
     if (!EarnSeen("mct_seated", EARN_PROMPT_AREA))
         return EarnFail("MCT: 열기 직전 앉은 상태 안내 없음")
+    DiscordHUDMCTSet(true)
     if (!EarnPress("Enter"))
         return false
     if (!EarnWaitSeen("mct_title", [0.3, 0, 0.7, 0.1], 8000)) {
@@ -1131,15 +1133,17 @@ EarnMCTClose(requireChairPrompt := true) {
         if (!EarnWaitSeen("mct_seated", EARN_PROMPT_AREA, 20000)) {
             ; 테러바이트는 닫으면 바로 선 채 접속 안내로 돌아온다. 일어설 필요가 없다.
             if (EarnSeen("mct_terrorbyte"))
-                return true
+                return DiscordHUDMCTSet(false)
             return EarnFail("MCT: 닫은 뒤 앉은 상태 안내 대기 시간 초과")
         }
     }
     ; 테러바이트 CEO 안내는 저택의 앉은 상태 메뉴형 안내와 비슷하게 잡힌다(1003 17:12 실측). 일어서지 않는다.
     if (EarnSeen("mct_terrorbyte"))
-        return true
+        return DiscordHUDMCTSet(false)
     if (!EarnSeen("mct_seated", EARN_PROMPT_AREA))
         return EarnFail("MCT: 화면이 닫히지 않음")
+    ; 웹 화면은 이미 닫혔다. 일어서기·의자 복귀·CEO 해제 동안은 디코를 다시 표시한다.
+    DiscordHUDMCTSet(false)
     if (EarnAborted())
         return false
     Click("Right Down")

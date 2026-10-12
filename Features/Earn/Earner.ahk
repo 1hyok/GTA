@@ -34,13 +34,9 @@ EarnAFKCloseMCT(idleSec) {
     if ((IsSet(gEarnBusy) && gEarnBusy) || gAbort)
         return ""
     started := A_TickCount
-    DiscordHUDVisibilityAcquire()
-    try {
-        if (!IsGTAActive() || A_TimeIdlePhysical < A_TickCount - started)
-            return ""
-        return EarnAFKCloseMCTGuarded(idleSec)
-    }
-    finally DiscordHUDVisibilityRelease()
+    if (!IsGTAActive() || A_TimeIdlePhysical < A_TickCount - started)
+        return ""
+    return EarnAFKCloseMCTGuarded(idleSec)
 }
 
 EarnAFKCloseMCTGuarded(idleSec) {
@@ -277,12 +273,9 @@ EarnTick() {
     ; 방치 5분에 닿지 못해 CPU 부스트·프레임 제한이 한 번도 안 걸렸다(1005 13:10~16:30, 핫스팟 95°C. 제한 때는 62~67°C).
     try %"AFKSelfInput"%(true)
     outcome := {results: [], cleanupOK: true}
-    hudLease := false
     fatalReason := ""
     try {
         EarnInputGuardStart()
-        DiscordHUDVisibilityAcquire()
-        hudLease := true
         if (EarnInputAllowed()) {
             if (recovering) {
                 outcome := gEarnRecovery.outcome
@@ -318,11 +311,7 @@ EarnTick() {
             gEarnBusy := false
             gEarnTaskActive := false
             gEarnCurrent := ""
-            try EarnInputLockRelease(inputLock)
-            finally {
-                if (hudLease)
-                    DiscordHUDVisibilityRelease()
-            }
+            EarnInputLockRelease(inputLock)
         }
     }
     ; F9 수동 종료는 새 작업 입력을 즉시 막되, 이미 연 MCT의 확인된 정리와 CEO 해제까지 끝낸 뒤 꺼진다.
@@ -499,6 +488,9 @@ EarnBossOffWithManualRetry(requireConfirmed := false) {
 ; 화살표 판독 불가뿐 아니라 MCT 아이콘에 가려진 흰 화살표도 CEO 해제 증거로 쓰지 않는다.
 EarnConfirmNoScreenCleanup() {
     if (!EarnInputAllowed() || !EarnMCTRecoveryHud())
+        return false
+    DiscordHUDMCTSet(false)
+    if (!EarnInputAllowed())
         return false
     if (!EarnCEO(false) || !EarnMenuClose())
         return false
