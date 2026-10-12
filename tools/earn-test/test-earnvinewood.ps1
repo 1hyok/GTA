@@ -31,6 +31,9 @@ if (([regex]::Matches($production, [regex]::Escape($deadlineNeedle))).Count -ne 
 }
 $production = $production.Replace($deadlineNeedle, 'deadline := gNowMs + Max(0, timeoutMs)')
 $production = $production.Replace($remainingNeedle, 'remainingMs := deadline - gNowMs')
+# Every production wall-clock read uses the same fake clock. OCR and key latency
+# advance it too, so a deadline cannot silently turn into a sleep-only budget.
+$production = [regex]::Replace($production, '\bA_TickCount\b', 'gNowMs')
 if (-not (Test-Path -LiteralPath $AhkPath -PathType Leaf)) { throw "AutoHotkey executable not found: $AhkPath" }
 $driver = @'
 #Requires AutoHotkey v2.0
@@ -42,14 +45,20 @@ EarnTransactionBegin(id, reason) {
     transactionPending[id] := reason
     return true
 }
-EarnTransactionConfirmed(id) => transactionPending.Delete(id)
+EarnTransactionConfirmed(id) {
+    global gConfirmCalls
+    gConfirmCalls += 1
+    transactionPending.Delete(id)
+}
 global gMode, gState, gSelected, gBiz, gIdx, gReads, gClaims, gClaimAttempts, gKeys, gStandWaits, gMctCloses, gCEOCalls, gFailure, gScheduled, gPhoneFrameVisible, gTests := 0
 global gNowMs := 0, gSleepMs := 0, gTimedReads := 0
+global gClaimPlan := 0, gClaimAt := -1, gClaimReads := [], gAbort := false, gConfirmCalls := 0
 ; 입금 알림 감시(EarnSafeFeedWatch)는 스케줄러 전역을 쓴다. 이 시험은 파서만 부른다.
 global gEarnRetryIn := 0, gEarnOn := false, gEarnBusy := false, gEarnDue := Map(), gEarnNextDue := Map()
 global config := Map("Settings", Map("EarnUserIdleSec", 45)), gPhysIdle := 600000, gOthersIdle := 600000
 IsGTAActive() => false
-EarnAborted() => false
+EarnAborted() => gAbort
+RunClaimTimingTests()
 RunTests()
 FileAppend("PASS EarnVinewood cases=" gTests Chr(10), "*", "UTF-8")
 ExitApp(0)
@@ -57,6 +66,122 @@ ExitApp(0)
 ; 기본 목록은 1004 00:24 실측 순서와 금액이다(Car Wash 는 빈 금고).
 DefaultBiz() => [["Nightclub",150000], ["Arcade",10000], ["Agency",80000], ["Salvage Yard",6300],
     ["Bail Office",12800], ["Garment Factory",35720], ["Hands On Car Wash",0]]
+
+; The live response was absent at +2s and present by +35s. Deterministic
+; delayed frames reproduce the old 15-second rejection without live input.
+RunClaimTimingTests() {
+    global gNowMs, gClaimAt, gClaimReads, gAbort, gClaimAttempts, gKeys, gConfirmCalls, transactionPending
+    for delay in [35000, 16000, 0] {
+        ClaimReset(Map("delay", delay))
+        ok := EarnVinewoodClaim("Nightclub", 250000)
+        elapsed := gNowMs - gClaimAt
+        Check(ok, "claim response at " delay "ms succeeds; elapsed=" elapsed "ms")
+        ClaimSafety(true, "claim response at " delay "ms")
+        Check(elapsed >= Max(1000, delay) && elapsed < Max(1500, delay + 500), "delayed claim completes promptly after its result")
+    }
+    for plan in [Map("delay", 120000), Map("delay", 120000, "keyCost", 9000),
+        Map("delay", 120000, "readCost", 14000), Map("delay", 120000, "missingUntil", 120000)] {
+        ClaimReset(plan)
+        Check(!EarnVinewoodClaim("Nightclub", 250000), "unconfirmed claim stops at the shared deadline")
+        ClaimSafety(false, "unconfirmed claim")
+        Check(gNowMs - gClaimAt = 60000, "60-second budget includes key, initial wait, OCR, and retry waits")
+    }
+    for missing in ["false", "unknown"] {
+        ClaimReset(Map("delay", 35000, "missingUntil", 6000, "missingKind", missing))
+        Check(EarnVinewoodClaim("Nightclub", 250000), "temporary " missing " OCR recovers without another claim")
+        ClaimSafety(true, "temporary OCR")
+        Check(gNowMs - gClaimAt >= 35000 && gNowMs - gClaimAt < 35500, "temporary OCR does not restart the response clock")
+    }
+    ; An intentionally non-cooperative OCR stub returns a correct empty frame
+    ; after the deadline. The caller must reject it and never launch a reread.
+    ClaimReset(Map("delay", 0, "readCost", 61000, "honorDeadline", false))
+    Check(!EarnVinewoodClaim("Nightclub", 250000), "late empty OCR result is rejected")
+    ClaimSafety(false, "late empty OCR")
+    Check(gClaimReads.Length = 1, "deadline overrun launches no further OCR")
+    ClaimReset(Map("delay", 0, "abortBeforeRead", true))
+    Check(!EarnVinewoodClaim("Nightclub", 250000), "cancellation before result OCR stops verification")
+    ClaimSafety(false, "cancel before OCR")
+    Check(gClaimReads.Length = 0, "cancellation before OCR launches no read")
+    ClaimReset(Map("delay", 0, "abortAfterRead", true))
+    Check(!EarnVinewoodClaim("Nightclub", 250000), "cancellation during OCR rejects the empty result")
+    ClaimSafety(false, "cancel after OCR")
+    Check(gClaimReads.Length = 1, "cancellation after OCR launches no further read")
+    for badDetail in [false, true] {
+        ClaimReset(Map("delay", 0, "otherSafe", "Arcade", "badDetail", badDetail))
+        Check(!EarnVinewoodClaim("Nightclub", 250000), "another selected safe never confirms this transaction")
+        ClaimSafety(false, "different selected business")
+        Check(gClaimReads.Length = 1, "different selected business fails immediately even if its amount is unreadable")
+    }
+    ClaimReset(Map("delay", 0))
+    gAbort := true
+    Check(!EarnVinewoodClaim("Nightclub", 250000) && gClaimAttempts = 0 && !gKeys.Length
+        && !transactionPending.Has("safe") && !gConfirmCalls, "pre-request cancellation sends no transaction")
+
+    ; Direct helper boundaries also cover calls that are not inside Claim.
+    readSelected := EarnVinewoodReadSelected
+    ClaimReset(Map("delay", 0))
+    gClaimAt := gNowMs
+    name := "stale", amount := 0
+    Check(!readSelected(&name, &amount, gNowMs, "Nightclub")
+        && name = "" && amount = -1 && !gClaimReads.Length, "expired ReadSelected launches no OCR and clears old outputs")
+    ClaimReset(Map("delay", 0, "readCost", 60001, "honorDeadline", false))
+    gClaimAt := gNowMs
+    Check(!readSelected(&name, &amount, gNowMs + 60000, "Nightclub")
+        && name = "" && amount = -1 && gClaimReads.Length = 1, "ReadSelected rejects late data before selection parsing")
+    ClaimReset(Map("delay", 0, "abortAfterRead", true))
+    gClaimAt := gNowMs
+    Check(!readSelected(&name, &amount, gNowMs + 60000, "Nightclub")
+        && name = "" && amount = -1 && gClaimReads.Length = 1, "ReadSelected rejects canceled data before selection parsing")
+}
+
+ClaimReset(plan) {
+    global gClaimPlan, gNowMs
+    Reset("claim_timing", "earnings", Map("Nightclub", 250000))
+    gClaimPlan := plan, gNowMs := 1000
+}
+
+ClaimSafety(confirmed, label) {
+    global gClaimAt, gClaimReads, gClaimAttempts, gKeys, gConfirmCalls, transactionPending
+    Check(gClaimAttempts = 1 && gKeys.Length = 1 && gKeys[1] = "Enter", label " sends exactly one Enter and no navigation")
+    Check(gConfirmCalls = (confirmed ? 1 : 0) && transactionPending.Has("safe") = !confirmed,
+        label " only confirmed success clears the pending transaction")
+    if (!confirmed)
+        Check(transactionPending["safe"] = "Nightclub $250000 수거 요청 결과 확인 필요", label " preserves the exact pending reason")
+    for read in gClaimReads {
+        Check(read.deadline = gClaimAt + 60000, label " passes the same absolute deadline to OCR")
+        Check(read.started < read.deadline, label " never starts OCR at or after the deadline")
+    }
+}
+
+ClaimFrame(deadlineTick) {
+    global gClaimPlan, gClaimAt, gClaimReads, gNowMs, gSelected, gAbort
+    if (gClaimAt < 0) {
+        gSelected := "Nightclub"
+        return Frame("Claim $250000 from your Nightclub safe.")
+    }
+    gClaimReads.Push({started: gNowMs, deadline: deadlineTick})
+    cost := gClaimPlan.Get("readCost", 50)
+    gNowMs += cost
+    if (deadlineTick && gClaimPlan.Get("honorDeadline", true) && gNowMs >= deadlineTick) {
+        gNowMs := deadlineTick
+        return false
+    }
+    if (gClaimPlan.Get("abortAfterRead", false))
+        gAbort := true
+    elapsed := gNowMs - gClaimAt
+    if (elapsed < gClaimPlan.Get("missingUntil", 0)) {
+        if (gClaimPlan.Get("missingKind", "false") = "false")
+            return false
+        gSelected := ""
+        return [FakeLine("THE VINEWOOD CLUB APP"), FakeLine("Unknown status")]
+    }
+    name := gClaimPlan.Get("otherSafe", "Nightclub"), gSelected := name
+    if (gClaimPlan.Get("badDetail", false))
+        return [FakeLine("THE VINEWOOD CLUB APP"), FakeLine(name), FakeLine("Unreadable amount")]
+    detail := elapsed >= gClaimPlan.Get("delay", 0)
+        ? "Your " name " safe is empty." : "Claim $250000 from your " name " safe."
+    return [FakeLine("THE VINEWOOD CLUB APP"), FakeLine(name), FakeLine(detail)]
+}
 
 RunTests() {
     global gClaims, gClaimAttempts, gKeys, gState, gMctCloses, gCEOCalls, gScheduled, gBiz, gIdx, gSelected, gPhysIdle, gOthersIdle
@@ -309,6 +434,8 @@ Reset(mode, state, amounts := "") {
     global transactionPending := Map()
     global gMode, gState, gSelected, gBiz, gIdx, gReads, gClaims, gClaimAttempts, gKeys, gStandWaits, gMctCloses, gCEOCalls, gFailure, gScheduled, gPhysIdle, gOthersIdle, gPhoneFrameVisible
     global gNowMs, gSleepMs, gTimedReads
+    global gClaimPlan, gClaimAt, gClaimReads, gAbort, gConfirmCalls
+    gClaimPlan := 0, gClaimAt := -1, gClaimReads := [], gAbort := false, gConfirmCalls := 0
     gMode := mode, gState := state = "earnings_mid" ? "earnings" : state, gBiz := DefaultBiz(), gIdx := state = "earnings_mid" ? 4 : 1
     gPhoneFrameVisible := mode != "phone_texts_hdr"
     if (mode = "unknown_business")
@@ -323,8 +450,10 @@ Reset(mode, state, amounts := "") {
     gNowMs := 0, gSleepMs := 0, gTimedReads := 0
 }
 
-EarnReadScreen(*) {
+EarnReadScreen(area, whiteText := false, deadlineTick := 0) {
     global gMode, gState, gSelected, gBiz, gIdx, gReads
+    if (IsObject(gClaimPlan))
+        return ClaimFrame(deadlineTick)
     if (gMode = "open_unreadable")
         return false
     if (gState = "phone_texts")
@@ -379,6 +508,7 @@ EarnMenuRowSelected(row) {
 }
 EarnPress(key) {
     global gMode, gState, gSelected, gBiz, gIdx, gClaims, gClaimAttempts, gKeys
+    global gClaimAt, gNowMs
     gKeys.Push(key)
     if (key = "Down") {
         if (gMode = "select_cancel")
@@ -412,7 +542,10 @@ EarnPress(key) {
             if (!IsObject(limits) || biz[2] + limits[2] <= limits[1])
                 throw Error("Attempted collection from a safe that is not due: " biz[1] " $" biz[2])
             gClaims.Push(biz[1])
-            if (gMode != "post_unconfirmed")
+            if (IsObject(gClaimPlan)) {
+                gClaimAt := gNowMs
+                gNowMs += gClaimPlan.Get("keyCost", 0)
+            } else if (gMode != "post_unconfirmed")
                 biz[2] := 0
         } else {
             throw Error("Unexpected Enter state: " gState)
@@ -429,7 +562,10 @@ EarnPress(key) {
 }
 EarnSleep(ms) {
     global gMode, gState, gClaims, gStandWaits, gNowMs, gSleepMs
+    global gAbort
     gNowMs += ms, gSleepMs += ms
+    if (IsObject(gClaimPlan) && gClaimAt >= 0 && gClaimPlan.Get("abortBeforeRead", false))
+        gAbort := true
     if (gState = "mct_transition")
         gStandWaits += 1, gState := gMode = "mct_ready_once" ? "standing_once" : "standing"
     if (gClaims.Length && ms = 300 && gMode = "post_unconfirmed")
