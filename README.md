@@ -48,7 +48,11 @@ $ahk = & .\tools\ci\install-autohotkey.ps1 -Destination (Join-Path $ciDirectory 
 - 이 파일과 `Config.ini` 의 주석.
 - 조사·실측 기록(작텔이 되는 조건, 봇 절차, 막힌 방법, 되돌리는 절차): dotfiles 의 `claude/skills/gta-online-research/SKILL.md`. 아래에 "0926 실측" 이라 적은 것은 거기에 근거가 있다.
 
-## 수동 외출 저부하 모드
+## 외출 저부하 모드
+
+자동 전환은 `Config.ini [Settings] AutoAwayIdleSec=60`처럼 유휴 초를 설정해 켠다. 기본값 `0`은 자동 전환을 끈다. 수동 외출이 꺼져 있으면 사람이 설정 시간 동안 조작하지 않을 때 CPU 부스트 끔·30 FPS·G-Helper Silent로 전환하고, 다시 조작하면 일반 정책과 직전 성능 모드로 돌아간다. 수익 자동화가 꺼져 있어도 적용한다. 매크로 자신의 AFK·메뉴 입력은 유휴 시간을 초기화하지 않으며, 물리 입력·기존 감시가 식별한 외부 주입 입력·계속 누르고 있는 이동 키는 활동으로 취급한다. 외부 원격 입력이 매크로의 자기 입력 구간과 겹치면 기존 유휴 감시가 둘을 구분하지 못할 수 있다. 수동 `AwayMode=1`은 자동 전환보다 우선한다.
+
+자동 전환에는 트레이 클릭, 전역 단축키, 게임 포커스 이동이 필요 없다. 매크로가 2초 간격으로 상태를 발행하고 감시 프로그램이 약 1초 간격으로 소비한다. 측정 또는 매크로 입력 구간이 진행 중이면 추가 지연이 있어 즉시 전환을 보장하지 않는다. `.gta-away-want`의 발신 프로세스와 15초 이내 상태만 신뢰하며, 신호가 끊기면 자동 저부하는 해제한다. 수동 외출 설정은 신호와 별개로 유지한다. 새 기능의 최초 설치에는 매크로·감시 프로그램 갱신이 필요하지만 GTA 재시작은 필요 없다.
 
 트레이 아이콘을 우클릭하고 외출할 때 "외출 저부하 켜기 (30 FPS)", 돌아오면 "외출 저부하 끄기 (일반 복귀)"를 선택한다. GTA와 매크로를 재시작하거나 세션을 옮길 필요가 없다. 켜짐 상태는 `Config.ini [Settings] AwayMode=1`로 저장되며, 매크로를 나중에 다시 실행해도 유지된다. 전력 적용은 2초 타이머가 진행 중인 게임 입력 구간을 마친 뒤 처리한다.
 
@@ -65,10 +69,10 @@ $ahk = & .\tools\ci\install-autohotkey.ps1 -Destination (Join-Path $ciDirectory 
 
 기존 시작 프로그램 `GTA Turbo.lnk`가 실행하던 `scripts\gta-turbo.ps1`의 정본은 이제 `Core/gta-turbo.ps1`이다. 해당 시작 항목의 실행 파일을 이 소스로 갱신해 사용한다. 기본 설정 경로는 `%USERPROFILE%\GTA\Config.ini`이며, 다른 위치에서는 `-MacroConfig`를 명시한다. G-Helper가 실행 중이어야 한다. 다른 모드 강제 프로그램과 동시에 실행하지 않는다.
 
-- 5초 확인 루프가 외출 설정을 소비한다. 수익·AFK·GUI 입력 잠금, 3초 유휴, 눌린 키 없음이 확인된 구간에서만 G-Helper의 명시적 모드 단축키를 한 번 보낸다. 모드를 순환하는 F5, 게임 전면화, GTA 재시작, GPU/MUX 변경은 사용하지 않는다. 바쁜 구간에는 전환이 대기할 수 있다.
-- G-Helper 기본 모드 Silent·Balanced·Turbo와 기본 모드 단축키를 지원한다. 사용자 정의 모드·변경된 단축키는 추측하지 않고 오류를 기록한다. 설정 값과 ACPI 적용 로그의 마지막 `Mode = N : OK`를 함께 확인한다. 설정 값만 바뀐 상태는 완료가 아니다. 미확인 요청의 키 재전송은 5분에 한 번으로 제한해 AFK 유휴 시간을 계속 초기화하지 않는다.
+- 감시 프로그램은 UI Automation으로 기존 G-Helper의 Silent·Balanced·Turbo 버튼을 식별한 뒤, 관측한 직접 부모에 표준 `WM_COMMAND/BN_CLICKED` 알림을 제한 시간과 함께 보낸다. UIA Invoke는 실기기에서 포커스 이동이 확인되어 사용하지 않는다. 숨겨진 창은 모니터 바깥에 비활성으로 잠깐 준비한 뒤 원래 위치와 숨김 상태로 되돌린다. 키·마우스 입력, 게임 전면화, GTA 재시작, GPU/MUX 변경은 사용하지 않는다. 버튼과 모든 부모의 활성 상태를 다시 확인하며, 확인창 때문에 비활성화됐거나 사용자가 G-Helper를 직접 조작하거나 보안 데스크톱이 열려 있으면 기다린다.
+- G-Helper 기본 모드 Silent·Balanced·Turbo를 지원한다. 사용자 정의 모드나 확인되지 않은 버튼은 추측하지 않고 오류를 기록한다. 설정 값과 새로운 ACPI 적용 로그의 `Mode = N : OK`를 함께 확인한다. 설정 값만 바뀐 상태는 완료가 아니다. 미확인 전환 요청은 5분에 한 번으로 제한한다.
 - 외출 전 모드는 `%LOCALAPPDATA%\gta-power-mode-state.json`에 먼저 저장하고, 복원 성공 뒤에만 복원 대기를 해제한다. 감시 프로그램이 재시작돼도 이전 모드는 보존한다. 외출 해제 후 같은 GTA 실행 동안에는 복원한 모드를 유지하며, 다음 게임 실행은 기존 Turbo 기본 정책을 따른다. 게임 종료 시 Silent 정책도 유지한다.
-- G-Helper 전환 뒤 외출 CPU 제한을 다시 적용한다. 30 FPS 요청·그래픽 설정은 기존 매크로가 담당한다. `%LOCALAPPDATA%\gta-turbo.log`의 적용 또는 대기 기록과 `%APPDATA%\GHelper\log.txt`를 대조한다. 기존 `%LOCALAPPDATA%\gta-perf\YYYYMMDD.csv` 측정은 유지하며, 모드 제어 오류로 측정을 중단하지 않는다.
+- G-Helper의 지연 전력 적용을 기다린 뒤 최신 요청을 다시 읽어 CPU 상한과 부스트를 맞춘다. 일반 복귀에서도 CPU 최대 100%와 부스트를 복원한다. 30 FPS 요청·그래픽 설정은 기존 매크로가 담당한다. `%LOCALAPPDATA%\gta-turbo.log`의 적용 또는 대기 기록과 `%APPDATA%\GHelper\log.txt`를 대조한다. 기존 `%LOCALAPPDATA%\gta-perf\YYYYMMDD.csv` 측정은 유지하며, 모드 제어 오류로 측정을 중단하지 않는다.
 
 입력 없는 회귀 검사는 `powershell.exe -NoProfile -File tools/tests/gta-mode.tests.ps1`이다. 실제 G-Helper와 키 입력을 대역으로 격리하며, CI에서는 전체 Windows 검사에 포함한다.
 
