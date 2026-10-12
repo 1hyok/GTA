@@ -67,6 +67,12 @@ function Get-CiCheckPlan {
         if ($path -match '^Features/CpuBoost\.ahk$') { $selected.Add('test-cpuboost'); $packageRequired = $true; continue }
         if ($path -match '^Features/DiscordHUD\.ahk$') { $selected.AddRange(@('test-earner','test-discord-hud')); $packageRequired = $true; continue }
         if ($path -match '^Features/MemoryGuard\.ahk$') { $selected.Add('test-memguard'); $packageRequired = $true; continue }
+        if ($path -match '^Images/Earn/[^/]+/afk_(phone_frame|vinewood_title)\.png$' -or
+            $path -eq 'tools/earn-test/build-afk-overlay-templates.ps1' -or $path -match '^tools/earn-test/afk-overlay-fixtures/') {
+            $selected.Add('test-afk-overlays')
+            if ($path.StartsWith('Images/')) { $packageRequired = $true }
+            continue
+        }
         if ($path -match '^Images/MCT/') { $selected.Add('test-mct-seated-template'); $packageRequired = $true; continue }
         if ($path -match '^Images/Bunker/') { $selected.Add('test-bunker-templates'); $packageRequired = $true; continue }
         if ($path -match '^Images/Earn/[^/]+/dj_confirm_(solomun|tale)\.png$') { $selected.Add('test-dj-templates'); $packageRequired = $true; continue }

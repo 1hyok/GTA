@@ -184,6 +184,8 @@ Space → CONFIRM Enter → 바로 Alt+F4 → 게임 종료 확인창에서 60�
 - 메뉴에서도 작은 마우스 왕복만 보내며, 사용자 조작이 시작되면 남은 움직임을 취소한다.
 - 입력 없음 시간과 간격은 설정 창에서 바꾼다(5~600초, 30~600초). 전면화 기준 등 나머지 값은 `Config.ini`. 로그는 `%TEMP%\gta-afk.log`.
 
+Vinewood 앱 열림 여부는 제목의 흰 글자와 같은 위치의 검정 배경을 함께 확인한다. 밝은 하늘을 앱으로 오인해 직원 파견이나 AFK 처리를 미루지 않도록 원본과 HDR 밝기 사본 모두 같은 배경 앵커를 사용한다. 제목 템플릿은 `tools/earn-test/build-afk-overlay-templates.ps1`로 실측 fixture에서 재생성하고, `test-afk-overlays.ps1`로 실제 제목과 밝은 빈 화면을 구분하는지 검사한다.
+
 ## 판매 차례 알림 (Num1)
 
 디코 오버레이(DiscordChatHUD) 채팅 아래 판매 대기자 맨 위가 `Config.ini` 의 `SaleAlertName` 이 되면 삐 소리 세 번과 툴팁으로 한 번 알리고 스스로 꺼진다. 평소에는 꺼져 있고 Num1 로 켜고 끈다. 그 자리를 10초마다 한국어 OCR 로 읽는다.
