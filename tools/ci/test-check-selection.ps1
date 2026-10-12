@@ -38,16 +38,16 @@ foreach ($path in @('Images/Earn/1920x1080/afk_vinewood_title.png', 'Images/Earn
 }
 
 $ci = Get-CiCheckPlan @('tools/ci/run-checks.ps1')
-Check ($ci.Full -and $ci.Suites.Count -eq 37 -and $ci.PackageRequired) 'CI harness change runs full suite and package validation'
+Check ($ci.Full -and $ci.Suites.Count -eq 38 -and $ci.PackageRequired) 'CI harness change runs full suite and package validation'
 
 $workflow = Get-CiCheckPlan @('.github/workflows/ci.yml')
-Check ($workflow.Full -and $workflow.Suites.Count -eq 37 -and $workflow.PackageRequired) 'workflow change runs full suite and package validation'
+Check ($workflow.Full -and $workflow.Suites.Count -eq 38 -and $workflow.PackageRequired) 'workflow change runs full suite and package validation'
 
 $gitStylePath = Get-CiCheckPlan @('./Features/Earn/EarnStaff.ahk')
 Check (($gitStylePath.Suites -join ',') -eq 'test-earner,test-earnvinewood,test-earnstaff') 'leading ./ is normalized without losing dot-prefixed paths'
 
 $unknown = Get-CiCheckPlan @('Features/NewFeature.ahk')
-Check ($unknown.Full -and $unknown.Suites.Count -eq 37) 'unknown production paths conservatively run all suites'
+Check ($unknown.Full -and $unknown.Suites.Count -eq 38) 'unknown production paths conservatively run all suites'
 
 $frameWatch = Get-CiCheckPlan @('tools/frame-watch/frame-watch.ps1')
 Check (-not $frameWatch.Full -and ($frameWatch.Suites -join ',') -eq 'test-perf-watch') 'frame watcher selects performance regressions'
@@ -57,4 +57,8 @@ $earner = Get-CiCheckPlan @('Features/Earn/Earner.ahk')
 Check (($earner.Suites -join ',') -eq 'test-earner,test-discord-hud') 'scheduler hooks select HUD regression'
 $hudTest = Get-CiCheckPlan @('tools/earn-test/test-discord-hud.ps1')
 Check (($hudTest.Suites -join ',') -eq 'test-discord-hud') 'HUD test selects its registered suite'
+$statusOverlay = Get-CiCheckPlan @('Features/Overlay.ahk')
+Check (-not $statusOverlay.Full -and ($statusOverlay.Suites -join ',') -eq 'test-earner,test-overlay-place' -and $statusOverlay.PackageRequired) 'status overlay selects content consumer and geometry regression'
+$positionTest = Get-CiCheckPlan @('tools/earn-test/test-overlay-place.ps1')
+Check (($positionTest.Suites -join ',') -eq 'test-overlay-place') 'position test selects its registered suite'
 Write-Output "PASS CI check selection cases=$checks"

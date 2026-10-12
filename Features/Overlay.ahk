@@ -3,7 +3,7 @@
 ; 클릭이 통과하고(WS_EX_TRANSPARENT) 포커스를 가져가지 않는다(WS_EX_NOACTIVATE + Show("NA")). 게임에 보내는 입력은 없다.
 ; GTA 가 앞일 때만 보이고, 다른 창이 앞이면 숨겨서 다른 앱 위에 남지 않게 한다.
 ; 픽셀·이미지 감지는 화면에 보이는 그대로 읽으므로 이 창이 감지 영역을 덮으면 오판한다. 그래서 작텔 종료창 안내 감지 영역(오른쪽 아래 구석),
-; 인형 뽑기 안내 검색 영역(왼쪽 위 900x250)과 화면 가운데를 덮는 위치는 쓰지 않고 기본 위치로 되돌린다.
+; 인형 뽑기 안내 검색 영역(왼쪽 위 900x250)과 화면 가운데를 피해 설정 위치에 가장 가까운 안전한 자리에 놓는다.
 ; 위치는 Config [Settings] OverlayXPct(오른쪽 끝의 가로 %) / OverlayYPct(위쪽 끝의 세로 %). 기본 98 / 18 은 오른쪽 위 돈 표시 아래다.
 global gOverlayGui := ""
 global gOverlayText := ""
@@ -95,19 +95,40 @@ OverlayHide() {
     }
 }
 
-; 설정 위치가 감지 영역을 덮으면 기본 위치(98, 18)로, 그것도 덮으면(창이 아주 작을 때) false = 숨김.
+; 설정 위치가 감지 영역을 덮으면 가장 가까운 경계까지만 이동한다. 안전한 자리가 없으면 false = 숨김.
 OverlayPlace(cx, cy, cw, ch, w, h, &x, &y) {
     global config
+    if (cw <= 0 || ch <= 0 || w <= 0 || h <= 0 || w > cw || h > ch)
+        return false
     s := config["Settings"]
-    for pct in [[s["OverlayXPct"], s["OverlayYPct"]], [98, 18]] {
-        x := cx + Round(cw * pct[1] / 100) - w
-        y := cy + Round(ch * pct[2] / 100)
-        x := Max(cx, Min(x, cx + cw - w))
-        y := Max(cy, Min(y, cy + ch - h))
-        if (!OverlayHitsDetection(x - cx, y - cy, w, h, cw, ch))
-            return true
+    wantX := Max(0, Min(Round(cw * s["OverlayXPct"] / 100) - w, cw - w))
+    wantY := Max(0, Min(Round(ch * s["OverlayYPct"] / 100), ch - h))
+    if (!OverlayHitsDetection(wantX, wantY, w, h, cw, ch)) {
+        x := cx + wantX, y := cy + wantY
+        return true
     }
-    return false
+    ; 최근접 안전 위치는 원래 좌표 또는 화면·감지 사각형의 경계에 있다.
+    ; 모든 X/Y 경계 조합을 확인하므로 한 영역을 피하다 다른 영역을 가리지 않는다.
+    xs := [wantX, 0, cw - w], ys := [wantY, 0, ch - h]
+    for z in OverlayDetectionZones(cw, ch) {
+        xs.Push(z[1] - w, z[3])
+        ys.Push(z[2] - h, z[4])
+    }
+    bestDistance := -1
+    for rx in xs {
+        if (rx < 0 || rx + w > cw)
+            continue
+        for ry in ys {
+            if (ry < 0 || ry + h > ch || OverlayHitsDetection(rx, ry, w, h, cw, ch))
+                continue
+            distance := (rx - wantX) ** 2 + (ry - wantY) ** 2
+            if (bestDistance < 0 || distance < bestDistance) {
+                bestDistance := distance
+                x := cx + rx, y := cy + ry
+            }
+        }
+    }
+    return bestDistance >= 0
 }
 
 ; 게임 클라이언트 기준 좌표의 사각형이 감지 영역과 겹치는지.
@@ -115,16 +136,19 @@ OverlayPlace(cx, cy, cw, ch, w, h, &x, &y) {
 ;   인형 뽑기 안내 이미지 검색(ClawSeen: 왼쪽 위 900x250)
 ;   화면 가운데(인형 뽑기 기계·지문 해킹 화면)
 OverlayHitsDetection(rx, ry, w, h, cw, ch) {
-    zones := [
-        [Round(cw * 0.89), Round(ch * 0.94), cw, ch],
-        [0, 0, Min(900, cw), Min(250, ch)],
-        [Round(cw * 0.25), Round(ch * 0.14), Round(cw * 0.75), Round(ch * 0.76)]
-    ]
-    for z in zones {
+    for z in OverlayDetectionZones(cw, ch) {
         if (rx < z[3] && rx + w > z[1] && ry < z[4] && ry + h > z[2])
             return true
     }
     return false
+}
+
+OverlayDetectionZones(cw, ch) {
+    return [
+        [Round(cw * 0.89), Round(ch * 0.94), cw, ch],
+        [0, 0, Min(900, cw), Min(250, ch)],
+        [Round(cw * 0.25), Round(ch * 0.14), Round(cw * 0.75), Round(ch * 0.76)]
+    ]
 }
 
 ; 컨트롤 글꼴로 여러 줄 글자의 크기를 잰다 (DrawText DT_CALCRECT).
