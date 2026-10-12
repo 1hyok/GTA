@@ -84,10 +84,16 @@ global lifecycleTrace, lifecycleEvents, finalizerProbeStages
 global gEarnInputAbortReason, metadataFailure, metadataCalls
 global recoveryHud, recoveryHudAfter, recoveryMenuCloseOK, visibleModal
 global hudDepth := 0, hudTakes := 0, hudReturns := 0, hudInject := ""
+global hudStopCount := 0, hudStopReleaseCount := 0
 global clawLoopRunning := false, clawTries := 0, clickRunning := false, wRunning := false, shiftWRunning := false
 global vellumDrivingRunning := false, cayoTimerRunning := false, cayoEndTick := 0, altF4Running := false
 global gJobWarpStart := 0, gJobWarpMinMs := 0, mcRunning := false, gMenuBusy := false
 global state := Map(), stateWritable := true
+Reset()
+previousHUDStops := hudStopCount
+EarnTick()
+Check(hudStopCount > previousHUDStops && hudStopReleaseCount >= 1,
+    "normal finalizer releases held keys before synchronous HUD restoration")
 Reset()
 endOK := false, endNoScreen := true, recoveryHud := false, recoveryHudAfter := false
 EarnTick()
@@ -121,11 +127,13 @@ for boundary in ["boss-unconfirmed", "menu-close-failed", "hud-lost"] {
 }
 for modal in ["dj_confirm_solomun", "dj_confirm_tale"] {
     Reset()
+    previousHUDStops := hudStopCount
     visibleModal := modal
     afkResult := EarnAFKCloseMCT(600)
     Check(afkResult = "MCT 화면 정리 완료 idle=600s" && endCount = 1 && bossOffCount = 1
         && !gEarnBusy && !gEarnAFKCleanup,
         "AFK cleanup recognizes the isolated " modal " without a visible background page")
+    Check(hudStopCount > previousHUDStops, "AFK cleanup releases MCT HUD protection in finally: " modal)
 }
 Reset()
 gEarnInputAbortReason := "stale"
@@ -135,6 +143,7 @@ Check(EarnInputAllowed() && gEarnInputAbortReason = "" && metadataCalls = 0 && r
     "normal guarded work clears the previous reason without diagnostic window reads")
 for scenario in ["physical", "focus", "both"] {
     Reset()
+    previousHUDStops := hudStopCount
     EarnInputGuardStart()
     fakeTick += 100
     idleMs := scenario = "focus" ? 60100 : 0
@@ -142,6 +151,8 @@ for scenario in ["physical", "focus", "both"] {
     expectedAbort := scenario = "physical" ? "사용자 물리 입력으로 중단" : scenario = "focus" ? "GTA 포커스 판정 실패로 중단" : "사용자 물리 입력 및 GTA 포커스 판정 실패로 중단"
     Check(!EarnInputAllowed() && gAbort && gEarnUserAbort && gEarnInputAbortReason = expectedAbort && releaseCount = 1,
         scenario " immediately latches the exact reason and releases keys")
+    Check(hudStopCount > previousHUDStops && hudStopReleaseCount = 1,
+        scenario " restores MCT HUD immediately after key release without waiting for a low priority timer")
     Check(InputEvidenceCount() = 1 && HasLog("physical=" (scenario = "focus" ? 0 : 1) " focus=" (scenario = "physical" ? 0 : 1))
         && HasLog("idle_ms=" idleMs " elapsed_ms=100 winactive=" (focused ? 1 : 0))
         && HasLog("expected_game_pid=101") && HasLog("game={hwnd=1 pid=101")
@@ -164,7 +175,9 @@ Reset()
 EarnInputGuardStart()
 focused := false
 EarnInputAllowed()
+previousHUDStops := hudStopCount
 EarnInputGuardStop()
+Check(hudStopCount > previousHUDStops && !gEarnGuardArmed, "guard ending synchronously restores HUD before the next job")
 gAbort := false, gEarnUserAbort := false, focused := true
 EarnInputGuardStart()
 Check(EarnInputAllowed() && gEarnInputAbortReason = "" && InputEvidenceCount() = 1,
@@ -870,6 +883,10 @@ DiscordHUDMCTSet(open) {
         throw Error("Scheduler may restore confirmed free HUD, but never hide a whole task")
     return true
 }
+DiscordHUDMCTStop() {
+    global hudStopCount, hudStopReleaseCount
+    hudStopCount += 1, hudStopReleaseCount := releaseCount
+}
 DiscordHUDVisibilityRelease() {
     global hudDepth, hudReturns
     if (hudDepth != 1)
@@ -1321,7 +1338,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 180 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 187 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout
@@ -1543,3 +1560,87 @@ AuditForeground(*) => "fixture.exe"
 ShowTooltip(*) => 0
 '@
 Invoke-EarnerMutexCheck ($hotkeyDriver + "`n" + ($hotkeyFunctions -join "`n")) 'PASS Hotkey audit: 8 cases; no game input'
+
+# Real AHK timer priorities, but only in-memory input/window state. The low-priority
+# visibility timer cannot interrupt a normal macro thread; the actual 25ms guard must restore.
+$timingSource = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\Earner.ahk') -Raw -Encoding UTF8
+$timingGuards = foreach ($name in @('EarnInputGuardStart','EarnInputGuardStop','EarnInputWatch','EarnInputAllowed')) {
+    $body = [regex]::Match($timingSource, ('(?ms)^' + $name + '\([^\r\n]*\) \{.*?^\}')).Value
+    if (-not $body) { throw "HUD timing guard missing: $name" }
+    $body.Replace('A_TimeIdlePhysical', 'testIdleMs').Replace('DllCall("GetForegroundWindow", "ptr")', '1')
+}
+$hudSource = Get-Content (Join-Path $PSScriptRoot '..\..\Features\DiscordHUD.ahk') -Raw -Encoding UTF8
+$timingHUD = $hudSource.Substring($hudSource.IndexOf('global gDiscordHUDMCTOpen'))
+foreach ($name in @('DiscordHUDWindowList','DiscordHUDWindowRead','DiscordHUDWindowVisible')) {
+    $timingHUD = [regex]::Replace($timingHUD, ('(?ms)^' + $name + '\([^\r\n]*\) \{.*?^\}\s*'), '')
+}
+if ($timingHUD -match 'DllCall\(|WinGet|ShowWindow|WinActivate|\bRun\(') { throw 'Native side effect remains in HUD timing fixture' }
+$hudTimingDriver = @'
+OnError((failure, *) => (FileAppend("FAIL HUD guard timing: " failure.Message "`n", "**"), ExitApp(1)))
+global gEarnBusy := true, gEarnGuardArmed := false, gEarnGuardStartedTick := 0, gAbort := false
+global gEarnRetryIn := 0, gEarnGamePID := 101, gEarnUserAbort := false, gEarnInputAbortReason := ""
+global testIdleMs := 60000, focused := true, visible := true, released := false, inputInjected := false
+global lowTicks := 0, restoredAfterRelease := false, phase := ""
+SetTimer(NormalMacroWork, -1)
+return
+NormalMacroWork() {
+    global gAbort, gEarnUserAbort, testIdleMs, focused, visible, released, inputInjected, lowTicks, restoredAfterRelease, phase
+    for scenario in ["physical", "focus"] {
+        phase := scenario, gAbort := false, gEarnUserAbort := false, testIdleMs := 60000, focused := true
+        released := false, inputInjected := false, restoredAfterRelease := false, lowTicks := 0
+        EarnInputGuardStart()
+        DiscordHUDMCTSet(true)
+        if (visible)
+            throw Error("guarded macro did not hide HUD")
+        SetTimer(LowVisibilityTick, 25, -10)
+        SetTimer(InjectLogicalInput, -75)
+        Sleep(350)
+        if (!inputInjected || !gAbort || !visible || !restoredAfterRelease || lowTicks != 0)
+            throw Error(scenario " did not restore inside normal-priority work after key release")
+        SetTimer(LowVisibilityTick, 0)
+        EarnInputGuardStop()
+    }
+    gAbort := false, gEarnUserAbort := false, testIdleMs := 60000, focused := true
+    EarnInputGuardStart()
+    DiscordHUDMCTSet(true)
+    EarnInputGuardStop()
+    if (!visible || gEarnGuardArmed)
+        throw Error("guard stop did not synchronously restore HUD")
+    FileAppend("PASS HUD guard timing: 3 cases; no window or game input`n", "*")
+    ExitApp(0)
+}
+InjectLogicalInput() {
+    global testIdleMs, focused, inputInjected
+    inputInjected := true
+    if (phase = "physical")
+        testIdleMs := 0
+    else
+        focused := false
+}
+LowVisibilityTick() {
+    global lowTicks
+    lowTicks += 1
+    DiscordHUDVisibilityTick()
+}
+DiscordHUDWindowList() => [1]
+DiscordHUDWindowRead(hwnd) => {hwnd: 1, pid: 123, created: 12345, title: "DiscordChatHUD C#", visible: visible, minimized: false}
+DiscordHUDWindowVisible(hwnd, show) {
+    global visible, restoredAfterRelease
+    visible := show
+    if (show && inputInjected)
+        restoredAfterRelease := released
+    return true
+}
+ReleaseHeldKeys() {
+    global released
+    released := true
+}
+EarnGamePID() => 101
+IsGTAActive() => focused
+ProcessExist(*) => true
+EarnFail(*) => false
+EarnInputAbortEvidence(*) => 0
+MacroLog(*) => 0
+'@
+Invoke-EarnerMutexCheck ($timingHUD + "`n" + $hudTimingDriver + "`n" + ($timingGuards -join "`n")) `
+    'PASS HUD guard timing: 3 cases; no window or game input'

@@ -69,6 +69,7 @@ EarnAFKCloseMCTGuarded(idleSec) {
         result := "MCT 화면 정리 실패: " gEarnFail " idle=" idleSec "s"
     } finally {
         gEarnBusy := false, gEarnAFKCleanup := false
+        DiscordHUDMCTStop()
         gEarnGuardArmed := prevArmed, gEarnGuardStartedTick := prevStarted, gEarnGamePID := prevPID
     }
     if (gEarnManualStop)
@@ -303,8 +304,9 @@ EarnTick() {
         EarnFail(fatalReason)
     } finally {
         try {
-            EarnInputGuardStop()
-            ReleaseHeldKeys()
+            ; HUD 복원은 창 응답을 기다릴 수 있다. 예외로 남은 키도 먼저 해제하고 감시를 닫는다.
+            try ReleaseHeldKeys()
+            finally EarnInputGuardStop()
         } finally {
             try %"AFKSelfInput"%(false)
             gEarnBusy := false
@@ -652,6 +654,7 @@ EarnInputGuardStop() {
     global gEarnGuardArmed
     gEarnGuardArmed := false
     SetTimer(EarnInputWatch, 0)
+    DiscordHUDMCTStop()
 }
 
 EarnInputWatch() {
@@ -665,8 +668,9 @@ EarnInputAllowed() {
     if (!gAbort && (!gEarnGamePID || EarnGamePID() != gEarnGamePID)) {
         gAbort := true
         gEarnRetryIn := 0
-        EarnFail("GTA 종료 또는 재시작으로 중단. 현재 화면을 확인하고 다시 켜기")
         ReleaseHeldKeys()
+        DiscordHUDMCTStop()
+        EarnFail("GTA 종료 또는 재시작으로 중단. 현재 화면을 확인하고 다시 켜기")
     } else if (!gAbort) {
         elapsedMs := A_TickCount - gEarnGuardStartedTick
         physicalIdleMs := A_TimeIdlePhysical
@@ -683,11 +687,14 @@ EarnInputAllowed() {
             : "GTA 포커스 판정 실패로 중단"
         ; 창 메타데이터 조회가 실패하거나 늦어져도 키 해제와 중단은 먼저 끝낸다.
         ReleaseHeldKeys()
+        DiscordHUDMCTStop()
         foreground := "unknown"
         try foreground := DllCall("GetForegroundWindow", "ptr")
         EarnFail(gEarnInputAbortReason)
         try EarnInputAbortEvidence(physicalInput, activeHwnd, physicalIdleMs, elapsedMs, foreground)
     }
+    if (gAbort)
+        DiscordHUDMCTStop()
     return !gAbort
 }
 
