@@ -30,7 +30,7 @@ $driver = @'
 #Warn All, StdOut
 global whTests := 0, whMode, whState, whAssigned, whCounts, whActive, whSelected,
     whSelections, whAttempts, whMoves, whBegins, whEnds, whError, whHistory,
-    whPending := "", whCancels := 0, whTooltips := 0, whSellStops := []
+    whPending := "", whCancels := 0, whTooltips := 0, whSellStops := [], whNoticeLogs := 0
 try {
     RunWarehouseTests()
     RunScheduleTests()
@@ -81,20 +81,23 @@ RunWarehouseTests() {
             Check(whCancels = 1 && whState = "warehouse", "unconfirmed assignment dialog is cancelled once before cleanup")
     }
 
-    ; Any full good: notify once per change without stopping automation.
+    ; Only three or more full goods notify. Keep counting and reassigning below the threshold.
     global gEarnSellNotice := ""
-    three := [{id:"south_american",count:10,capacity:10}, {id:"organic",count:80,capacity:80},
-        {id:"cash",count:40,capacity:40}, {id:"cargo",count:31,capacity:50}]
-    one := [{id:"south_american",count:10,capacity:10}, {id:"cash",count:39,capacity:40}]
-    none := [{id:"south_american",count:9,capacity:10}, {id:"cash",count:39,capacity:40}]
+    global whNoticeLogs := 0
     whTooltips := 0
-    Check(EarnWarehouseSellNotice(one) = 1 && InStr(gEarnSellNotice, "판매 필요") && whTooltips = 1,
-        "one full good raises a sell notice")
-    Check(EarnWarehouseSellNotice(one) = 1 && whTooltips = 1, "unchanged sell notice is not repeated")
-    Check(EarnWarehouseSellNotice(three) = 3 && InStr(gEarnSellNotice, "만재 3개") && whTooltips = 2,
-        "changed full count refreshes the sell notice")
-    Check(EarnWarehouseSellNotice(none) = 0 && gEarnSellNotice = "", "zero full goods clear the sell notice")
-    Check(EarnWarehouseSellNotice(one) = 1 && whTooltips = 3, "notice returns after goods fill again")
+    for noticeCase in [[0,0], [1,0], [2,0], [3,1], [3,1], [4,2], [7,3], [2,3], [1,3], [0,3], [3,4]] {
+        goods := [], fullCount := noticeCase[1], expectedNotices := noticeCase[2]
+        Loop 7
+            goods.Push({id:"good" A_Index, count:A_Index <= fullCount ? 10 : 9, capacity:10})
+        expectedText := fullCount >= 3 ? "나이트클럽 창고 만재 " fullCount "개: 판매 필요" : ""
+        Check(EarnWarehouseSellNotice(goods) = fullCount && gEarnSellNotice = expectedText
+            && whTooltips = expectedNotices && whNoticeLogs = expectedNotices,
+            "three-full threshold count=" fullCount " notices=" expectedNotices)
+    }
+    gEarnSellNotice := "나이트클럽 창고 만재 1개: 판매 필요"
+    Check(EarnWarehouseSellNotice([{id:"south_american",count:10,capacity:10}]) = 1
+        && gEarnSellNotice = "" && whTooltips = 4 && whNoticeLogs = 4,
+        "stale one-full notice clears without another alert")
 
     ; The gray full-person icon parser must remain conservative when moving full-stock staff.
     for identityCase in [["full_staff","organic"], ["full_missing",""], ["full_ambiguous",""]] {
@@ -424,7 +427,10 @@ RunScheduleTests() {
     EarnWarehouseTrack([{id: "cargo", count: 49, capacity: 50}], base)
     EarnWarehouseTrack([{id: "cargo", count: 50, capacity: 50}], base + 10*m)
     Check(EarnWarehouseTrack(, base + 20*m) = 0, "schedule: rising good without a rate uses default interval")
-}EarnLog(*) {
+}EarnLog(reason) {
+    global whNoticeLogs
+    if (InStr(reason, "창고: 나이트클럽 창고 만재 ") = 1)
+        whNoticeLogs++
 }
 Check(condition, description) {
     global whTests, whError
@@ -453,7 +459,7 @@ try {
     }
     $stdout = $process.StandardOutput.ReadToEnd().Trim()
     $stderr = $process.StandardError.ReadToEnd().Trim()
-    if ($process.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnWarehouse cases=145 (no game input)') {
+    if ($process.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnWarehouse cases=152 (no game input)') {
         throw "Warehouse flow failed (exit=$($process.ExitCode))`nstdout: $stdout`nstderr: $stderr"
     }
     Write-Output $stdout

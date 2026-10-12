@@ -336,7 +336,7 @@ EarnWarehouseDialogClick(x, y) {
     }
 }
 
-; 만재 품목은 판매 알림만 표시하고, 생산 가능한 다른 품목으로의 직원 배정은 계속한다.
+; 만재 품목이 3개 이상일 때만 판매 알림을 표시한다. 개수와 무관하게 생산 가능한 다른 품목으로의 직원 배정은 계속한다.
 ; 만재 수가 바뀔 때만 로그·툴팁을 다시 띄우고, 오버레이에는 계속 표시한다.
 EarnWarehouseSellNotice(goods) {
     global gEarnSellNotice
@@ -347,7 +347,7 @@ EarnWarehouseSellNotice(goods) {
         if (row.capacity && row.count >= row.capacity)
             count += 1, full .= (full = "" ? "" : ", ") row.id
     }
-    gEarnSellNotice := count >= 1 ? "나이트클럽 창고 만재 " count "개: 판매 필요" : ""
+    gEarnSellNotice := count >= 3 ? "나이트클럽 창고 만재 " count "개: 판매 필요" : ""
     if (gEarnSellNotice != "" && gEarnSellNotice != previous) {
         EarnLog("창고: " gEarnSellNotice " (" full ")")
         ShowTooltip("💰 " gEarnSellNotice, 10000)

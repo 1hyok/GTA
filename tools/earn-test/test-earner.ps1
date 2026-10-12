@@ -418,7 +418,7 @@ EarnTick()
 Check(gEarnDue["bunker"] = fakeTick,
     "bunker fallback interval without an explicit reservation keeps the generic completion clamp")
 Reset()
-sellReason := "나이트클럽 창고 만재 1개: 판매 필요"
+sellReason := "나이트클럽 창고 만재 3개: 판매 필요"
 gEarnFail := "existing failure", gEarnRetryIn := 1234
 EarnNotifyStockFull(sellReason)
 Check(gEarnSellNotice = sellReason && logs.Length = 1 && tooltips.Length = 1
@@ -430,7 +430,7 @@ EarnNotifyStockFull("벙커 재고 만재: 판매 필요")
 Check(logs.Length = 2 && tooltips.Length = 2 && gEarnSellNotice = "벙커 재고 만재: 판매 필요",
     "changed stock-full notice is reported without stopping")
 Reset()
-sellReason := "나이트클럽 창고 만재 1개: 판매 필요"
+sellReason := "나이트클럽 창고 만재 3개: 판매 필요"
 gEarnTasks := [{id:"bunker",label:"bunker",on:true,every:300000,fn:RunTask.Bind("bunker")},
     {id:"warehouse",label:"warehouse",on:true,every:300000,fn:RunTask.Bind("warehouse")},
     {id:"dj",label:"dj",on:true,every:300000,fn:RunTask.Bind("dj")},
@@ -462,7 +462,7 @@ EarnTick()
 Check(!gEarnOn && calls.Length = 7 && stopped = 1 && !gEarnManualStop,
     "manual F9 still stops automation after stock-full detection and later ticks do not restart it")
 Reset()
-sellReason := "나이트클럽 창고 만재 1개: 판매 필요"
+sellReason := "나이트클럽 창고 만재 3개: 판매 필요"
 gEarnTasks := [{id:"bunker",label:"bunker",on:true,every:300000,fn:RunTask.Bind("bunker")},
     {id:"warehouse",label:"warehouse",on:true,every:300000,fn:RunTask.Bind("warehouse")},
     {id:"dj",label:"dj",on:true,every:300000,fn:RunTask.Bind("dj")}]
@@ -488,7 +488,7 @@ EarnTick()
 Check(calls.Length = 6 && gEarnDone["bunker"] = 2 && gEarnDone["warehouse"] = 2 && gEarnDone["dj"] = 2,
     "the recovered stock-full batch runs again at its next ordinary due time")
 Reset()
-sellReason := "나이트클럽 창고 만재 1개: 판매 필요"
+sellReason := "나이트클럽 창고 만재 3개: 판매 필요"
 gEarnTasks := [{id:"bunker",label:"bunker",on:true,every:300000,fn:RunTask.Bind("bunker")},
     {id:"warehouse",label:"warehouse",on:true,every:300000,fn:RunTask.Bind("warehouse")},
     {id:"dj",label:"dj",on:true,every:300000,fn:RunTask.Bind("dj")}]
@@ -512,7 +512,7 @@ Check(gEarnOn && IsObject(gEarnRecovery) && gEarnSellNotice = sellReason
 Check(!HasLog("복구 해제:") && !HasLog("복구 완료:") && !HasLog("꺼짐"),
     "unconfirmed cleanup never reports release or completion")
 Reset()
-sellReason := "나이트클럽 창고 만재 1개: 판매 필요"
+sellReason := "나이트클럽 창고 만재 3개: 판매 필요"
 gEarnTasks := [{id:"bunker",label:"bunker",on:true,every:300000,fn:RunTask.Bind("bunker")},
     {id:"warehouse",label:"warehouse",on:true,every:300000,fn:RunTask.Bind("warehouse")},
     {id:"dj",label:"dj",on:true,every:300000,fn:RunTask.Bind("dj")}]
@@ -538,7 +538,7 @@ Check(!gEarnOn && !gEarnManualStop && !gEarnManualCleanupActive && !gEarnManualC
     && HasLog("꺼짐: MCT 정리와 CEO 해제 완료"),
     "successful ordinary CEO retry finalizes the F9 stop as cleaned without rerunning task bodies")
 Reset()
-sellReason := "나이트클럽 창고 만재 1개: 판매 필요"
+sellReason := "나이트클럽 창고 만재 3개: 판매 필요"
 gEarnTasks := [{id:"bunker",label:"bunker",on:true,every:300000,fn:RunTask.Bind("bunker")},
     {id:"warehouse",label:"warehouse",on:true,every:300000,fn:RunTask.Bind("warehouse")},
     {id:"dj",label:"dj",on:true,every:300000,fn:RunTask.Bind("dj")}]
@@ -906,7 +906,7 @@ RunTask(id, manageSession := true) {
         return EarnFail("화면 판독 중단 또는 시간 초과")
     }
     if (taskMode = "stock-full") {
-        EarnNotifyStockFull("나이트클럽 창고 만재 1개: 판매 필요")
+        EarnNotifyStockFull("나이트클럽 창고 만재 3개: 판매 필요")
         return true
     }
     if (taskMode = "long-readonly") {
