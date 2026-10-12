@@ -14,16 +14,27 @@ $closeGuard = $closeGuard.Replace('MemGuardCloseGame(', 'FixtureMemGuardCloseGam
     Replace('MemGuardLog(', 'FixtureMemGuardLog(').
     Replace('ProcessClose(', 'FixtureProcessClose(').
     Replace('ProcessWaitClose(', 'FixtureProcessWaitClose(')
+$stateHelpers = foreach ($name in @('MemGuardLoadState', 'MemGuardSaveState', 'MemGuardForgetState')) {
+    $source = [regex]::Match($guardSource, ('(?ms)^' + $name + '\([^\r\n]*\) \{.*?^\}')).Value
+    if (-not $source) { throw "$name missing" }
+    $source.Replace($name + '(', 'Fixture' + $name + '(').Replace('MemGuardLog(', 'FixtureMemGuardLog(')
+}
+$stateHelpers = $stateHelpers -join "`n"
 $tickGuard = [regex]::Match($guardSource, '(?ms)^MemGuardTick\([^\r\n]*\) \{.*?^\}').Value
 if (-not $tickGuard) { throw 'MemGuardTick missing' }
 $tickGuard = $tickGuard.Replace('MemGuardTick(', 'FixtureMemGuardTick(').
     Replace('ProcessExist(', 'FixtureProcessExist(').
+    Replace('MemGuardProcessCreated(', 'FixtureProcessCreated(').
+    Replace('MemGuardUtcNow(', 'FixtureUtcNow(').
+    Replace('MemGuardLoadState(', 'FixtureMemGuardLoadState(').
+    Replace('MemGuardSaveState(', 'FixtureMemGuardSaveState(').
+    Replace('MemGuardForgetState(', 'FixtureMemGuardForgetState(').
     Replace('MemGuardSystemCommit(', 'FixtureSystemCommit(').
     Replace('MemGuardProcessGB(', 'FixtureProcessGB(').
     Replace('MemGuardDisplayNote(', 'FixtureDisplayNote(').
     Replace('MemGuardLog(', 'FixtureMemGuardLog(').
     Replace('MemGuardCloseGame(', 'FixtureTickClose(')
-if ($tickGuard -match '\b(?:ProcessExist|MemGuardSystemCommit|MemGuardProcessGB|MemGuardDisplayNote|MemGuardLog|MemGuardCloseGame)\(' -or
+if ($tickGuard -match '\b(?:ProcessExist|MemGuardProcessCreated|MemGuardUtcNow|MemGuardLoadState|MemGuardSaveState|MemGuardForgetState|MemGuardSystemCommit|MemGuardProcessGB|MemGuardDisplayNote|MemGuardLog|MemGuardCloseGame)\(' -or
     $closeGuard -match '\b(?:ProcessClose|ProcessWaitClose|MemGuardLog)\(') {
     throw 'Unsafe unstubbed fixture action'
 }
@@ -37,6 +48,13 @@ global config := Map("Settings", Map()), gEarnOn := false, gEarnBusy := false, G
 global setCalls := 0, setOn := true, setReason := "", releaseCalls := 0, closePID := 0, waitPID := 0
 global fixtureMessages := [], fixtureLogs := [], fixturePID := 4242, fixturePct := 0, fixtureGtaGB := 17.5
 global fixtureReadable := true, fixtureCloseCalls := 0, fixtureClosePID := 0
+global fixtureCreated := 134000000000000000, fixtureNow := 134000000600000000
+global gMemGuardStatePath := A_Args[1]
+global n := 0
+if (A_Args.Length > 1) {
+    FixtureRestartPhase(A_Args[2])
+    ExitApp(0)
+}
 EarnLog(msg, *) {
     global fixtureMessages
     fixtureMessages.Push(msg)
@@ -64,6 +82,14 @@ FixtureProcessExist(*) {
     global fixturePID
     return fixturePID
 }
+FixtureProcessCreated(*) {
+    global fixtureCreated
+    return fixtureCreated
+}
+FixtureUtcNow() {
+    global fixtureNow
+    return fixtureNow
+}
 FixtureSystemCommit(&used, &limit) {
     global fixturePct, fixtureReadable
     used := fixturePct, limit := 100
@@ -80,9 +106,13 @@ FixtureTickClose(pid, *) {
 }
 FixtureReset() {
     global config, gMemGuardLevel, gMemGuardLastLog, gMemGuardPID, gMemGuardWarning
+    global gMemGuardCreated, gMemGuardPolicy, gMemGuardStatePath, fixtureCreated, fixtureNow
     global fixtureMessages, fixtureLogs, fixturePID, fixturePct, fixtureGtaGB, fixtureReadable, fixtureCloseCalls, fixtureClosePID
     config := Map("Settings", Map())
     gMemGuardLevel := "ok", gMemGuardLastLog := 0, gMemGuardPID := 0, gMemGuardWarning := "ok"
+    gMemGuardCreated := 0, gMemGuardPolicy := ""
+    fixtureCreated := 134000000000000000, fixtureNow := 134000000600000000
+    try FileDelete(gMemGuardStatePath)
     fixtureMessages := [], fixtureLogs := [], fixturePID := 4242, fixturePct := 0, fixtureGtaGB := 17.5
     fixtureReadable := true, fixtureCloseCalls := 0, fixtureClosePID := 0
 }
@@ -94,6 +124,7 @@ FixtureSamples(samples) {
     }
 }
 $closeGuard
+$stateHelpers
 $tickGuard
 n := 0
 Check(MemGuardLevel(50, 10, 80, 92, 25) = "ok", "normal use stays ok")
@@ -211,6 +242,7 @@ Check(fixtureLogs.Length = 1 && fixtureMessages.Length = 1, "unchanged sample pr
 gMemGuardLastLog := A_TickCount - 600001
 FixtureSamples([80])
 Check(fixtureLogs.Length = 2 && fixtureMessages.Length = 1, "ten-minute diagnostic logging does not reissue user warning")
+CheckPersistence()
 FileAppend("PASS MemGuard cases=" n, "*")
 ExitApp(0)
 CheckReaders() {
@@ -218,7 +250,106 @@ CheckReaders() {
     gb := MemGuardProcessGB(DllCall("GetCurrentProcessId"))
     Check(gb > 0 && gb < 1, "own private memory read " gb)
     Check(MemGuardProcessGB(0) = -1, "unopenable process reads -1")
+    created := MemGuardProcessCreated(DllCall("GetCurrentProcessId"))
+    Check(created > 0 && created <= MemGuardUtcNow(), "own process creation uses read-only OS metadata")
+    Check(MemGuardProcessCreated(0) = 0, "unopenable creation time is unknown")
     Check(MemGuardDisplayNote() ~= "^모니터 \d+", "display note")
+}
+CheckPersistence() {
+    global fixtureCreated, fixtureNow, fixturePID, fixtureMessages, fixtureLogs, fixtureGtaGB
+    global fixtureCloseCalls, gMemGuardWarning, gMemGuardPID, gMemGuardCreated, gMemGuardPolicy, gMemGuardStatePath, config
+    FixtureReset()
+    valid := "v1|4242|" fixtureCreated "|" fixtureNow "|80|92|25|warn"
+    Check(MemGuardParseState(valid, 4242, fixtureCreated, "80|92|25", fixtureNow) = "warn", "valid same-process state restores warning")
+    Check(MemGuardParseState(valid, 4242, fixtureCreated, "80|92|25", fixtureNow + 9000000000) = "warn", "15-minute freshness boundary remains valid")
+    Check(MemGuardParseState(valid, 4242, fixtureCreated, "80|92|25", fixtureNow + 9000000001) = "", "state older than 15 minutes is rejected")
+    Check(MemGuardParseState(valid, 4242, fixtureCreated, "80|92|25", fixtureNow - 1) = "", "future observation is rejected")
+    Check(MemGuardParseState(valid, 4343, fixtureCreated, "80|92|25", fixtureNow) = "", "different PID cannot restore")
+    Check(MemGuardParseState(valid, 4242, fixtureCreated + 1, "80|92|25", fixtureNow) = "", "reused PID with different creation cannot restore")
+    for bad in ["", "v2|4242|1|2|80|92|25|warn", valid "|extra", StrReplace(valid, "warn", "close"),
+        StrReplace(valid, "4242", "-1"), StrReplace(valid, "4242", "4294967296"),
+        StrReplace(valid, "4242", "4242``n"), StrReplace(valid, fixtureCreated, "0"),
+        StrReplace(valid, "4242", "4.242e3"), StrReplace(valid, fixtureCreated, "9999999999999999999"),
+        StrReplace(valid, fixtureCreated, fixtureNow + 1), StrReplace(valid, "80|92|25", "NaN|92|25"),
+        StrReplace(valid, "80|92|25", "101|92|25"), StrReplace(valid, "80|92|25", "80|92|-1"),
+        StrReplace(valid, "80|92|25", "0|92|25"), StrReplace(valid, "80|92|25|warn", "80|0|25|high")]
+        Check(MemGuardParseState(bad, 4242, fixtureCreated, "80|92|25", fixtureNow) = "", "malformed persisted state cannot suppress alerts")
+    for policy in ["81|92|25", "80|93|25", "80|92|26"]
+        Check(MemGuardParseState(valid, 4242, fixtureCreated, policy, fixtureNow) = "", "changed policy does not inherit old suppression")
+    Check(FixtureMemGuardLoadState(gMemGuardStatePath, 4242, fixtureCreated, "80|92|25", fixtureNow) = "ok", "missing file starts armed")
+    Check(FixtureMemGuardSaveState(gMemGuardStatePath, 4242, fixtureCreated, "80|92|25", "warn", fixtureNow), "atomic state write succeeds")
+    Check(FileRead(gMemGuardStatePath, "UTF-8") = valid, "state file contains exact process identity and policy")
+    Check(FixtureMemGuardLoadState(gMemGuardStatePath, 4242, fixtureCreated, "80|92|25", fixtureNow) = "warn", "saved state reloads")
+    FileSetAttrib("+R", gMemGuardStatePath)
+    try Check(FixtureMemGuardLoadState(gMemGuardStatePath, 4242, fixtureCreated, "80|92|25", fixtureNow) = "ok", "read-only stale suppression is not trusted")
+    finally FileSetAttrib("-R", gMemGuardStatePath)
+    FileDelete(gMemGuardStatePath)
+    FileAppend("broken", gMemGuardStatePath, "UTF-8-RAW")
+    Check(FixtureMemGuardLoadState(gMemGuardStatePath, 4242, fixtureCreated, "80|92|25", fixtureNow) = "ok", "corrupt file rearms instead of suppressing")
+    Check(InStr(fixtureLogs[-1], "경고 이력 무시:") = 1, "corrupt state diagnosis is logged")
+    FileDelete(gMemGuardStatePath)
+    FileAppend(Format("{:0600}", 1), gMemGuardStatePath, "UTF-8-RAW")
+    Check(FixtureMemGuardLoadState(gMemGuardStatePath, 4242, fixtureCreated, "80|92|25", fixtureNow) = "ok", "oversized file is rejected")
+    FixtureReset()
+    FixtureSamples([80])
+    fixtureCreated += 1
+    FixtureSamples([80])
+    Check(fixtureMessages.Length = 2, "same PID with a new creation time rearms production tick")
+    config["Settings"]["MemWarnPct"] := 81
+    FixtureSamples([83])
+    Check(fixtureMessages.Length = 3, "live policy changes rearm production tick")
+    FixtureReset()
+    fixtureCreated := 0
+    FixtureSamples([80, 80])
+    Check(fixtureMessages.Length = 1 && !FileExist(gMemGuardStatePath), "unknown creation preserves in-process dedupe but cannot persist it")
+    FixtureReset()
+    statePath := gMemGuardStatePath
+    gMemGuardStatePath := statePath "\missing-parent\state.txt"
+    FixtureSamples([80, 80, 92])
+    Check(fixtureMessages.Length = 2 && gMemGuardWarning = "high", "write failure cannot hide warning or escalation")
+    Check(InStr(fixtureLogs[-1], "경고 이력 저장 실패") = 1, "failed write is logged and retried")
+    gMemGuardStatePath := statePath
+    FixtureSamples([92])
+    Check(FileExist(statePath) && fixtureMessages.Length = 2, "subsequent successful persistence does not duplicate alert")
+}
+FixtureRestartPhase(phase) {
+    global fixtureMessages, fixtureLogs, fixtureCreated, fixtureNow, fixtureGtaGB, fixtureCloseCalls, gMemGuardWarning, gMemGuardStatePath, config
+    switch phase {
+        case "warn":
+            FixtureSamples([83])
+            Check(fixtureMessages.Length = 1 && gMemGuardWarning = "warn", "first process warns")
+        case "reload":
+            FixtureSamples([83])
+            Check(fixtureMessages.Length = 0 && gMemGuardWarning = "warn", "second process restores warning without alert")
+            Check(fixtureLogs.Length = 1 && InStr(fixtureLogs[1], "warn alert=warn"), "reload still logs first raw measurement")
+        case "escalate":
+            FixtureSamples([92])
+            Check(fixtureMessages.Length = 1 && gMemGuardWarning = "high", "reloaded warning still escalates")
+        case "high":
+            FixtureSamples([92])
+            Check(fixtureMessages.Length = 0 && gMemGuardWarning = "high", "critical warning survives reload")
+            fixtureGtaGB := 25
+            FixtureSamples([92])
+            Check(fixtureCloseCalls = 1, "restored critical latch never suppresses protective close")
+        case "recover":
+            FixtureSamples([75])
+            Check(fixtureMessages.Length = 0 && gMemGuardWarning = "ok", "recovery clears persisted warning")
+        case "policy":
+            config["Settings"]["MemClosePct"] := 91
+            FixtureSamples([83])
+            Check(fixtureMessages.Length = 1 && gMemGuardWarning = "warn", "new process with changed policy warns")
+        case "new-game":
+            fixtureCreated += 1
+            FixtureSamples([83])
+            Check(fixtureMessages.Length = 1 && gMemGuardWarning = "warn", "PID reused by new game warns after reload")
+        case "stale":
+            fixtureNow += 9000000001
+            FixtureSamples([83])
+            Check(fixtureMessages.Length = 1 && gMemGuardWarning = "warn", "stale prior process record cannot suppress warning")
+        default:
+            throw Error("Unknown restart phase")
+    }
+    FileAppend("PASS restart " phase, "*")
 }
 Check(ok, name) {
     global n
@@ -228,9 +359,27 @@ Check(ok, name) {
 }
 "@
 $path = Join-Path ([IO.Path]::GetTempPath()) ('gta-memguard-' + [Guid]::NewGuid().ToString('N') + '.ahk')
+$statePath = $path + '.state'
 [IO.File]::WriteAllText($path, $driver, (New-Object Text.UTF8Encoding($true)))
 try {
-    $out = (& $AhkPath /ErrorStdOut $path 2>&1 | Out-String).Trim()
-    if ($LASTEXITCODE -ne 0 -or $out -ne 'PASS MemGuard cases=54') { throw "MemGuard failed (exit=$LASTEXITCODE): $out" }
+    $out = (& $AhkPath /ErrorStdOut $path $statePath 2>&1 | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or $out -ne 'PASS MemGuard cases=95') { throw "MemGuard failed (exit=$LASTEXITCODE): $out" }
     Write-Output $out
-} finally { [IO.File]::Delete($path) }
+    [IO.File]::Delete($statePath)
+    foreach ($phase in @('warn', 'reload', 'escalate', 'high', 'recover', 'warn')) {
+        $out = (& $AhkPath /ErrorStdOut $path $statePath $phase 2>&1 | Out-String).Trim()
+        if ($LASTEXITCODE -ne 0 -or $out -ne "PASS restart $phase") { throw "MemGuard restart failed (exit=$LASTEXITCODE): $out" }
+        Write-Output $out
+    }
+    foreach ($changed in @('policy', 'new-game', 'stale')) {
+        [IO.File]::Delete($statePath)
+        foreach ($phase in @('warn', $changed)) {
+            $out = (& $AhkPath /ErrorStdOut $path $statePath $phase 2>&1 | Out-String).Trim()
+            if ($LASTEXITCODE -ne 0 -or $out -ne "PASS restart $phase") { throw "MemGuard restart failed (exit=$LASTEXITCODE): $out" }
+            Write-Output $out
+        }
+    }
+} finally {
+    [IO.File]::Delete($path)
+    [IO.File]::Delete($statePath)
+}

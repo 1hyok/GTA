@@ -9,6 +9,8 @@ global gMemGuardLevel := "ok"
 global gMemGuardLastLog := 0
 global gMemGuardPID := 0
 global gMemGuardWarning := "ok"
+global gMemGuardCreated := 0, gMemGuardPolicy := ""
+global gMemGuardStatePath := A_Temp "\gta-mem-state.txt"
 
 MemGuardLevel(commitPct, gtaGB, warnPct, closePct, minGB) {
     if (closePct > 0 && commitPct >= closePct && gtaGB >= minGB)
@@ -27,6 +29,102 @@ MemGuardWarningLevel(commitPct, warnPct, closePct, previous) {
     if (commitPct >= warnPct && previous = "ok")
         return "warn"
     return previous
+}
+
+; 프로세스 내용은 읽지 않는다. PID 재사용을 구분하는 OS 생성 FILETIME만 조회한다.
+MemGuardProcessCreated(pid) {
+    h := DllCall("OpenProcess", "uint", 0x1000, "int", false, "uint", pid, "ptr")
+    if (!h)
+        return 0
+    try {
+        times := Buffer(32, 0)
+        if (!DllCall("GetProcessTimes", "ptr", h, "ptr", times, "ptr", times.Ptr + 8,
+            "ptr", times.Ptr + 16, "ptr", times.Ptr + 24))
+            return 0
+        return NumGet(times, 0, "int64")
+    } finally {
+        DllCall("CloseHandle", "ptr", h)
+    }
+}
+
+MemGuardUtcNow() {
+    time := Buffer(8, 0)
+    DllCall("GetSystemTimeAsFileTime", "ptr", time)
+    return NumGet(time, 0, "int64")
+}
+
+; 저장 형식: v1|PID|생성 FILETIME|관측 FILETIME|warnPct|closePct|minGB|alert.
+; 15분 넘게 관측이 비었거나 정책이 바뀌면 새 측정으로 경고한다. 보호 종료는 이 이력과 무관하다.
+MemGuardParseState(text, pid, created, policy, now) {
+    fields := StrSplit(Trim(text, "`r`n"), "|")
+    if (fields.Length != 8 || fields[1] != "v1"
+        || !RegExMatch(fields[2], "^[1-9][0-9]{0,9}\z") || fields[2] > 4294967295
+        || !RegExMatch(fields[3], "^[1-9][0-9]{0,17}\z")
+        || !RegExMatch(fields[4], "^[1-9][0-9]{0,17}\z"))
+        return ""
+    for index in [5, 6, 7] {
+        if (!RegExMatch(fields[index], "^(?:0|[1-9][0-9]{0,3})(?:\.[0-9]{1,6})?\z")
+            || fields[index] > (index = 7 ? 4096 : 100))
+            return ""
+    }
+    if (fields[2] != pid || fields[3] != created || created <= 0 || created > fields[4]
+        || fields[4] > now || now - fields[4] > 9000000000
+        || (fields[5] "|" fields[6] "|" fields[7]) != policy
+        || !RegExMatch(fields[8], "^(ok|warn|high)\z")
+        || (fields[8] != "ok" && fields[5] = 0)
+        || (fields[8] = "high" && fields[6] = 0))
+        return ""
+    return fields[8]
+}
+
+MemGuardLoadState(path, pid, created, policy, now) {
+    if (!FileExist(path))
+        return "ok"
+    try {
+        if (InStr(FileGetAttrib(path), "R"))
+            throw Error("read-only state cannot track recovery")
+        if (FileGetSize(path) > 512)
+            throw Error("state exceeds 512 bytes")
+        warning := MemGuardParseState(FileRead(path, "UTF-8"), pid, created, policy, now)
+        if (warning = "")
+            throw Error("identity, policy, time or format mismatch")
+        return warning
+    } catch as err {
+        MemGuardLog("경고 이력 무시: " err.Message)
+        return "ok"
+    }
+}
+
+MemGuardSaveState(path, pid, created, policy, warning, now) {
+    text := "v1|" pid "|" created "|" now "|" policy "|" warning
+    if (MemGuardParseState(text, pid, created, policy, now) = "")
+        return false
+    tmp := path "." DllCall("GetCurrentProcessId") ".tmp"
+    try {
+        stateFile := FileOpen(tmp, "w", "UTF-8-RAW")
+        try {
+            if (stateFile.Write(text) != StrLen(text))
+                throw Error("incomplete state write")
+        }
+        finally stateFile.Close()
+        FileMove(tmp, path, 1)
+        return true
+    } catch as err {
+        ; 실패한 회복 기록보다 오래된 억제 상태를 다음 Main이 읽지 않도록 가능한 경우 폐기한다.
+        try FileDelete(path)
+        MemGuardLog("경고 이력 저장 실패(다음 측정에서 재시도): " err.Message)
+        return false
+    } finally {
+        try FileDelete(tmp)
+    }
+}
+
+MemGuardForgetState(path) {
+    if (!FileExist(path))
+        return
+    try FileDelete(path)
+    catch as err
+        MemGuardLog("경고 이력 삭제 실패: " err.Message)
 }
 
 ; PERFORMANCE_INFORMATION(x64 104바이트): CommitTotal @8, CommitLimit @16, PageSize @80. 값은 페이지 수.
@@ -76,16 +174,24 @@ MemGuardLog(msg) {
 
 MemGuardTick() {
     global config, gMemGuardLevel, gMemGuardLastLog, gMemGuardPID, gMemGuardWarning
+    global gMemGuardCreated, gMemGuardPolicy, gMemGuardStatePath
     s := config["Settings"]
     pid := ProcessExist("GTA5_Enhanced.exe")
-    if (pid != gMemGuardPID || !pid) {
+    created := pid ? MemGuardProcessCreated(pid) : 0
+    now := MemGuardUtcNow()
+    policy := s.Get("MemWarnPct", 80) "|" s.Get("MemClosePct", 92) "|" s.Get("MemCloseMinGB", 25)
+    if (pid != gMemGuardPID || !pid || created != gMemGuardCreated || policy != gMemGuardPolicy) {
         gMemGuardPID := pid
+        gMemGuardCreated := created
+        gMemGuardPolicy := policy
         gMemGuardLevel := "ok"
-        gMemGuardWarning := "ok"
+        gMemGuardWarning := created > 0 ? MemGuardLoadState(gMemGuardStatePath, pid, created, policy, now) : "ok"
         gMemGuardLastLog := 0
     }
-    if (!pid)
+    if (!pid) {
+        MemGuardForgetState(gMemGuardStatePath)
         return
+    }
     if (!MemGuardSystemCommit(&used, &limit))
         return
     gta := MemGuardProcessGB(pid)
@@ -106,6 +212,8 @@ MemGuardTick() {
         EarnLog("메모리 위험: " line ". 시스템 커밋이 보호 기준 이상. GTA 종료 조건 미충족, 전체 프로세스 메모리 확인 필요")
     else if (alertChanged && warning = "warn")
         EarnLog("메모리 경고: " line ". 시스템 전체 커밋 증가. GTA 단독 원인이나 누수로 확정하지 않음")
+    if (created > 0)
+        MemGuardSaveState(gMemGuardStatePath, pid, created, policy, warning, now)
 }
 
 MemGuardCloseGame(pid, line) {
