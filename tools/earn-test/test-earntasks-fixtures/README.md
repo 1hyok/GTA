@@ -10,3 +10,5 @@ The captures are 89 seconds apart. They establish different displayed values, no
 `Images/Earn/1920x1080/nc_popularity_home.png` is the `(743,160,259,28)` text crop from the Home capture. Pixels whose minimum RGB channel is below 220 are magenta, matching the existing transparent-template convention.
 
 `test-earntasks.ps1` checks the template against both saved regions, then executes the production bar sampler and Home reader using these saved pixels. No window, screenshot or game input is used.
+
+`bunker-supply-full.png` is the `(653,367,940,33)` Supplies Level crop from the Steam recording at 2026-10-12 23:57:44 KST. The recording was played continuously from 23:57:24 to 23:57:57 before extraction. It shows full internal supplies while the preceding MCT card displayed an empty supplies bar. The label template retains white text from `(664,368,192,30)` with minimum RGB channel 200. `test-bunker-supply.ps1`, invoked by `test-earntasks.ps1`, checks the template, saved full and partial bar pixels, unrelated screens, and input guards with all desktop operations stubbed.

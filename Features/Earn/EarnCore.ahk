@@ -1235,7 +1235,7 @@ EarnMCTPress(x, y, hover, area) {
     return EarnPress("Enter")
 }
 ; MCT 첫 화면 카드의 막대가 얼마나 찼는지(0~1). 막대 한 줄(1920x1080 기준 x1~x2, y)을 3px 간격으로 읽어 kind 색인 칸 비율을 낸다.
-;   green = 재고(0x399167 계열), blue = 보급(0x395E91 계열), pop = 나이트클럽 인기도(빈 칸 0x383138 보다 밝은 칸)
+;   green = MCT 재고, blue = MCT 보급, orange = 벙커 내부 보급, pop = 나이트클럽 인기도
 ; 0926 실측 위치: 벙커 카드 재고 x 766~1154 y 555, 보급 y 577 / 나이트클럽 카드 인기도 x 340~708 y 471, 상품 재고 x 330~718 y 555
 EarnBarFill(x1, x2, y, kind) {
     hwnd := IsGTAActive()
@@ -1253,6 +1253,8 @@ EarnBarFill(x1, x2, y, kind) {
             hit := g > 100 && g > r + 30
         else if (kind = "blue")
             hit := b > 110 && b > r + 30
+        else if (kind = "orange")
+            hit := r > 100 && r > g + 35 && g > b + 15
         else
             hit := Max(r, g, b) > 110
         full += hit ? 1 : 0

@@ -401,6 +401,15 @@ EarnBunkerBuy() {
     }
     if (!EarnWaitSeen("bunker_page", [0.15,0,0.35,0.12], 5000))
         return EarnFail("벙커: 사업장 페이지 미확인")
+    ; MCT 막대가 비어 있어도 진입 중 배송이 도착할 수 있다. 실제 내부 잔량이 늘었으면
+    ; 이번 구매 후보를 버린다. 내부 막대의 표본 차이로 가격 계획을 새로 만들지는 않는다.
+    currentSupply := EarnBunkerPageSupply()
+    if (currentSupply < 0)
+        return EarnFail("벙커: 내부 보급 막대 미확인")
+    if (currentSupply > supply + 0.03) {
+        EarnLog(Format("벙커: MCT 보급 {:.0f}% → 내부 {:.0f}%, 구매 생략", supply * 100, currentSupply * 100))
+        return EarnUIBackToMCT("bunker_page", 2) || EarnFail("벙커: 보급 증가 확인 뒤 MCT 복귀 미확인")
+    }
     if (!EarnUIClick("bunker_resupply", 460, 490))
         return EarnFail("벙커: 보급 메뉴 선택 실패")
     ; 보급 화면은 시작 화면·통계 화면을 거쳐 늦게 뜬다. 3초로는 버튼이 막 보이는 순간에 포기했다(1004 00:49 녹화). 기다리는 동안 입력은 없다.
@@ -447,6 +456,16 @@ EarnBunkerBuy() {
         return false
     EarnLog("벙커: 보급 배송 중 확인")
     return EarnUIBackToMCT("bunker_page", 2) || EarnFail("벙커: 배송 확인 뒤 MCT 복귀 미확인")
+}
+
+; 내부의 Supplies Level 문구와 페이지를 확인한 뒤 주황 막대만 읽는다.
+; 결제 허가가 아니라 MCT 관측 이후 보급 증가를 감지하는 추가 취소 조건이다.
+EarnBunkerPageSupply() {
+    if (!EarnUIReady("bunker_page", [0.15,0,0.35,0.12])
+        || !EarnUIReady("bunker_supplies_label", [0.34,0.34,0.46,0.37]))
+        return -1
+    value := EarnBarFill(994, 1592, 379, "orange")
+    return EarnAborted() || value < 0 || value > 1 ? -1 : value
 }
 
 ; --- 나이트클럽 DJ 교체 (규칙은 사용자 지시 0926) ---
@@ -523,10 +542,9 @@ EarnTaskMCTBegin() {
 
 ; MCT 막대는 화면에 재진입해 갱신한다. 사업장 진입 화면에서는 결제 없이 뒤로 돌아온다.
 EarnMCTRefresh() {
-    global gEarnBunkerFull
-    ; 벙커 재고가 가득 찬 동안은 벙커 화면에 들어갈 일이 없다. 등록·갱신은 나이트클럽 카드로 하고 Home 에서 바로 돌아온다.
-    nightclub := gEarnBunkerFull
-    card := nightclub ? "mct_nightclub_card" : "mct_bunker_card", cardX := nightclub ? 520 : 960
+    ; 보급 필요 여부를 읽기 전에 벙커를 열지 않는다. 등록·갱신은 기존 나이트클럽
+    ; Home 왕복을 사용하고, 벙커 진입은 실제 구매 후보일 때 EarnBunkerBuy만 수행한다.
+    card := "mct_nightclub_card", cardX := 520
     ; 등록 안내는 커서를 사업장 버튼에서 치우면 사라진다.
     if (!EarnUIClick(card, cardX, 525, "", false))
         return false
@@ -534,7 +552,7 @@ EarnMCTRefresh() {
     deadline := A_TickCount + 8000
     Loop {
         ; 화면이 막 열린 직후의 Enter 가 씹혀 첫 화면에 그대로 머물 때가 있다(1004 00:36 녹화: 8초 동안 변화 없음).
-        ; 벙커 카드는 들어가기만 하는 화면이라 3초 뒤에도 그대로면 한 번 더 누른다.
+        ; 사업장 진입 버튼이라 3초 뒤에도 MCT에 그대로면 한 번 더 누른다.
         if (!reclicked && !registered && deadline - A_TickCount <= 5000
             && EarnSeen("mct_title", [0.3,0,0.7,0.1]) && !EarnSeen("mct_need_ceo")) {
             reclicked := true
@@ -545,20 +563,10 @@ EarnMCTRefresh() {
             return false
         if (!EarnSeen("mct_title", [0.3,0,0.7,0.1]) && !EarnUIClearCursor())
             return false
-        if (nightclub && EarnSeen("nc_dj_menu")) {
+        if (EarnSeen("nc_dj_menu")) {
             if (registered)
                 EarnLog("MCT: 화면 안내로 CEO 등록 확인")
             return EarnUIBackToMCT("nc_dj_menu", 1)
-        }
-        if (EarnSeen("bunker_entry", [0.34,0.54,0.64,0.64])) {
-            if (registered)
-                EarnLog("MCT: 화면 안내로 CEO 등록 확인")
-            return EarnUIBackToMCT("bunker_entry", 1)
-        }
-        if (EarnSeen("bunker_page", [0.15,0,0.35,0.12])) {
-            if (registered)
-                EarnLog("MCT: 화면 안내로 CEO 등록 확인")
-            return EarnUIBackToMCT("bunker_page", 2)
         }
         if (EarnSeen("mct_need_ceo")) {
             if (registered)

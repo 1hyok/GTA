@@ -895,9 +895,9 @@ global refreshOptions := Map(), refreshClockMs := 0, refreshAborted := false, re
     gEarnBunkerFull := false
 ; Options, result, card clicks, LCtrl attempts, confirmed business exits, registration logs.
 for c in [[Map("alreadyBoss",true),true,1,0,1,0],
-    [Map("alreadyBoss",true,"business","bunker_page"),true,1,0,1,0],
+    [Map("alreadyBoss",true,"business","bunker_page"),false,1,0,0,0],
     [Map(),true,2,1,1,1],
-    [Map("business","bunker_page"),true,2,1,1,1],
+    [Map("business","bunker_page"),false,2,1,0,0],
     [Map("promptAfter",600,"registerAfter",1200,"titleAfter",400,"businessAfter",500),true,2,1,1,1],
     [Map("promptWithoutTitle",true),false,1,0,0,0],
     [Map("registerAfter",9000),false,1,1,0,0],
@@ -934,7 +934,7 @@ for c in [[Map("alreadyBoss",true),true,1,0,1,0],
     if (refreshOptions.Get("promptAfter",0) = 7000 && refreshClockMs < 15000)
         throw Error("Business arrival must use a fresh deadline after successful registration")
 }
-; 벙커 재고가 가득 찬 동안은 나이트클럽 카드로 갱신하고 벙커 화면에는 들어가지 않는다.
+; 재고 만재 여부와 관계없이 등록·갱신은 나이트클럽 카드만 사용한다.
 gEarnBunkerFull := true
 for c in [[Map("alreadyBoss",true,"business","nc_dj_menu"),true,1,0,1,0],
     [Map("business","nc_dj_menu"),true,2,1,1,1]] {
@@ -964,7 +964,7 @@ EarnSeen(name,*) {
         return refreshCtrlAt < 0 || refreshClockMs >= registeredAt + refreshOptions.Get("titleAfter",0)
     }
     if (name = "bunker_entry" || name = "bunker_page" || name = "nc_dj_menu") {
-        return RefreshBusinessFrame() && !refreshHover && name = refreshOptions.Get("business","bunker_entry")
+        return RefreshBusinessFrame() && !refreshHover && name = refreshOptions.Get("business","nc_dj_menu")
     }
     return false
 }
@@ -976,9 +976,9 @@ RefreshBusinessFrame() {
 }
 EarnUIClick(name,x,y,area := "",clearCursor := true) {
     global refreshClicks, refreshLastClickAt, refreshHover, refreshCursorClears
-    if (EarnAborted() || name != (gEarnBunkerFull ? "mct_nightclub_card" : "mct_bunker_card")
-        || x != (gEarnBunkerFull ? 520 : 960) || y != 525 || !EarnSeen("mct_title"))
-        throw Error("MCT card click without its confirmed list")
+    if (EarnAborted() || name != "mct_nightclub_card"
+        || x != 520 || y != 525 || !EarnSeen("mct_title"))
+        throw Error("MCT refresh must use nightclub without opening an unneeded bunker")
     ; 첫 클릭이 씹혀 아무 변화가 없을 때의 한 번 재클릭은 허용한다.
     unanswered := refreshClicks = 1 && refreshCtrl = 0 && !EarnSeen("mct_need_ceo")
     if (refreshClicks && !unanswered && (refreshCtrl != 1 || EarnSeen("mct_need_ceo")))
@@ -1017,8 +1017,7 @@ EarnPress(key) {
 }
 EarnUIBackToMCT(guard,presses) {
     global refreshBacks
-    if (EarnAborted() || !EarnSeen(guard) || presses != (guard = "bunker_page" ? 2 : 1)
-        || (gEarnBunkerFull && guard != "nc_dj_menu"))
+    if (EarnAborted() || !EarnSeen(guard) || presses != 1 || guard != "nc_dj_menu")
         throw Error("MCT refresh must return from a confirmed business screen")
     refreshBacks++
     return !refreshOptions.Get("rejectBack",false)
@@ -1582,7 +1581,7 @@ EarnLog(*) => true
     Invoke-EarnOfflineCheck 'MCTTaskFinally' 'EarnBunkerTask' $taskFinallyDriver 48
     $bunkerBuyDriver = @'
 global config := Map("Settings",Map("EarnBunkerIntervalSec",6720)), gEarnBunkerOrdered := false, gEarnBunkerFull := false
-global c := Map(), stage := "mct", pays := 0, cancels := 0, reads := 0, buyClicks := 0
+global c := Map(), stage := "mct", pays := 0, cancels := 0, reads := 0, buyClicks := 0, resupplyClicks := 0
 ; Options, result, payments, cancellations, delivery confirmed, OCR reads.
 cases := [
     ["empty",Map(),true,1,0,true,2],
@@ -1615,23 +1614,42 @@ cases := [
     ["pending-dismiss-failed",Map("fail","bunker_pending"),false,1,0,true,2],
     ["return-failed",Map("back",false),false,1,0,true,2],
     ["entry-screen",Map("entry",true),true,1,0,true,2],
+    ["delivery-full",Map("pageSupply",1),true,0,0,false,0],
+    ["delivery-nearly-full",Map("pageSupply",0.97),true,0,0,false,0],
+    ["delivery-partial",Map("pageSupply",0.43),true,0,0,false,0],
+    ["delivery-return-failed",Map("pageSupply",1,"back",false),false,0,0,false,0],
+    ["page-unreadable",Map("pageSupply",-1),false,0,0,false,0],
+    ["page-guard-interrupted",Map("pageAbort",true),false,0,0,false,0],
+    ["same-boundary",Map("supply",0.2,"pageSupply",0.2,"quote","$60,000"),true,1,0,true,2],
+    ["page-sampling-difference",Map("supply",0.2,"pageSupply",0.225,"quote","$60,000"),true,1,0,true,2],
     ["missing-dialog",Map("dialog",false),false,0,0,false,0],
     ["cancel-failed",Map("quote","$90,000","fail","cancel"),false,0,0,false,1],
     ["pending-dismiss-unknown",Map("pendingGone",false),false,1,0,true,2]]
 for scenario in cases {
     c := scenario[2], config["Settings"]["EarnBunkerIntervalSec"] := c.Get("interval",6720)
-    stage := "mct", pays := 0, cancels := 0, reads := 0, buyClicks := 0, gEarnBunkerOrdered := false
+    stage := "mct", pays := 0, cancels := 0, reads := 0, buyClicks := 0, resupplyClicks := 0, gEarnBunkerOrdered := false
     result := EarnBunkerBuy()
     if (result != scenario[3] || pays != scenario[4] || cancels != scenario[5]
         || gEarnBunkerOrdered != scenario[6] || reads != scenario[7])
         throw Error("Bunker buy " scenario[1] ": result=" result " pays=" pays " cancels=" cancels " reads=" reads)
     if (pays > 1)
         throw Error("No repeated payment permitted")
+    if (c.Get("pageSupply",0) > c.Get("supply",0) + 0.03 || c.Get("pageSupply",0) < 0 || c.Get("pageAbort",false)) {
+        if (resupplyClicks || buyClicks || pays || reads)
+            throw Error("Changed or unreadable internal supply must block all resupply and purchase actions")
+        if (result && stage != "mct")
+            throw Error("Skipped purchase is only successful after returning to MCT")
+    }
 }
-FileAppend("PASS BunkerBuy cases=33`n", "*")
+FileAppend("PASS BunkerBuy cases=41`n", "*")
 ExitApp(0)
 EarnUIReady(name,*) => name = "mct_bunker_card" && stage = "mct" && c.Get("ready",true)
 EarnBarFill(x1,x2,y,*) => y = 555 ? c.Get("stock",0.4) : c.Get("supply",0)
+EarnBunkerPageSupply() {
+    if (stage != "bunker_page")
+        throw Error("Internal supply must only be read after bunker page arrival")
+    return c.Get("pageAbort",false) ? -1 : c.Get("pageSupply",c.Get("supply",0))
+}
 EarnSeen(name,*) => stage = name
 EarnWaitSeen(name,*) => EarnSeen(name)
 EarnWaitGone(name,*) {
@@ -1640,7 +1658,7 @@ EarnWaitGone(name,*) {
         && (name != "bunker_pending" || c.Get("pendingGone",true))
 }
 EarnUIClick(name,x,y,*) {
-    global c, stage, pays, cancels, buyClicks
+    global c, stage, pays, cancels, buyClicks, resupplyClicks
     action := name = "bunker_confirm" ? (x = 1065 ? "pay" : "cancel") : name
     if (c.Get("fail","") = action)
         return false
@@ -1656,6 +1674,7 @@ EarnUIClick(name,x,y,*) {
         case "bunker_resupply":
             if (stage != "bunker_page")
                 throw Error("Resupply requires bunker page")
+            resupplyClicks++
             stage := "bunker_buy"
         case "bunker_buy":
             if (stage != name)
@@ -1700,7 +1719,7 @@ EarnFail(*) => false
     $bunkerBuyDriver += $bunkerPolicy + "`n" + (Get-EarnFunctionBody $policyText 'EarnBunkerPriceAllowed')
     $bunkerBuyDriver += "`n" + (Get-EarnFunctionBody $screenText 'EarnScreenText')
     $bunkerBuyDriver += "`n" + (Get-EarnFunctionBody $screenText 'EarnReadDollars')
-    Invoke-EarnOfflineCheck 'BunkerBuy' 'EarnBunkerBuy' $bunkerBuyDriver 33
+    Invoke-EarnOfflineCheck 'BunkerBuy' 'EarnBunkerBuy' $bunkerBuyDriver 41
     $uiClickDriver = @'
 global clickMode := "", clickAbort := false, cursorMoves := 0, mouseEvents := [], dpiCalls := 0
 for c in [["normal",true,2,2,2,""],["abort-held",false,1,2,2,""],
@@ -2537,6 +2556,11 @@ Sleep(*) => true
 '@
     $faceDriver += "`n" + [regex]::Match($sourceText, '(?ms)^EarnNavTo\([^\r\n]*\) \{.*?^\}').Value
     Invoke-EarnOfflineCheck 'FaceControl' 'EarnFace' $faceDriver 11
+    $supplyOutput = @(& (Join-Path $PSScriptRoot 'test-bunker-supply.ps1') -AhkPath $AhkPath)
+    $supplyOutput | Write-Output
+    $supplyCount = [regex]::Match(($supplyOutput -join "`n"), '(?m)^PASS BunkerSupply cases=(\d+)$')
+    if (-not $supplyCount.Success) { throw 'Bunker supply regression summary missing' }
+    $script:earnCaseTotal += [int]$supplyCount.Groups[1].Value
     Write-Output "PASS EarnTasks: $script:earnCaseTotal cases; no game input"
 } finally {
     [Console]::InputEncoding = $previousInputEncoding
