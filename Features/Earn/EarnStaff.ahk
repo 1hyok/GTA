@@ -15,14 +15,17 @@ EarnVinewoodStaffTask() {
         EarnLog("직원: 직원 관리 메뉴 회색(모든 직원 작업 중), 건너뜀")
         EarnStaffTrack("all", "busy")
     } else {
-        if (bail && !EarnStaffBailAgents())
-            return false
+        ; 목록 맨 윗줄 Hangar 를 먼저 보낸다. 창고·요원 단계가 중단돼도 격납고는 이 회차에 빠지지 않는다(1013 03:14 회차는 창고에서 멈춰 격납고를 건너뛰었다).
+        if (hangar) {
+            if (!EarnStaffHangar())
+                return false
+        }
         if (cargo) {
             if (!EarnStaffRoot() || !EarnStaffCargoWarehouses())
                 return false
         }
-        if (hangar) {
-            if (!EarnStaffRoot() || !EarnStaffHangar())
+        if (bail) {
+            if (!EarnStaffRoot() || !EarnStaffBailAgents())
                 return false
         }
     }
