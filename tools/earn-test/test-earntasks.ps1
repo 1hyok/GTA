@@ -53,6 +53,7 @@ function Invoke-EarnOfflineCheck {
 global transactionPending := Map()
 global gEarnSkipOcr := false
 global stockNotices := []
+global fixtureHudHidden := false, requireHudBeforeCEO := false
 EarnTransactionBegin(id, reason) {
     transactionPending[id] := reason
     return true
@@ -70,6 +71,11 @@ EarnMCTSeatedOcrMatches(lines) => false
 EarnBossOffIfOn() => true
 EarnMCTNeedCeoOcrMatches(lines) => false
 EarnMCTTitleOcrMatches(lines) => false
+DiscordHUDMCTSet(open) {
+    global fixtureHudHidden
+    fixtureHudHidden := open
+    return true
+}
 OnError(EarnOfflineFailure)
 EarnOfflineFailure(failure, *) {
     FileAppend("FAIL offline runtime: " failure.Message "`n", "**")
@@ -613,6 +619,8 @@ EarnMCTClose(requireChairPrompt := true) {
 }
 EarnCEO(on) {
     global endScene, endFailure, endOrder, endBoss
+    if (!on && requireHudBeforeCEO && fixtureHudHidden)
+        throw Error("Delayed closed-screen confirmation must restore HUD before CEO retirement")
     if (on) {
         endOrder .= "+"
         if (endFailure = "register")
@@ -751,6 +759,7 @@ for c in [["transition",1200,-1,true,"-",1200,1],
         endOrder := "", endAbort := false, endBoss := true, gEarnFail := "original", endLogs := [],
         cleanupClockMs := 0, cleanupWaits := 0
     cleanupPromptName := c.Length = 8 ? c[8] : "mct_sit", endFailure := c.Length = 8 ? "modal_fade" : ""
+    fixtureHudHidden := true, requireHudBeforeCEO := c[1] = "transition"
     result := EarnTaskMCTEnd()
     if (result != c[4] || endOrder != c[5] || cleanupClockMs != c[6] || cleanupWaits != c[7])
         throw Error("Cleanup prompt wait " c[1] " result=" result " input=" endOrder " elapsed=" cleanupClockMs " waits=" cleanupWaits)
@@ -1967,9 +1976,12 @@ cases := [["already-open",Map("scene","mct_title"),true,"",0,0],
 for c in cases {
     openOptions := c[2], openScene := openOptions.Get("scene","transition"), openOrder := "",
         openClockMs := 0, openAborted := false, promptWaits := 0, seatedAfterAt := -1, titleAfterAt := -1
+    fixtureHudHidden := false
     result := EarnMCTOpen()
     if (result != c[3] || openOrder != c[4] || openClockMs != c[5] || promptWaits != c[6])
         throw Error("MCT open " c[1] " result=" result " input=" openOrder " elapsed=" openClockMs " waits=" promptWaits)
+    if (result && !fixtureHudHidden)
+        throw Error("MCT screen must be hidden before success")
 }
 FileAppend("PASS MCTOpen cases=11`n", "*")
 ExitApp(0)
@@ -1997,6 +2009,8 @@ EarnWaitSeen(name,area,timeoutMs) {
 }
 EarnPress(key) {
     global openOrder, openScene, seatedAfterAt, titleAfterAt
+    if ((key = "Enter" && !fixtureHudHidden) || (key = "e" && fixtureHudHidden))
+        throw Error("HUD must stay visible while sitting and hide immediately before opening the web screen")
     if (openAborted || key = openOptions.Get("rejectKey",""))
         return false
     if (key = "e" && openScene = "mct_sit")
@@ -2064,6 +2078,7 @@ for scenario in cases {
         closeClockMs := 0, seatedWaits := 0, seatedReads := 0, seatedAt := -1, stoodAt := -1, abortInputs := -1, steps := [],
         callActive := closeCase.Get("call",false), callWaits := 0
     config["Settings"]["EarnTurnUnitsPerDeg"] := closeCase.Get("sensitivity",29)
+    fixtureHudHidden := true
     result := EarnMCTClose(closeCase.Get("chair",true))
     if (result != scenario[3] || backspaces != scenario[4] || clicks.Length != scenario[5]
         || turns != scenario[6] || promptReads != scenario[7])
@@ -2136,6 +2151,8 @@ EarnPress(key) {
 }
 Click(event) {
     global clicks, aborted
+    if (fixtureHudHidden)
+        throw Error("MCT closed HUD must restore before standing or later CEO and chair recovery")
     if (event != "Right Down" && event != "Right Up")
         throw Error("Unexpected click " event)
     if (event = "Right Down" && aborted)

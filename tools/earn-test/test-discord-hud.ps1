@@ -9,28 +9,24 @@ $root = Join-Path $PSScriptRoot '..\..'
 if ($BaselineRevision) {
     $source = (& git -C $root show ($BaselineRevision + ':Features/DiscordHUD.ahk')) -join "`n"
     if ($LASTEXITCODE -ne 0) { throw 'Cannot read requested baseline' }
-    $production = [regex]::Match($source, '(?ms)^StartDiscordHUD\(\) \{.*?^\}').Value
-    if (-not $production -or $source.Contains('DiscordHUDVisibilitySync')) { throw 'Expected pre-fix startup-only source' }
-    $production = $production.Replace('FileExist(', 'FakeFileExist(').Replace('ProcessExist(', 'FakeProcessExist(')
+    $production = [regex]::Match($source, '(?ms)^DiscordHUDVisibilityWanted\(\) \{.*?^\}').Value
+    if (-not $production -or -not $production.Contains('AwayMode')) { throw 'Expected old away-wide hiding policy' }
     $driver = @'
 #Requires AutoHotkey v2.0
 #SingleInstance Off
 #NoTrayIcon
-global config := Map("Settings", Map("DiscordHUDPath", "existing.exe")), GTA_WIN := "fake"
-global hudVisible := true
-if (StartDiscordHUD() || !hudVisible)
+global config := Map("Settings", Map("AwayMode", 1)), gEarnOn := true, gDiscordHUDLeases := 0
+if (!DiscordHUDVisibilityWanted())
     ExitApp(1)
-FileAppend("EXPECTED_REPRO: running HUD remains visible before automation`n", "*")
+FileAppend("EXPECTED_REPRO: away earning hides HUD without MCT`n", "*")
 ExitApp(0)
-FakeFileExist(*) => true
-FakeProcessExist(*) => 101
-DiscordHUDKeepGTAFront(*) => false
-MacroLog(*) => false
 '@
-    $expected = '^EXPECTED_REPRO: running HUD remains visible before automation$'
+    $expected = '^EXPECTED_REPRO: away earning hides HUD without MCT$'
 } else {
     $source = Get-Content (Join-Path $root 'Features\DiscordHUD.ahk') -Raw -Encoding UTF8
-    $production = $source.Substring($source.IndexOf('global gDiscordHUDLeases'))
+    $production = $source.Substring($source.IndexOf('global gDiscordHUDMCTOpen'))
+    $tasks = Get-Content (Join-Path $root 'Features\Earn\EarnTasks.ahk') -Raw -Encoding UTF8
+    $production += "`n" + [regex]::Match($tasks, '(?ms)^EarnUIReady\([^\r\n]*\) \{.*?^\}').Value
     foreach ($name in @('DiscordHUDWindowList','DiscordHUDWindowRead','DiscordHUDWindowVisible')) {
         $production = [regex]::Replace($production, ('(?ms)^' + $name + '\([^\r\n]*\) \{.*?^\}\s*'), '')
     }
@@ -46,101 +42,116 @@ MacroLog(*) => false
 #Warn All, StdOut
 global n := 0, windows := Map(), writes := [], logs := [], failWrite := false, failRead := false
 global timers := [], exits := [], gEarnOn := true, config := Map("Settings", Map("AwayMode", 1))
+global gEarnBusy := false, focused := true, gameExists := true, GTA_WIN := "fake", health := true
+global templates := Map(), probeReads := [], probeBackground := true
+global abortNow := false, abortOnHide := ""
 @PRODUCTION@
 try {
-    windows[1] := Window(1)
-    windows[2] := Window(2, false)
+    windows[1] := Window(1), windows[2] := Window(2, false)
     windows[3] := Window(3, true, "DiscordChatHUD Config · C# Preview 337")
     windows[4] := Window(4, true, "계정 연결")
-    windows[5] := Window(5)
-    windows[5].minimized := true
+    windows[5] := Window(5), windows[5].minimized := true
     DiscordHUDVisibilityInit()
-    Check(timers.Length = 1 && exits.Length = 1, "timer and normal exit hook installed")
-    Check(timers[1].period = 1000 && timers[1].priority = -10, "visibility polling cannot preempt held game input")
-    Check(!windows[1].visible && gDiscordHUDOwned.Count = 1, "away plus earning hides only actual visible HUD")
-    Check(!windows[2].visible && windows[3].visible && windows[4].visible && windows[5].visible, "hidden, config, login and minimized windows unchanged")
+    Check(timers.Length = 1 && exits.Length = 1, "timer and exit hook")
+    Check(timers[1].period = 1000 && timers[1].priority = -10, "low priority timer")
+    Check(windows[1].visible && gDiscordHUDOwned.Count = 0, "away earning idle stays visible")
+    for name in ["ph_joblist_sel", "afk_vinewood_title", "safe_prompt", "staff"]
+        Check(DiscordHUDMCTObserved(name, true) && windows[1].visible, "phone app safe staff stays visible: " name)
+    gEarnBusy := true
+    DiscordHUDMCTSet(true)
+    Check(!windows[1].visible && gDiscordHUDOwned.Count = 1, "MCT opening synchronously hides")
+    Check(!windows[2].visible && windows[3].visible && windows[4].visible && windows[5].visible, "other windows unchanged")
     DiscordHUDVisibilityTick()
-    Check(writes.Length = 1, "stable hide is idempotent")
+    Check(writes.Length = 1, "idempotent")
     windows[1].visible := true
     DiscordHUDVisibilityTick()
-    Check(!windows[1].visible && writes.Length = 2, "HUD self-show is re-hidden")
-    DiscordHUDVisibilityAcquire()
-    config["Settings"]["AwayMode"] := 0
-    gEarnOn := false
+    Check(!windows[1].visible && writes.Length = 2, "reappeared HUD hidden during MCT")
+    config["Settings"]["AwayMode"] := 0, gEarnOn := false
     DiscordHUDVisibilityTick()
-    Check(!windows[1].visible && gDiscordHUDLeases = 1, "return home and F9 off cannot expose active cleanup")
-    DiscordHUDVisibilityAcquire()
-    DiscordHUDVisibilityRelease()
-    Check(!windows[1].visible && gDiscordHUDLeases = 1, "nested scope cannot restore early")
-    DiscordHUDVisibilityRelease()
-    Check(windows[1].visible && gDiscordHUDOwned.Count = 0, "last cleanup scope restores original HUD")
-    Check(!windows[2].visible, "original hidden state survives full roundtrip")
-    DiscordHUDVisibilityAcquire()
-    Check(!windows[1].visible, "normal-mode screen work also synchronously hides before OCR")
-    try {
-        throw Error("task failure")
-    } catch {
-    } finally {
-        DiscordHUDVisibilityRelease()
+    Check(!windows[1].visible, "F9 off and Home do not prove MCT closed")
+    Check(!DiscordHUDMCTObserved("mct_title", false) && !windows[1].visible, "missing template not close proof")
+    for name in ["bunker_page", "bunker_confirm", "bunker_pending", "nc_dj_menu", "dj_confirm_solomun", "dj_confirm_tale", "warehouse_title"]
+        Check(DiscordHUDMCTObserved(name, true) && !windows[1].visible, "MCT subpage remains hidden: " name)
+    DiscordHUDMCTObserved("mct_seated", true)
+    Check(windows[1].visible && gEarnBusy, "restore before standing CEO and chair recovery")
+    Check(!windows[2].visible && gDiscordHUDOwned.Count = 0, "original hidden preserved")
+    count := logs.Length
+    DiscordHUDMCTSet(false)
+    Check(logs.Length = count, "restore logged once per actual change")
+    for name in ["mct_sit", "mct_terrorbyte"] {
+        DiscordHUDMCTSet(true)
+        DiscordHUDMCTObserved(name, true)
+        Check(windows[1].visible, "closed prompt restores: " name)
     }
-    Check(windows[1].visible && gDiscordHUDLeases = 0, "exception finally restores")
-    config["Settings"]["AwayMode"] := 1
-    gEarnOn := true
-    DiscordHUDVisibilityAcquire()
-    DiscordHUDVisibilityRelease()
-    Check(!windows[1].visible, "away session remains hidden between jobs")
-    gEarnOn := false
+    DiscordHUDMCTSet(true)
+    focused := false
     DiscordHUDVisibilityTick()
-    Check(windows[1].visible, "stopped away session restores")
-    DiscordHUDVisibilityAcquire()
-    windows[1] := Window(1, false)
-    windows[1].pid := 999
-    DiscordHUDVisibilityRelease()
-    Check(!windows[1].visible && gDiscordHUDOwned.Count = 0, "recycled HWND different PID never restored")
-    windows[1] := Window(1)
-    DiscordHUDVisibilityAcquire()
-    windows[1].created += 1
-    DiscordHUDVisibilityRelease()
-    Check(!windows[1].visible, "reused PID different creation time never restored")
-    windows[1] := Window(1)
-    DiscordHUDVisibilityAcquire()
-    windows[1].title := "계정 연결"
-    DiscordHUDVisibilityRelease()
-    Check(!windows[1].visible, "changed role is not restored")
-    windows[1] := Window(1)
-    failWrite := true
-    rejected := false
-    try DiscordHUDVisibilityAcquire()
+    Check(windows[1].visible && gDiscordHUDMCTOpen, "focus away restores cached MCT")
+    focused := true
+    DiscordHUDVisibilityTick()
+    Check(!windows[1].visible, "focus back to MCT re-hides")
+    gEarnBusy := false
+    DiscordHUDVisibilityTick()
+    Check(windows[1].visible && !gDiscordHUDMCTOpen, "manual close to HUD restores")
+    health := false, templates["mct_title"] := true
+    DiscordHUDVisibilityTick()
+    Check(!windows[1].visible, "manual open detected without OCR")
+    templates := Map(), count := probeReads.Length
+    DiscordHUDVisibilityTick()
+    Check(!windows[1].visible && probeReads.Length-count <= 2, "unknown retains state with bounded probes")
+    gameExists := false
+    DiscordHUDVisibilityTick()
+    Check(windows[1].visible && !gDiscordHUDMCTOpen, "game exit clears cached state")
+    gameExists := true, gEarnBusy := true
+    for changed in ["pid", "created", "title"] {
+        windows[1] := Window(1)
+        DiscordHUDMCTSet(true)
+        if (changed = "title")
+            windows[1].title := "계정 연결"
+        else
+            windows[1].%changed% += 1
+        DiscordHUDMCTSet(false)
+        Check(!windows[1].visible && gDiscordHUDOwned.Count = 0, "identity change never restored: " changed)
+    }
+    windows[1] := Window(1), failWrite := true, rejected := false
+    try DiscordHUDMCTSet(true)
     catch {
         rejected := true
     }
-    Check(rejected && windows[1].visible && gDiscordHUDLeases = 0, "hide failure rejects OCR and unwinds lease")
+    Check(rejected && windows[1].visible && !gDiscordHUDMCTOpen, "hide failure rejects entry")
     failWrite := false
-    DiscordHUDVisibilityAcquire()
+    DiscordHUDMCTSet(true)
     failWrite := true
-    DiscordHUDVisibilityRelease()
-    Check(!windows[1].visible && gDiscordHUDOwned.Has(1) && gDiscordHUDError != "", "failed restore retains ownership for retry")
+    try DiscordHUDMCTSet(false)
+    catch {
+    }
+    Check(!windows[1].visible && gDiscordHUDOwned.Has(1) && !gDiscordHUDMCTOpen, "restore failure retains ownership and closed state")
     failWrite := false
     DiscordHUDVisibilityTick()
-    Check(windows[1].visible && !gDiscordHUDOwned.Has(1), "retry restores without losing original visibility")
-    failRead := true
-    rejected := false
-    try DiscordHUDVisibilityAcquire()
+    Check(windows[1].visible && !gDiscordHUDOwned.Has(1), "timer retries restore")
+    failRead := true, rejected := false
+    try DiscordHUDMCTSet(true)
     catch {
         rejected := true
     }
-    Check(rejected && gDiscordHUDLeases = 0, "identity read failure prevents acquisition")
+    Check(rejected && !gDiscordHUDMCTOpen, "identity failure rejects entry")
     failRead := false
-    DiscordHUDVisibilityAcquire()
+    DiscordHUDMCTSet(true)
     windows.Delete(1)
-    DiscordHUDVisibilityRelease()
-    Check(gDiscordHUDOwned.Count = 0, "destroyed HUD ownership discarded")
+    DiscordHUDMCTSet(false)
+    Check(gDiscordHUDOwned.Count = 0, "destroyed ownership discarded")
     windows[1] := Window(1)
-    gEarnOn := true
-    DiscordHUDVisibilityTick()
-    Check(!windows[1].visible, "new visible HUD during away session is protected")
+    DiscordHUDMCTSet(true)
     DiscordHUDVisibilityExit()
-    Check(windows[1].visible && !windows[2].visible, "normal process exit restores only owned windows")
+    Check(windows[1].visible && !windows[2].visible, "exit restores only owned")
+    for boundary in ["physical", "focus"] {
+        abortNow := false, focused := true, abortOnHide := boundary
+        DiscordHUDMCTSet(false)
+        Check(!EarnUIReady("bunker_confirm"), "input or focus change during hiding rejects final screen-ready: " boundary)
+        abortOnHide := "", abortNow := false, focused := true
+        DiscordHUDMCTSet(false)
+    }
+    Check(EarnUIReady("afk_vinewood_title") && windows[1].visible, "real screen-ready keeps Vinewood HUD visible")
     FileAppend("PASS DiscordHUD: " n " cases; no window or game input`n", "*")
     ExitApp(0)
 } catch as fixtureFailure {
@@ -153,7 +164,7 @@ Check(ok, message) {
     if (!ok)
         throw Error(message)
 }
-Window(id, visible := true, title := "DiscordChatHUD C#") => {hwnd: id, pid: 100 + id, created: 12345, title: title, visible: visible, minimized: false}
+Window(id, visible := true, title := "DiscordChatHUD C#") => {hwnd: id, pid: 100+id, created: 12345, title: title, visible: visible, minimized: false}
 DiscordHUDWindowList() => [1, 2, 3, 4, 5]
 DiscordHUDWindowRead(hwnd) {
     if (failRead)
@@ -163,19 +174,36 @@ DiscordHUDWindowRead(hwnd) {
     return windows[hwnd].Clone()
 }
 DiscordHUDWindowVisible(hwnd, visible) {
+    global abortNow, focused
     if (failWrite)
         return false
     windows[hwnd].visible := visible
     writes.Push({hwnd: hwnd, visible: visible})
+    if (!visible && abortOnHide != "") {
+        abortNow := true
+        if (abortOnHide = "focus")
+            focused := false
+    }
     return true
 }
+IsGTAActive() => focused && gameExists
+WinExist(*) => gameExists
+ProcessExist(*) => true
+HealthHudVisible() => health
+TemplateSeen(folder, name, area, &x := 0, &y := 0, variation := 40) {
+    probeReads.Push(name)
+    return templates.Get(name, false)
+}
+TemplateAt(*) => probeBackground
+EarnSeen(*) => true
+EarnAborted() => abortNow || !focused
 MacroLog(kind, message) => logs.Push(message)
 SetTimer(fn, period, priority) => timers.Push({fn: fn, period: period, priority: priority})
 OnExit(fn) => exits.Push(fn)
 '@
     $driver = $driver.Replace('@PRODUCTION@', $production)
     $production = ''
-    $expected = '^PASS DiscordHUD: 24 cases; no window or game input$'
+    $expected = '^PASS DiscordHUD: 43 cases; no window or game input$'
 }
 $info = New-Object Diagnostics.ProcessStartInfo
 $info.FileName = $AhkPath

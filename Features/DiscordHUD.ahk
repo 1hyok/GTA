@@ -44,9 +44,9 @@ DiscordHUDKeepGTAFront(deadline) {
     SetTimer(() => DiscordHUDKeepGTAFront(deadline), -500)
 }
 
-; 수익 화면 판독 동안에는 HUD 본체만 숨긴다. 설정·로그인 창과 원래 숨겨진 창은 소유하지 않는다.
+; MCT 웹 화면이 열리는 순간부터 닫힘 확인까지만 HUD 본체를 숨긴다. 외출·수익 켜짐 자체는 숨김 사유가 아니다.
 ; 정상 종료/재시작은 복원하지만 강제 프로세스 종료는 OnExit를 실행하지 않으므로 복원을 보장하지 않는다.
-global gDiscordHUDLeases := 0
+global gDiscordHUDMCTOpen := false
 global gDiscordHUDOwned := Map()
 global gDiscordHUDError := ""
 
@@ -57,30 +57,48 @@ DiscordHUDVisibilityInit() {
 }
 
 DiscordHUDVisibilityWanted() {
-    global config, gEarnOn, gDiscordHUDLeases
-    return gDiscordHUDLeases > 0 || (config["Settings"].Get("AwayMode", 0) = 1 && gEarnOn)
+    global gDiscordHUDMCTOpen
+    return gDiscordHUDMCTOpen && IsGTAActive()
 }
 
-DiscordHUDVisibilityAcquire() {
-    global gDiscordHUDLeases
-    gDiscordHUDLeases += 1
-    try DiscordHUDVisibilitySync(true)
+DiscordHUDMCTSet(open) {
+    global gDiscordHUDMCTOpen
+    previous := gDiscordHUDMCTOpen
+    gDiscordHUDMCTOpen := open
+    try DiscordHUDVisibilitySync(DiscordHUDVisibilityWanted())
     catch as err {
-        gDiscordHUDLeases -= 1
-        DiscordHUDVisibilityTick()
+        ; 복원 실패여도 확인된 닫힘은 보존해야 타이머가 복원을 재시도한다.
+        if (open)
+            gDiscordHUDMCTOpen := previous
         throw err
     }
+    return true
 }
 
-DiscordHUDVisibilityRelease() {
-    global gDiscordHUDLeases
-    gDiscordHUDLeases := Max(0, gDiscordHUDLeases - 1)
-    DiscordHUDVisibilityTick()
+; 기존 화면 판독 결과를 소비한다. 실패한 판독은 닫힘 증거가 아니며 결제 전 재숨김 실패는 호출자에게 전파한다.
+DiscordHUDMCTObserved(name, seen) {
+    if (!seen)
+        return false
+    if (name = "mct_seated" || name = "mct_sit" || name = "mct_terrorbyte")
+        DiscordHUDMCTSet(false)
+    else if (RegExMatch(name, "^(mct_(title|need_ceo|bunker_card|nightclub_card)|bunker_(page|entry|resupply|buy|confirm|pending)|nc_(dj_menu|home|popularity_home)|dj_(solomun|confirm_solomun|confirm_tale)|warehouse_title)$"))
+        DiscordHUDMCTSet(true)
+    return true
 }
 
 DiscordHUDVisibilityTick() {
-    global gDiscordHUDError
+    global gDiscordHUDError, gDiscordHUDMCTOpen, gDiscordHUDOwned, gEarnBusy, GTA_WIN
     try {
+        if (!gDiscordHUDOwned.Count && !ProcessExist("DiscordChatHUD.exe"))
+            return
+        ; 작업 중에는 열기/판독/닫기의 동기 경계를 사용한다. 유휴 때만 수동 조작·중단 뒤 화면을 저비용으로 재확인한다.
+        if (!WinExist(GTA_WIN))
+            gDiscordHUDMCTOpen := false
+        else if (IsGTAActive() && !(IsSet(gEarnBusy) && gEarnBusy)) {
+            observed := DiscordHUDMCTProbe()
+            if (observed >= 0)
+                gDiscordHUDMCTOpen := observed = 1
+        }
         DiscordHUDVisibilitySync(DiscordHUDVisibilityWanted())
         gDiscordHUDError := ""
     } catch as err {
@@ -88,6 +106,28 @@ DiscordHUDVisibilityTick() {
             MacroLog("hud", "HUD 가시성 적용 실패 (재시도): " err.Message)
         gDiscordHUDError := err.Message
     }
+}
+
+; OCR·입력·전면화 없이 체력 막대와 제목, 사업장 템플릿 하나만 본다. 불명 화면은 마지막 확인 상태를 보존한다.
+DiscordHUDMCTProbe() {
+    if (HealthHudVisible())
+        return 0
+    if (TemplateSeen("Earn", "mct_title", [0.3,0,0.7,0.1]))
+        return 1
+    static next := 0
+    static probes := [
+        ["mct_title_hdr", [0.3,0,0.7,0.1]],
+        ["bunker_page", [0.15,0.01,0.35,0.12]], ["bunker_entry", [0.42,0.56,0.56,0.62]],
+        ["bunker_confirm", [0.36,0.42,0.64,0.47]], ["bunker_pending", [0.35,0.43,0.65,0.49]],
+        ["nc_dj_menu", [0.16,0.68,0.26,0.73]], ["dj_solomun", [0.45,0.22,0.54,0.27]],
+        ["dj_confirm_solomun", [0.30,0.46,0.69,0.53]], ["dj_confirm_tale", [0.30,0.46,0.70,0.53]],
+        ["warehouse_title", [0.37,0.13,0.58,0.19]]]
+    next := Mod(next, probes.Length) + 1
+    screenProbe := probes[next]
+    if (TemplateSeen("Earn", screenProbe[1], screenProbe[2], &x, &y, 60)
+        && (screenProbe[1] != "mct_title_hdr" || TemplateAt("Earn", "mct_title_hdr_bg", x, y)))
+        return 1
+    return -1
 }
 
 DiscordHUDVisibilityExit(*) {
@@ -118,6 +158,8 @@ DiscordHUDVisibilitySync(hide) {
             } else {
                 if (!current.visible && !DiscordHUDWindowVisible(hwnd, true))
                     throw Error("HUD 원상복구 미확인")
+                if (!current.visible)
+                    MacroLog("hud", "MCT 화면 보호 종료: HUD 복원 hwnd=" hwnd " pid=" current.pid)
                 stale.Push(hwnd)
             }
         }
@@ -135,7 +177,7 @@ DiscordHUDVisibilitySync(hide) {
             gDiscordHUDOwned[hwnd] := current
             if (!DiscordHUDWindowVisible(hwnd, false))
                 throw Error("HUD 숨김 미확인. 화면 판독을 시작하지 않음")
-            MacroLog("hud", "수익 화면 보호: HUD 숨김 hwnd=" hwnd " pid=" current.pid)
+            MacroLog("hud", "MCT 화면 보호: HUD 숨김 hwnd=" hwnd " pid=" current.pid)
         }
     } finally {
         Critical previousCritical
