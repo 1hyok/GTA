@@ -32,17 +32,23 @@ $otherImage = Get-CiCheckPlan @('Images/Earn/1920x1080/unknown.png')
 Check ($otherImage.Suites -contains 'test-dj-templates') 'other shared image changes preserve DJ regression coverage'
 
 $ci = Get-CiCheckPlan @('tools/ci/run-checks.ps1')
-Check ($ci.Full -and $ci.Suites.Count -eq 36 -and $ci.PackageRequired) 'CI harness change runs full suite and package validation'
+Check ($ci.Full -and $ci.Suites.Count -eq 37 -and $ci.PackageRequired) 'CI harness change runs full suite and package validation'
 
 $workflow = Get-CiCheckPlan @('.github/workflows/ci.yml')
-Check ($workflow.Full -and $workflow.Suites.Count -eq 36 -and $workflow.PackageRequired) 'workflow change runs full suite and package validation'
+Check ($workflow.Full -and $workflow.Suites.Count -eq 37 -and $workflow.PackageRequired) 'workflow change runs full suite and package validation'
 
 $gitStylePath = Get-CiCheckPlan @('./Features/Earn/EarnStaff.ahk')
 Check (($gitStylePath.Suites -join ',') -eq 'test-earner,test-earnvinewood,test-earnstaff') 'leading ./ is normalized without losing dot-prefixed paths'
 
 $unknown = Get-CiCheckPlan @('Features/NewFeature.ahk')
-Check ($unknown.Full -and $unknown.Suites.Count -eq 36) 'unknown production paths conservatively run all suites'
+Check ($unknown.Full -and $unknown.Suites.Count -eq 37) 'unknown production paths conservatively run all suites'
 
 $frameWatch = Get-CiCheckPlan @('tools/frame-watch/frame-watch.ps1')
 Check (-not $frameWatch.Full -and ($frameWatch.Suites -join ',') -eq 'test-perf-watch') 'frame watcher selects performance regressions'
+$hud = Get-CiCheckPlan @('Features/DiscordHUD.ahk')
+Check (-not $hud.Full -and ($hud.Suites -join ',') -eq 'test-earner,test-discord-hud' -and $hud.PackageRequired) 'HUD source selects lifecycle and visibility regressions'
+$earner = Get-CiCheckPlan @('Features/Earn/Earner.ahk')
+Check (($earner.Suites -join ',') -eq 'test-earner,test-discord-hud') 'scheduler hooks select HUD regression'
+$hudTest = Get-CiCheckPlan @('tools/earn-test/test-discord-hud.ps1')
+Check (($hudTest.Suites -join ',') -eq 'test-discord-hud') 'HUD test selects its registered suite'
 Write-Output "PASS CI check selection cases=$checks"
