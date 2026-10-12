@@ -2,10 +2,13 @@
 ; 1010 14:21 GTA5_Enhanced 가 14시간 넘게 돌며 가상 메모리(커밋)를 66GB 까지 키웠고, 커밋 한도(RAM 31GB + 페이지 파일 32GB)에
 ; 닿은 직후 블루스크린(0x13A)으로 PC 가 재부팅돼 매크로와 GTA 가 함께 죽었다.
 ; 1분마다 시스템 커밋 사용률과 GTA 개인 메모리를 재서 %TEMP%\gta-mem.log 에 10분마다(단계가 바뀌면 바로) 남긴다.
-; 사용률이 MemWarnPct(기본 80) 이상이면 수익 로그에 한 번 알린다. MemClosePct(기본 92) 이상이면서 GTA 가 MemCloseMinGB(기본 25)
+; 사용률이 MemWarnPct(기본 80) 이상이면 한 번 알리고, 5%p 아래까지 회복해야 다시 알린다. MemClosePct 도달은 별도 상향 경고다.
+; MemClosePct(기본 92) 이상이면서 GTA 가 MemCloseMinGB(기본 25)
 ; 이상을 쥐고 있으면 수익 자동화를 끄고 GTA 를 닫는다. PC 전체가 죽는 것보다 게임만 닫히는 쪽이 낫다. MemClosePct 0 이면 닫지 않는다.
 global gMemGuardLevel := "ok"
 global gMemGuardLastLog := 0
+global gMemGuardPID := 0
+global gMemGuardWarning := "ok"
 
 MemGuardLevel(commitPct, gtaGB, warnPct, closePct, minGB) {
     if (closePct > 0 && commitPct >= closePct && gtaGB >= minGB)
@@ -13,6 +16,17 @@ MemGuardLevel(commitPct, gtaGB, warnPct, closePct, minGB) {
     if (warnPct > 0 && commitPct >= warnPct)
         return "warn"
     return "ok"
+}
+
+; 측정 단계와 별개로 이번 메모리 압박 구간의 최고 알림 단계를 유지한다. 보호 종료 판정에는 쓰지 않는다.
+MemGuardWarningLevel(commitPct, warnPct, closePct, previous) {
+    if (warnPct <= 0 || commitPct <= Max(0, warnPct - 5))
+        return "ok"
+    if (commitPct >= warnPct && closePct > 0 && commitPct >= closePct)
+        return "high"
+    if (commitPct >= warnPct && previous = "ok")
+        return "warn"
+    return previous
 }
 
 ; PERFORMANCE_INFORMATION(x64 104바이트): CommitTotal @8, CommitLimit @16, PageSize @80. 값은 페이지 수.
@@ -61,29 +75,37 @@ MemGuardLog(msg) {
 }
 
 MemGuardTick() {
-    global config, gMemGuardLevel, gMemGuardLastLog
+    global config, gMemGuardLevel, gMemGuardLastLog, gMemGuardPID, gMemGuardWarning
     s := config["Settings"]
     pid := ProcessExist("GTA5_Enhanced.exe")
-    if (!pid) {
+    if (pid != gMemGuardPID || !pid) {
+        gMemGuardPID := pid
         gMemGuardLevel := "ok"
-        return
+        gMemGuardWarning := "ok"
+        gMemGuardLastLog := 0
     }
+    if (!pid)
+        return
     if (!MemGuardSystemCommit(&used, &limit))
         return
     gta := MemGuardProcessGB(pid)
     pct := Round(used * 100 / limit)
     level := MemGuardLevel(pct, gta, s.Get("MemWarnPct", 80), s.Get("MemClosePct", 92), s.Get("MemCloseMinGB", 25))
+    warning := MemGuardWarningLevel(pct, s.Get("MemWarnPct", 80), s.Get("MemClosePct", 92), gMemGuardWarning)
+    alertChanged := warning != gMemGuardWarning
     line := "커밋 " Round(used, 1) "/" Round(limit, 1) "GB(" pct "%), GTA " (gta < 0 ? "?" : Round(gta, 1)) "GB"
-    if (level != gMemGuardLevel || !gMemGuardLastLog || A_TickCount - gMemGuardLastLog >= 600000) {
-        MemGuardLog(line " " level " " MemGuardDisplayNote())
+    if (level != gMemGuardLevel || alertChanged || !gMemGuardLastLog || A_TickCount - gMemGuardLastLog >= 600000) {
+        MemGuardLog(line " " level " alert=" warning " " MemGuardDisplayNote())
         gMemGuardLastLog := A_TickCount
     }
-    changed := level != gMemGuardLevel
     gMemGuardLevel := level
-    if (level = "warn" && changed)
-        EarnLog("메모리 경고: " line ". 게임을 다시 켜 두는 것이 좋음")
-    else if (level = "close")
+    gMemGuardWarning := warning
+    if (level = "close")
         MemGuardCloseGame(pid, line)
+    else if (alertChanged && warning = "high")
+        EarnLog("메모리 위험: " line ". 시스템 커밋이 보호 기준 이상. GTA 종료 조건 미충족, 전체 프로세스 메모리 확인 필요")
+    else if (alertChanged && warning = "warn")
+        EarnLog("메모리 경고: " line ". 시스템 전체 커밋 증가. GTA 단독 원인이나 누수로 확정하지 않음")
 }
 
 MemGuardCloseGame(pid, line) {
