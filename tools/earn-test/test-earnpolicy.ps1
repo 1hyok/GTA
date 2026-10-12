@@ -110,6 +110,7 @@ Loop 4 {
 }
 
 RunWarehouseTests()
+RunCycleTests()
 RunWarehouseTests() {
 goods := WarehouseFixture()
 moves := EarnWarehousePlan(goods)
@@ -178,26 +179,32 @@ goods := [
     {id: "printing", count: 0, capacity: 60, unlocked: true, technician: 0}
 ]
 moves := EarnWarehousePlan(goods)
-Check(moves.Length = 1 && moves[1].technician = 5 && moves[1].from = "organic" && moves[1].to = "south_american",
-    "sold high value goods pull the cheapest producing technician")
+Check(moves.Length = 2 && moves[1].technician = 5 && moves[1].from = "organic" && moves[1].to = "south_american"
+    && moves[2].from = "sporting" && moves[2].to = "printing", "partial inventory selects a cycle plan, not just top five: " MoveText(moves))
 ApplyMoves(goods, moves)
-Check(EarnWarehousePlan(goods).Length = 0, "top five producing goods are stable")
+Check(EarnWarehousePlan(goods).Length = 0, "selected cycle plan is stable")
 ; 만재 직원이 먼저 쓰이고, 남는 비싼 빈자리에만 생산 중 직원을 옮긴다.
 goods[1].count := 10
 goods[2].count := 0, goods[2].technician := 0
+goods[5].technician := 4
 goods[7].technician := 1
 moves := EarnWarehousePlan(goods)
-Check(moves.Length = 2 && moves[1].from = "south_american" && moves[1].to = "pharmaceutical"
-    && moves[2].from = "printing" && moves[2].to = "organic", "full source first, then cheapest producer fills next value slot")
+Check(moves.Length = 1 && moves[1].from = "south_american" && moves[1].to = "pharmaceutical",
+    "full source fills the selected cycle vacancy without forcing priority swaps")
 ; 잠긴 비싼 품목은 목적지가 아니다.
 goods := WarehouseFixture()
 for row in goods
     row.count := 0
 goods[1].technician := 0, goods[1].unlocked := false
 goods[6].technician := 1
-Check(EarnWarehousePlan(goods).Length = 0, "locked high value goods do not pull producers")
-Check(EarnWarehouseMoveJustified("organic", "south_american", false) && !EarnWarehouseMoveJustified("south_american", "organic", false)
-    && EarnWarehouseMoveJustified("south_american", "organic", true), "move justification follows value order unless source is full")
+moves := EarnWarehousePlan(goods)
+for move in moves
+    Check(move.to != "south_american", "locked high value destination is never selected")
+goods := WarehouseFixture()
+moves := EarnWarehousePlan(goods)
+Check(EarnWarehouseMoveJustified(moves[1], goods) && !EarnWarehouseMoveJustified(moves[2], goods)
+    && !EarnWarehouseMoveJustified({technician: 1, from: "south_american", to: "cash"}, goods),
+    "move justification only permits the first current plan move")
 ExpectWarehouseInvalid([], "missing goods")
 ExpectWarehouseInvalid(Map(), "non-array goods")
 goods := WarehouseFixture()
@@ -241,6 +248,113 @@ goods[7] := "unread"
 ExpectWarehouseInvalid(goods, "non-object good")
 }
 
+RunCycleTests() {
+    model := EarnWarehouseProductionModel()
+    periods := [120,60,30,70,40,20,15]
+    for i, id in EarnWarehousePriority()
+        Check(model[id][2] = periods[i], "standard upgraded period " id)
+    ; The actual OCR fixture supplies both quantity and money, not a second copied unit-price table.
+    regions := [["cargo",728,1200,150,230],["sporting",1200,1650,150,230],
+        ["south_american",728,1200,250,330],["pharmaceutical",1200,1650,250,330],
+        ["organic",728,1200,350,430],["printing",1200,1650,350,430],["cash",728,1200,450,530]]
+    for region in regions {
+        quantity := 0, amount := 0
+        for line in StrSplit(FileRead(A_Args[1], "UTF-8"), "`n", "`r") {
+            fields := StrSplit(line, "`t")
+            if (fields.Length != 5 || !IsNumber(fields[1]) || !IsNumber(fields[2]))
+                continue
+            if (fields[1] < region[2] || fields[1] >= region[3] || fields[2] < region[4] || fields[2] >= region[5])
+                continue
+            if (RegExMatch(fields[5], "^(\d+)/\d+$", &found))
+                quantity := Integer(found[1])
+            if (RegExMatch(fields[5], "\$([\d,]+)", &found))
+                amount := Integer(StrReplace(found[1], ","))
+        }
+        Check(quantity > 0 && amount / quantity = model[region[1]][1], "observed unit sale price " region[1])
+    }
+    goods := CycleFixture([0,0,0,0,0,0,0])
+    rows := CycleRows(goods)
+    orders := EarnWarehouseCycleOrders(rows)
+    Check(orders.Length = 21, "bounded C(7,5) initial combinations")
+    seen := Map()
+    for order in orders {
+        key := ""
+        Loop 5
+            key .= order[A_Index] ";"
+        Check(!seen.Has(key), "each first-five set occurs once")
+        seen[key] := true
+        rest := []
+        for id in EarnWarehousePriority()
+            if (!EarnWarehouseOrderHas([order[1],order[2],order[3],order[4],order[5]], id))
+                rest.Push(id)
+        Check(order[6] = rest[1] && order[7] = rest[2], "all candidates use actual common refill priority")
+    }
+    Check(EarnWarehousePlan(goods).Length = 0, "empty standard warehouse keeps top five")
+    cycleResult := EarnWarehouseCycleRun(rows, EarnWarehousePriority(), model, false)
+    Check(cycleResult.time = 1200 && EarnWarehouseCycleNet(cycleResult.counts, model) = 908500, "empty top-five cycle independent baseline")
+    Check(EarnWarehouseCycleNet(Map("cargo",50),model) = 450000, "Tony proportional fee below cap")
+    Check(EarnWarehouseCycleNet(Map("cargo",120),model) = 1100000, "Tony fee cap")
+    goods := CycleFixture([0,10,20,0,15,30,40])
+    moves := EarnWarehousePlan(goods)
+    Check(moves.Length = 1 && moves[1].from = "sporting" && moves[1].to = "printing",
+        "partial stock leaves static top five for sale-cycle score: " MoveText(moves))
+    Check(moves.modelReason = "cycle_model_maximin" && moves.modelCandidates = 21 && moves.modelGain > 0,
+        "dynamic choice reports bounded model score, not hourly profit")
+    Check(Abs(moves.modelGain - 222645/41) < 0.000001, "independent Fraction/list oracle gain over all 21 initial sets")
+    bounds := EarnWarehouseCycleBounds(CycleRows(goods),
+        ["south_american","pharmaceutical","cash","cargo","printing","sporting","organic"],model)
+    Check(bounds.fast = 570 && bounds.slow = 600 && bounds.lowNet = 753345 && bounds.highNet = 841815,
+        "independent heap/list oracle cycle bounds")
+    Check(EarnWarehouseMoveJustified(moves[1], goods), "lower-priority dynamic destination is executable")
+    for seed in [[0,10,20,0,15,30,40],[0,0,2,0,1,3,0],[0,5,5,5,5,5,0]] {
+        goods := CycleFixture(seed)
+        goods[1].technician := 0, goods[2].technician := 0
+        goods[6].technician := 1, goods[7].technician := 2
+        visited := Map(), steps := 0
+        Loop 6 {
+            assignment := ""
+            for row in goods
+                if (row.technician)
+                    assignment .= row.id ";"
+            Check(!visited.Has(assignment), "single-move replan never revisits an assignment")
+            visited[assignment] := true
+            moves := EarnWarehousePlan(goods)
+            if (!moves.Length)
+                break
+            Check(steps < 5, "single-move replan settles within five verified moves")
+            ApplyMoves(goods, [moves[1]])
+            steps++
+        }
+        Check(EarnWarehousePlan(goods).Length = 0, "settled assignment is a fixed point")
+    }
+    ; Closed phase=P allows an immediate one-unit completion, without negative time or an event loop.
+    goods := CycleFixture([9,19,39,49,99,79,59]), rows := CycleRows(goods)
+    fast := EarnWarehouseCycleRun(rows, EarnWarehousePriority(), model, true)
+    slow := EarnWarehouseCycleRun(rows, EarnWarehousePriority(), model, false)
+    Check(fast.time = 0 && fast.reached && slow.time > 0, "closed phase boundary supports simultaneous full at zero")
+    bounds := EarnWarehouseCycleBounds(rows, EarnWarehousePriority(), model)
+    Check(bounds.fast <= bounds.slow && bounds.lowNet <= bounds.highNet, "closed phase bounds remain ordered")
+    goods := CycleFixture([0,10,20,0,15,30,40])
+    started := A_TickCount
+    Loop 25
+        EarnWarehousePlan(goods)
+    elapsed := A_TickCount - started
+    Check(elapsed < 2500, "21-candidate planning averages below 100ms")
+    FileAppend("PERF EarnWarehousePlan repetitions=25 elapsedMs=" elapsed " averageMs=" Round(elapsed/25,2) "`n", "*")
+}
+CycleFixture(counts) {
+    caps := [10,20,40,50,100,80,60], goods := []
+    for i, id in EarnWarehousePriority()
+        goods.Push({id:id,count:counts[i],capacity:caps[i],unlocked:1,technician:i<=5 ? i : 0})
+    return goods
+}
+CycleRows(goods) {
+    rows := Map()
+    for row in goods
+        rows[row.id] := row
+    return rows
+}
+
 FileAppend("PASS EarnPolicy cases=" assertions Chr(10), "*", "UTF-8")
 ExitApp(0)
 WarehouseFixture() {
@@ -264,6 +378,12 @@ ApplyMoves(goods, moves) {
         }
     }
 }
+MoveText(moves) {
+    result := ""
+    for move in moves
+        result .= move.from ">" move.to ";"
+    return result
+}
 ExpectWarehouseInvalid(goods, name) {
     rejected := false
     try EarnWarehousePlan(goods)
@@ -284,7 +404,8 @@ Check(ok, name) {
 $info = New-Object Diagnostics.ProcessStartInfo
 $info.FileName = $AhkPath
 $testPath = Join-Path ([IO.Path]::GetTempPath()) ('gta-earn-policy-' + [Guid]::NewGuid().ToString('N') + '.ahk')
-$info.Arguments = '/ErrorStdOut /CP65001 "' + $testPath + '"'
+$fixture = Join-Path $PSScriptRoot 'test-earnwarehouse-read-fixtures\stock.tsv'
+$info.Arguments = '/ErrorStdOut /CP65001 "' + $testPath + '" "' + $fixture + '"'
 $info.UseShellExecute = $false
 $info.CreateNoWindow = $true
 $info.RedirectStandardOutput = $true
@@ -303,7 +424,7 @@ try {
     }
     $stdout = $testProcess.StandardOutput.ReadToEnd().Trim()
     $stderr = $testProcess.StandardError.ReadToEnd().Trim()
-    if ($testProcess.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnPolicy cases=113') {
+    if ($testProcess.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -notmatch '^PERF EarnWarehousePlan repetitions=25 elapsedMs=\d+ averageMs=[\d.]+\r?\nPASS EarnPolicy cases=200$') {
         throw "EarnPolicy failed (exit=$($testProcess.ExitCode))`nstdout: $stdout`nstderr: $stderr"
     }
     Write-Output $stdout

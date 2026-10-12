@@ -40,7 +40,7 @@ global whTests := 0, whMode, whState, whAssigned, whCounts, whActive, whSelected
 global gEarnSellNotices := Map()
 try {
     RunWarehouseTests()
-    RunScheduleTests()
+    RunObservationTests()
     FileAppend("PASS EarnWarehouse cases=" whTests " (no game input)`n", "*")
     ExitApp(0)
 } catch as testFailure {
@@ -80,8 +80,8 @@ RunWarehouseTests() {
             Check(whAssigned[4] = "pharmaceutical" && whMoves = 1 && whState = "mct",
                 "non-full lower-value source moves once then reobserves")
         if (scenario[1] = "two_moves")
-            Check(whHistory.Length = 2 && whHistory[1] = "printing:south_american"
-                && whHistory[2] = "organic:pharmaceutical", "each non-full move recomputes after changed screen")
+            Check(whHistory.Length = 2 && whHistory[1] = "organic:south_american"
+                && whHistory[2] = "sporting:pharmaceutical", "each cycle move recomputes after changed screen")
         if (scenario[1] = "move_noresult" || scenario[1] = "move_rejected")
             Check(whAssigned[1] = "cargo" && whAttempts = 1, scenario[1] " never retries unconfirmed click")
         if (scenario[1] = "move_noresult")
@@ -412,48 +412,49 @@ EarnFail(reason) {
     whError := reason
     return false
 }
-EarnScheduleNext(*) => true
-global whStore
-EarnStateGet(key, default := "") {
-    global whStore
-    return IsSet(whStore) && whStore.Has(key) ? whStore[key] : default
+; A stale wh_rate_* cache must not influence either assignment or the configured observation interval.
+EarnScheduleNext(*) => EarnUnexpectedLegacyRate()
+EarnStateGet(*) => EarnUnexpectedLegacyRate()
+EarnStateSet(*) => EarnUnexpectedLegacyRate()
+EarnUnexpectedLegacyRate() {
+    throw Error("warehouse must not consume or update legacy unstaffed rate estimates")
 }
-EarnStateSet(key, value) {
-    global whStore
-    if (!IsSet(whStore))
-        whStore := Map()
-    whStore[key] := value
-}
-RunScheduleTests() {
-    global whStore
-    base := 10000000, m := 60000
-    for cap in [50, 13] {
-        whStore := Map()
-        EarnWarehouseTrack("reset")
-        t := 0
-        while (t <= 160) {
-            EarnWarehouseTrack([{id: "cargo", count: 10 + t // 70, capacity: cap}, {id: "cash", count: 0, capacity: 20}], base + t*m)
-            if (t = 140)
-                Check(EarnWarehouseTrack(, base + t*m) = 0, "schedule: unknown goods under 150 min use default interval (cap " cap ")")
-            t += 10
-        }
-        ms := EarnWarehouseTrack(, base + 160*m)
-        Check(ms = (cap = 50 ? 240*m : 40*m), "schedule: measured 70 min/unit predicts fill (cap " cap ", got " ms ")")
-    }
-    Check(whStore.Get("wh_rate_cargo", 0) = 70*m, "schedule: measured rate is saved for the next restart")
-    ; 재시작: 메모리는 비고 저장된 속도만 남는다. 직원 없는 cash 를 150분 기다리지 않는다.
-    EarnWarehouseTrack("reset")
-    EarnWarehouseTrack([{id: "cargo", count: 47, capacity: 50}, {id: "cash", count: 0, capacity: 20}], base)
-    Check(EarnWarehouseTrack(, base) = 140*m, "schedule: saved rate predicts fill right after restart, one unit early")
-    Check(EarnWarehouseTrack(, base + 161*m) = 0, "schedule: saved-rate good that never rose is treated as unstaffed")
-    EarnWarehouseTrack("reset")
-    EarnWarehouseTrack([{id: "cargo", count: 10, capacity: 50}, {id: "cash", count: 0, capacity: 20}], base)
-    Check(EarnWarehouseTrack(, base) = 240*m, "schedule: restart with saved rate caps the wait at four hours")
-    whStore := Map()
-    EarnWarehouseTrack("reset")
-    EarnWarehouseTrack([{id: "cargo", count: 49, capacity: 50}], base)
-    EarnWarehouseTrack([{id: "cargo", count: 50, capacity: 50}], base + 10*m)
-    Check(EarnWarehouseTrack(, base + 20*m) = 0, "schedule: rising good without a rate uses default interval")
+RunObservationTests() {
+    goods := [{id:"cargo",count:1,capacity:50,unlocked:1,technician:1}]
+    EarnWarehouseNeedStaff("reset")
+    Check(EarnWarehouseNeedStaff(goods), "first stock snapshot reads staff")
+    EarnWarehouseNeedStaff(goods, true)
+    Check(!EarnWarehouseNeedStaff(goods), "identical snapshot skips staff UI")
+    goods[1].count++
+    Check(EarnWarehouseNeedStaff(goods), "production growth triggers cycle replan")
+    EarnWarehouseNeedStaff(goods, true)
+    goods[1].count--
+    Check(EarnWarehouseNeedStaff(goods), "sale decrease triggers cycle replan")
+    EarnWarehouseNeedStaff(goods, true)
+    goods[1].capacity := 40
+    Check(EarnWarehouseNeedStaff(goods), "capacity change triggers cycle replan")
+    goods[1].count := 40
+    Check(!EarnWarehouseNeedStaff(goods), "all full keeps notification-only behavior")
+    goods[1].count := 1
+    EarnWarehouseNeedStaff(goods, true)
+    EarnWarehouseNeedStaff("reset")
+    Check(EarnWarehouseNeedStaff(goods), "one move forces fresh staff observation")
+    ; Only observed full assignment evidence survives moving off that full good.
+    EarnWarehouseKnownFull(goods)
+    goods[1].count := 40
+    EarnWarehouseKnownFull(goods)
+    goods[1].technician := 0, goods[1].unlocked := 0
+    EarnWarehouseKnownFull(goods)
+    Check(goods[1].unlocked = 1, "observed full assignment stays in empty-cycle reference after move")
+    goods[1].capacity := 50, goods[1].count := 50, goods[1].unlocked := 0
+    EarnWarehouseKnownFull(goods)
+    Check(goods[1].unlocked = 0, "changed full capacity does not inherit stale evidence")
+    goods[1].count := 0
+    EarnWarehouseKnownFull(goods)
+    Check(goods[1].unlocked = 0, "fresh locked or unread sale destination overrides historical evidence")
+    goods[1].count := 50
+    EarnWarehouseKnownFull(goods)
+    Check(goods[1].unlocked = 0, "unknown full row is not guessed unlocked")
 }
 EarnLog(reason) {
     global whNoticeLogs, whNoticeClears
@@ -489,7 +490,7 @@ try {
     }
     $stdout = $process.StandardOutput.ReadToEnd().Trim()
     $stderr = $process.StandardError.ReadToEnd().Trim()
-    if ($process.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnWarehouse cases=152 (no game input)') {
+    if ($process.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnWarehouse cases=154 (no game input)') {
         throw "Warehouse flow failed (exit=$($process.ExitCode))`nstdout: $stdout`nstderr: $stderr"
     }
     Write-Output $stdout

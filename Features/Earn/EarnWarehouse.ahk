@@ -21,20 +21,17 @@ EarnWarehouseManage() {
         if (!goods)
             return false
         EarnWarehouseSellNotice(goods)
-        if (A_Index = 1)
-            EarnWarehouseTrack(goods)
         if (stockOnly) {
-            EarnLog("창고: 판매 탭 재고상 옮길 일 없음(전부 만재이거나, 지난 배정 확인 뒤 새 만재·판매 없음), 직원 관리 화면 생략")
-            EarnWarehouseSchedule()
+            EarnLog("창고: 전부 만재이거나 지난 확인과 수량·용량이 같음, 직원 관리 화면 생략")
             return EarnWarehouseReturn()
         }
         try moves := EarnWarehousePlan(goods)
         catch as e
             return EarnFail("창고: " e.Message)
+        EarnLog("창고: 표준 판매주기 모델 " moves.modelReason ", 후보 " moves.modelCandidates
+            . ", 보수점수 변화 $" Round(moves.modelGain) " (3품목 알림·판매 0~15분, 실제 수익 보장 아님)")
         if (!moves.Length) {
-            EarnLog("창고: 이동할 만재 담당 직원 또는 빈 목적지 없음")
-            if (A_Index = 1)
-                EarnWarehouseSchedule()
+            EarnLog("창고: 현재 계획 유지, 추가 재배정 없음")
             return EarnWarehouseReturn()
         }
         if (A_Index = 6)
@@ -49,8 +46,8 @@ EarnWarehouseManage() {
     return false
 }
 
-; 배정이 바뀌어야 하는 때는 품목이 새로 만재가 됐거나(직원이 놀게 됨) 판매로 줄었을 때(비싼 품목이 비었을 수 있음)뿐이다.
-; 지난 직원 화면 확인 뒤 그런 변화가 없거나 전부 만재면 직원 관리 화면에 들어가지 않고 stockOnly 로 알린다.
+; 생산/판매로 수량이나 용량이 바뀌면 부분재고의 판매주기 후보가 달라질 수 있어 실제 배정을 다시 읽는다.
+; 지난 확인과 같은 재고이거나 전부 만재면 직원 관리 화면에 들어가지 않고 stockOnly로 알린다.
 EarnWarehouseObserve(&stockOnly := false) {
     stockOnly := false
     if (!EarnUIClick("nc_dj_menu", 500, 920) || !EarnSleep(400))
@@ -89,12 +86,29 @@ EarnWarehouseObserve(&stockOnly := false) {
         if (!row.technician && row.count < row.capacity)
             row.unlocked := EarnWarehouseAvailable(row.id, lines) ? 1 : 0
     }
+    EarnWarehouseKnownFull(goods)
     EarnWarehouseNeedStaff(goods, true)
     return goods
 }
 
+; 만재 직원의 실제 담당을 읽은 긍정 근거만 보존한다. 그 직원을 옮긴 뒤에도 판매 후 빈 주기의 참조모형이 흔들리지 않는다.
+; 열린 품목은 매번 현재 UI 판독이 우선이며, 과거 근거로 재배정 목적지를 허용하지 않는다.
+EarnWarehouseKnownFull(goods) {
+    static known := Map()
+    for row in goods {
+        if (row.count < row.capacity) {
+            if (known.Has(row.id))
+                known.Delete(row.id)
+        } else if (row.technician && row.unlocked) {
+            known[row.id] := row.capacity
+        } else if (known.Has(row.id) && known[row.id] = row.capacity) {
+            row.unlocked := 1
+        }
+    }
+}
+
 ; 판매 탭 재고만 보고 직원 화면이 필요한지 정한다. checked=true 는 직원 화면을 막 읽었다는 표시다.
-; 처음 보거나, 지난 확인 뒤 만재가 된 품목이 있거나, 재고가 줄었으면(판매) 필요하다. 전부 만재면 옮길 곳이 없다.
+; 처음 보거나 수량/용량이 달라지면 필요하다. 전부 만재면 옮길 곳이 없다.
 EarnWarehouseNeedStaff(goods, checked := false) {
     static last := ""
     if (goods = "reset") {
@@ -109,7 +123,7 @@ EarnWarehouseNeedStaff(goods, checked := false) {
     if (checked) {
         last := Map()
         for row in goods
-            last[row.id] := {count: row.count, full: row.count >= row.capacity}
+            last[row.id] := {count: row.count, capacity: row.capacity}
         return true
     }
     if (!open)
@@ -120,7 +134,7 @@ EarnWarehouseNeedStaff(goods, checked := false) {
         if (!counts.Has(id))
             return true
         row := counts[id]
-        if (row.count < prev.count || (row.count >= row.capacity && !prev.full))
+        if (row.count != prev.count || row.capacity != prev.capacity)
             return true
     }
     return false
@@ -263,7 +277,7 @@ EarnWarehouseMove(move, goods) {
         if (row.id = move.to)
             target := row
     }
-    if (!source || !target || !EarnWarehouseMoveJustified(move.from, move.to, source.count >= source.capacity)
+    if (!source || !target || !EarnWarehouseMoveJustified(move, goods)
         || source.technician != move.technician || !target.unlocked
         || target.technician || target.count >= target.capacity)
         return EarnFail("창고: 재배정 조건 불일치")
@@ -349,75 +363,6 @@ EarnWarehouseSellNotice(goods) {
     else
         EarnClearStockNotice("nightclub")
     return count
-}
-
-; 판매 탭 재고가 늘어난 시점들로 품목별 생산 속도를 재고, 가장 먼저 만재가 될 시각까지 다음 확인을 미룬다.
-; 재고가 늘어난 때는 직전 관측과 이번 관측 사이 어딘가이므로 직전 관측 시각으로 잡는다(일찍 보는 쪽으로만 어긋난다).
-; goods 없이 부르면 다음 확인까지 ms 를 낸다. 0 이면 기본 간격(EarnWarehouseIntervalMin)을 쓴다:
-; 늘고 있는데 속도를 아직 모르는 품목이 있거나, 처음 본 지 150분이 안 돼 생산 중인지 모르는 품목이 있을 때다.
-EarnWarehouseTrack(goods := "", now := 0) {
-    static seen := Map()
-    now := now ? now : A_TickCount
-    if (goods = "reset") {
-        seen.Clear()
-        return 0
-    }
-    if (IsObject(goods)) {
-        for row in goods {
-            if (!seen.Has(row.id)) {
-                rate := EarnWarehouseSavedRate(row.id)
-                seen[row.id] := {count: row.count, cap: row.capacity, obs: now, first: now, rose: 0, roseCount: 0, rate: rate, saved: rate > 0}
-                continue
-            }
-            g := seen[row.id]
-            if (row.count > g.count) {
-                if (g.rose) {
-                    g.rate := (g.obs - g.rose) / (row.count - g.roseCount)
-                    EarnStateSet("wh_rate_" row.id, Round(g.rate))
-                }
-                g.rose := g.obs, g.roseCount := row.count
-            } else if (row.count < g.count) {
-                g.rose := 0
-            }
-            g.count := row.count, g.cap := row.capacity, g.obs := now
-        }
-        return 0
-    }
-    next := 0, learned := false
-    for id, g in seen
-        learned := learned || g.saved
-    for id, g in seen {
-        if (g.count >= g.cap)
-            continue
-        ; 지난 실행에서 저장한 속도를 불러왔으면 속도를 모르고 안 늘어난 품목은 직원이 없는 품목이다. 150분을 기다리지 않는다.
-        if (!g.rate) {
-            if (g.rose || (!learned && now - g.first < 150 * 60000))
-                return 0
-            continue
-        }
-        ; 두 번의 생산 주기 넘게 안 늘었으면 직원이 빠진 품목으로 본다.
-        if (now - (g.rose ? g.rose : g.first) > 2 * g.rate + 20 * 60000)
-            continue
-        ; 재시작 뒤 아직 안 늘었으면 마지막 한 개가 방금 전에 찼다고 보고 한 개 몫 일찍 잡는다.
-        full := g.rose ? g.rose + (g.cap - g.roseCount) * g.rate : g.first + (g.cap - g.count - 1) * g.rate
-        next := next ? Min(next, full) : full
-    }
-    if (!next || next - now < 15 * 60000)
-        return 0
-    return Min(next - now, 240 * 60000)
-}
-
-EarnWarehouseSavedRate(id) {
-    rate := EarnStateGet("wh_rate_" id, 0)
-    return IsNumber(rate) && rate > 0 ? rate + 0 : 0
-}
-
-EarnWarehouseSchedule() {
-    ms := EarnWarehouseTrack()
-    if (!ms)
-        return true
-    EarnLog("창고: 가장 먼저 만재될 품목 예상까지 " Round(ms / 60000) "분, 그때 다시 확인")
-    return EarnScheduleNext("warehouse", ms)
 }
 
 EarnWarehouseReturn() {
