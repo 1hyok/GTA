@@ -43,6 +43,7 @@ ExitApp(0)
 global n := 0, windows := Map(), writes := [], logs := [], failWrite := false, failRead := false
 global timers := [], exits := [], gEarnOn := true, config := Map("Settings", Map("AwayMode", 1))
 global gEarnBusy := false, focused := true, gameExists := true, GTA_WIN := "fake", health := true
+global gEarnGuardArmed := false, gAbort := false, gEarnUserAbort := false
 global templates := Map(), probeReads := [], probeBackground := true
 global abortNow := false, abortOnHide := ""
 @PRODUCTION@
@@ -57,7 +58,15 @@ try {
     Check(windows[1].visible && gDiscordHUDOwned.Count = 0, "away earning idle stays visible")
     for name in ["ph_joblist_sel", "afk_vinewood_title", "safe_prompt", "staff"]
         Check(DiscordHUDMCTObserved(name, true) && windows[1].visible, "phone app safe staff stays visible: " name)
-    gEarnBusy := true
+    for name in ["bunker_page", "bunker_entry", "bunker_confirm", "bunker_pending", "nc_dj_menu", "nc_home", "dj_solomun", "warehouse_title", "mct_title"]
+        Check(DiscordHUDMCTObserved(name, true) && windows[1].visible && !gDiscordHUDMCTOpen, "manual screen never starts hiding: " name)
+    templates := Map("mct_title", true, "bunker_page", true, "warehouse_title", true), health := false
+    Loop 12
+        DiscordHUDVisibilityTick()
+    Check(windows[1].visible && !gDiscordHUDMCTOpen && probeReads.Length = 0, "idle never scans or hides manual MCT and business pages")
+    gEarnBusy := true, gEarnGuardArmed := true
+    for name in ["bunker_page", "bunker_confirm", "nc_dj_menu", "dj_confirm_solomun", "warehouse_title"]
+        Check(DiscordHUDMCTObserved(name, true) && windows[1].visible && !gDiscordHUDMCTOpen, "business page cannot create an MCT latch even during guarded work: " name)
     DiscordHUDMCTSet(true)
     Check(!windows[1].visible && gDiscordHUDOwned.Count = 1, "MCT opening synchronously hides")
     Check(!windows[2].visible && windows[3].visible && windows[4].visible && windows[5].visible, "other windows unchanged")
@@ -68,7 +77,7 @@ try {
     Check(!windows[1].visible && writes.Length = 2, "reappeared HUD hidden during MCT")
     config["Settings"]["AwayMode"] := 0, gEarnOn := false
     DiscordHUDVisibilityTick()
-    Check(!windows[1].visible, "F9 off and Home do not prove MCT closed")
+    Check(!windows[1].visible, "guarded MCT cleanup can run with scheduler off")
     Check(!DiscordHUDMCTObserved("mct_title", false) && !windows[1].visible, "missing template not close proof")
     for name in ["bunker_page", "bunker_confirm", "bunker_pending", "nc_dj_menu", "dj_confirm_solomun", "dj_confirm_tale", "warehouse_title"]
         Check(DiscordHUDMCTObserved(name, true) && !windows[1].visible, "MCT subpage remains hidden: " name)
@@ -86,23 +95,33 @@ try {
     DiscordHUDMCTSet(true)
     focused := false
     DiscordHUDVisibilityTick()
-    Check(windows[1].visible && gDiscordHUDMCTOpen, "focus away restores cached MCT")
+    Check(windows[1].visible && !gDiscordHUDMCTOpen, "focus away restores and clears MCT ownership")
     focused := true
     DiscordHUDVisibilityTick()
-    Check(!windows[1].visible, "focus back to MCT re-hides")
-    gEarnBusy := false
+    Check(windows[1].visible, "focus back cannot resurrect stale MCT hiding")
+    DiscordHUDMCTSet(true)
+    gEarnBusy := false, gEarnGuardArmed := false
     DiscordHUDVisibilityTick()
-    Check(windows[1].visible && !gDiscordHUDMCTOpen, "manual close to HUD restores")
-    health := false, templates["mct_title"] := true
+    Check(windows[1].visible && !gDiscordHUDMCTOpen, "macro ending restores even while MCT stays on screen")
+    DiscordHUDMCTSet(true)
+    Check(windows[1].visible && !gDiscordHUDMCTOpen, "unguarded MCT open cannot hide")
     DiscordHUDVisibilityTick()
-    Check(!windows[1].visible, "manual open detected without OCR")
-    templates := Map(), count := probeReads.Length
-    DiscordHUDVisibilityTick()
-    Check(!windows[1].visible && probeReads.Length-count <= 2, "unknown retains state with bounded probes")
+    Check(windows[1].visible && probeReads.Length = 0, "manual MCT remains visible without screen reads")
+    gEarnBusy := true, gEarnGuardArmed := true
+    DiscordHUDMCTObserved("mct_title", true)
+    Check(!windows[1].visible, "guarded macro MCT recovery can confirm title and hide")
+    for boundary in ["abort", "user", "guard"] {
+        DiscordHUDMCTSet(true)
+        gAbort := boundary = "abort", gEarnUserAbort := boundary = "user", gEarnGuardArmed := boundary != "guard"
+        DiscordHUDVisibilityTick()
+        Check(windows[1].visible && !gDiscordHUDMCTOpen, "inactive macro clears protection: " boundary)
+        gAbort := false, gEarnUserAbort := false, gEarnGuardArmed := true
+    }
+    DiscordHUDMCTSet(true)
     gameExists := false
     DiscordHUDVisibilityTick()
     Check(windows[1].visible && !gDiscordHUDMCTOpen, "game exit clears cached state")
-    gameExists := true, gEarnBusy := true
+    gameExists := true, gEarnBusy := true, gEarnGuardArmed := true
     for changed in ["pid", "created", "title"] {
         windows[1] := Window(1)
         DiscordHUDMCTSet(true)
@@ -137,6 +156,13 @@ try {
     Check(rejected && !gDiscordHUDMCTOpen, "identity failure rejects entry")
     failRead := false
     DiscordHUDMCTSet(true)
+    failWrite := true
+    DiscordHUDMCTStop()
+    Check(!gDiscordHUDMCTOpen && gDiscordHUDOwned.Has(1), "stop swallows restore failure but retains retry ownership")
+    failWrite := false
+    DiscordHUDVisibilityTick()
+    Check(windows[1].visible && !gDiscordHUDOwned.Has(1), "failed synchronous stop is retried")
+    DiscordHUDMCTSet(true)
     windows.Delete(1)
     DiscordHUDMCTSet(false)
     Check(gDiscordHUDOwned.Count = 0, "destroyed ownership discarded")
@@ -145,8 +171,10 @@ try {
     DiscordHUDVisibilityExit()
     Check(windows[1].visible && !windows[2].visible, "exit restores only owned")
     for boundary in ["physical", "focus"] {
-        abortNow := false, focused := true, abortOnHide := boundary
+        abortNow := false, focused := true, abortOnHide := ""
         DiscordHUDMCTSet(false)
+        DiscordHUDMCTSet(true)
+        windows[1].visible := true, abortOnHide := boundary
         Check(!EarnUIReady("bunker_confirm"), "input or focus change during hiding rejects final screen-ready: " boundary)
         abortOnHide := "", abortNow := false, focused := true
         DiscordHUDMCTSet(false)
@@ -203,7 +231,7 @@ OnExit(fn) => exits.Push(fn)
 '@
     $driver = $driver.Replace('@PRODUCTION@', $production)
     $production = ''
-    $expected = '^PASS DiscordHUD: 43 cases; no window or game input$'
+    $expected = '^PASS DiscordHUD: 64 cases; no window or game input$'
 }
 $info = New-Object Diagnostics.ProcessStartInfo
 $info.FileName = $AhkPath
