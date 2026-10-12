@@ -1275,9 +1275,10 @@ PixelGetColor(x,y) {
     $policyText = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnPolicy.ahk') -Raw -Encoding UTF8
     $screenText = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnScreen.ahk') -Raw -Encoding UTF8
     $bunkerPolicy = "`n" + (Get-EarnFunctionBody $policyText 'EarnBunkerOrderPlan')
+    $bunkerPolicy += "`n" + (Get-EarnFunctionBody $sourceText 'EarnBunkerInTransit')
     $bunkerObserve = "`n" + (Get-EarnFunctionBody $sourceText 'EarnBunkerObservePlan')
     $bunkerTaskDriver = @'
-global config := Map("Settings",Map("EarnBunkerIntervalSec",6720)), gEarnNextDue := Map(), gEarnBunkerOrdered := false, gEarnBunkerFull := false
+global config := Map("Settings",Map("EarnBunkerIntervalSec",6720)), gEarnNextDue := Map(), gEarnBunkerOrdered := false, gEarnBunkerFull := false, gEarnBunkerTransitAt := 0, gEarnBunkerTransitSupply := 0
 global c := [], buyCalls := 0, beginCalls := 0, endCalls := 0
 ; stock, supply, interval, begin OK, buy OK, end OK, result, buys, ends, due milliseconds.
 cases := [[0.4,1,8400,true,true,true,true,0,1,60000],
@@ -1376,7 +1377,7 @@ EarnFail(*) => false
 '@
     Invoke-EarnOfflineCheck 'BunkerTask' 'EarnBunkerTask' ($bunkerTaskDriver + $bunkerPolicy + $bunkerObserve) 19
     $bunkerObserveDriver = @'
-global config := Map("Settings",Map("EarnBunkerIntervalSec",6720)), gEarnNextDue := Map(), gEarnBunkerOrdered := false, gEarnBunkerFull := false
+global config := Map("Settings",Map("EarnBunkerIntervalSec",6720)), gEarnNextDue := Map(), gEarnBunkerOrdered := false, gEarnBunkerFull := false, gEarnBunkerTransitAt := 0, gEarnBunkerTransitSupply := 0
 global c := Map(), clockMs := 0, supplyNow := 0.21, stockNow := 0.4,
     refreshes := 0, buys := 0, begins := 0, ends := 0, sleeps := [], abortNow := false, reads := 0
 ; Name, observations/options, result, purchases, next delay, expected observation time.
@@ -1494,7 +1495,7 @@ EarnFail(*) => false
     } finally { $sourceText = $savedBunkerSource }
     $taskFinallyDriver = @'
 global config := Map("Settings",Map("EarnBunkerIntervalSec",8400,"EarnDJPopularityPct",95)),
-    gEarnNextDue := Map(), gEarnBunkerOrdered := false, gEarnBunkerFull := false, gEarnFail := "",
+    gEarnNextDue := Map(), gEarnBunkerOrdered := false, gEarnBunkerFull := false, gEarnBunkerTransitAt := 0, gEarnBunkerTransitSupply := 0, gEarnFail := "",
     endScene := "mct_title", endFailure := "", endOrder := "", endAbort := false,
     endBoss := true, endLogs := [], taskMode := "", originalException := 0, taskBegins := 0, taskEnds := 0
 cases := [
@@ -1580,7 +1581,7 @@ EarnLog(*) => true
     $taskFinallyDriver += "`n" + (Get-EarnFunctionBody $warehouseText 'EarnWarehouseTask')
     Invoke-EarnOfflineCheck 'MCTTaskFinally' 'EarnBunkerTask' $taskFinallyDriver 48
     $bunkerBuyDriver = @'
-global config := Map("Settings",Map("EarnBunkerIntervalSec",6720)), gEarnBunkerOrdered := false, gEarnBunkerFull := false
+global config := Map("Settings",Map("EarnBunkerIntervalSec",6720)), gEarnBunkerOrdered := false, gEarnBunkerFull := false, gEarnBunkerTransitAt := 0, gEarnBunkerTransitSupply := 0
 global c := Map(), stage := "mct", pays := 0, cancels := 0, reads := 0, buyClicks := 0, resupplyClicks := 0
 ; Options, result, payments, cancellations, delivery confirmed, OCR reads.
 cases := [

@@ -295,11 +295,14 @@ EarnSafeCollect() {
 global gEarnBunkerOrdered := false
 ; 마지막 벙커 관측이 만재면 true. 재관측 때 갱신하고 F9로 다시 켤 때도 지운다.
 global gEarnBunkerFull := false
+; 배송 중 확인 시각과 그때 막대. 막대가 올라 도착을 보이기 전·1시간 전에는 벙커를 다시 열지 않는다(1013 02:20~02:40 에 0%·배송 중을 1분 간격으로 여섯 번 열었다).
+global gEarnBunkerTransitAt := 0
+global gEarnBunkerTransitSupply := 0
 ; 지난 DJ 재고용 직전 인기도. 다음 DJ 작업이 Home 에서 이보다 높게 읽어야 재고용이 먹은 것이다(-1 이면 확인할 것 없음).
 global gEarnDJCheckAbove := -1
 
 EarnBunkerTask(manageSession := true) {
-    global config, gEarnNextDue, gEarnBunkerOrdered, gEarnBunkerFull
+    global config, gEarnNextDue, gEarnBunkerOrdered, gEarnBunkerFull, gEarnBunkerTransitAt
     s := config["Settings"]
     if (manageSession && !EarnTaskMCTBegin())
         return false
@@ -320,6 +323,11 @@ EarnBunkerTask(manageSession := true) {
             ; 실제 잔량이 경계에 가까우면 짧게 보고, 그 밖에도 최대 1분마다 새 잔량을 확인한다.
             ; 생산 가속 여부를 시간으로 추측하지 않으며 구매는 새 잔량과 가격을 읽어 결정한다.
             gEarnNextDue["bunker"] := A_TickCount + Max(5000, Min(60000, plan.waitMs))
+            ok := true
+        } else if (EarnBunkerInTransit(plan)) {
+            ; MCT 막대만 본다. 벙커 내부는 다시 열지 않는다. 도착하면 막대가 올라 이 분기가 풀린다.
+            EarnLog("벙커: 보급 배송 중(" Round((A_TickCount - gEarnBunkerTransitAt) / 60000) "분 전 주문), 도착 전 벙커 재진입 생략")
+            gEarnNextDue["bunker"] := A_TickCount + 60000
             ok := true
         } else {
             gEarnBunkerOrdered := false
@@ -375,7 +383,7 @@ EarnBunkerObservePlan(requestedSeconds) {
 
 ; MCT에서 시작해 MCT로 복귀한다. 0927 저택 MCT 화면 기준.
 EarnBunkerBuy() {
-    global config, gEarnBunkerOrdered
+    global config, gEarnBunkerOrdered, gEarnBunkerTransitAt, gEarnBunkerTransitSupply
     if (!EarnUIReady("mct_bunker_card"))
         return EarnFail("벙커: MCT 카드 없음")
     stock := EarnBarFill(766, 1154, 555, "green")
@@ -455,7 +463,21 @@ EarnBunkerBuy() {
         || !EarnWaitGone("bunker_pending", "", 3000))
         return false
     EarnLog("벙커: 보급 배송 중 확인")
+    gEarnBunkerTransitAt := A_TickCount, gEarnBunkerTransitSupply := plan.supply
     return EarnUIBackToMCT("bunker_page", 2) || EarnFail("벙커: 배송 확인 뒤 MCT 복귀 미확인")
+}
+
+; 배송 중 확인 뒤에는 막대가 주문 때보다 올라 도착을 보이거나 1시간이 지나야 다시 본다.
+; 1시간 뒤 다시 들어가도 결제는 배송 중 확인창이 막는다(EarnBunkerBuy 의 bunker_pending 판정).
+EarnBunkerInTransit(plan) {
+    global gEarnBunkerTransitAt, gEarnBunkerTransitSupply
+    if (!gEarnBunkerTransitAt)
+        return false
+    if (plan.supply > gEarnBunkerTransitSupply || A_TickCount - gEarnBunkerTransitAt >= 3600000) {
+        gEarnBunkerTransitAt := 0
+        return false
+    }
+    return true
 }
 
 ; 내부의 Supplies Level 문구와 페이지를 확인한 뒤 주황 막대만 읽는다.

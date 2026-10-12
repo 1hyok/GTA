@@ -26,13 +26,13 @@ EarnBunkerOrderPlan(supplyFraction, stockFraction, requestedSeconds := 6720) {
     atBoundary := nearestBars >= requestedBars && nearestBars <= 5
         && (nearestBars = 5 ? supplyFraction = 0 : boundaryLag >= -1.0e-9 && boundaryLag <= 0.003)
     if (atBoundary)
-        return {buy: true, bars: nearestBars, waitMs: 0, reason: "boundary"}
+        return {buy: true, bars: nearestBars, waitMs: 0, reason: "boundary", supply: supplyFraction}
 
     ; 75%/55%처럼 이미 경계를 지나쳤다면 비싼 올림값으로 사지 않고 다음 경계를 기다린다.
     nextBars := Min(5, Max(requestedBars, Floor(missing * 5) + 1))
     remainingFraction := Max(0, nextBars / 5 - missing)
     nearBoundary := remainingFraction <= 0.03 + 1.0e-9
-    return {buy: false, bars: nextBars, waitMs: nearBoundary ? 10000 : 60000, nearBoundary: nearBoundary, reason: "wait_boundary"}
+    return {buy: false, bars: nextBars, waitMs: nearBoundary ? 10000 : 60000, nearBoundary: nearBoundary, reason: "wait_boundary", supply: supplyFraction}
 }
 
 ; OCR/화면 판독이 정확한 정수 금액을 돌려줄 때만 허용한다.
