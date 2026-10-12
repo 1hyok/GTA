@@ -79,27 +79,46 @@ EarnVinewoodSafeTask() {
 
 ; 선택한 행의 금고를 수거하고 같은 행의 빈 금고 문구를 확인한다. 다른 사업장이나 Claim All 은 고르지 않는다.
 EarnVinewoodClaim(name, amount) {
+    if (EarnAborted())
+        return false
     EarnVinewoodReadSelected(&again, &againAmount)
+    if (EarnAborted())
+        return false
     if (again != name || againAmount != amount)
         return EarnFail("금고: 수거 직전 " name " $" amount " 선택 미확인")
     if (!EarnTransactionBegin("safe", name " $" amount " 수거 요청 결과 확인 필요"))
         return false
+    ; 서버 응답이 늦어도 같은 요청을 재전송하지 않는다. 요청·OCR·대기에 하나의 기한을 쓴다.
+    requestedAt := A_TickCount, deadline := requestedAt + 60000, delayed := false
     if (!EarnPress("Enter") || !EarnSleep(1000))
         return false
-    deadline := A_TickCount + 15000
     Loop {
-        lines := EarnVinewoodReadSelected(&after, &left)
-        if (!IsObject(lines))
+        if (EarnAborted())
             return false
-        if (after = name && left = 0) {
+        if (A_TickCount >= deadline)
+            break
+        lines := EarnVinewoodReadSelected(&after, &left, deadline, name)
+        ; 느린 판독 도중 생긴 사용자 입력·포커스 이탈이나 기한 초과도 성공보다 먼저 검사한다.
+        if (EarnAborted())
+            return false
+        if (A_TickCount >= deadline)
+            break
+        if (after != "" && after != name)
+            return EarnFail("금고: " name " 수거 결과 확인 중 다른 사업장 선택. 자동 재수거 중단")
+        if (IsObject(lines) && after = name && left = 0) {
             EarnTransactionConfirmed("safe")
-            EarnLog("금고: " name " $" amount " 수거 뒤 빈 금고 확인")
+            EarnLog("금고: " name " $" amount " 수거 뒤 빈 금고 확인 (요청 후 " (A_TickCount - requestedAt) "ms)")
             return true
         }
-        ; 모르는 확인창에서 다시 Enter를 보내지 않는다. 한 번 요청한 수거는 자동 재전송하지 않는다.
-        if (A_TickCount >= deadline || !EarnSleep(300))
-            return EarnFail("금고: " name " 수거 후 $0 미확인. 자동 재수거 중단")
+        if (!delayed && A_TickCount - requestedAt >= 15000) {
+            delayed := true
+            EarnLog("금고: " name " 수거 응답 대기 연장. 추가 요청 없이 최대 60초까지 확인")
+        }
+        ; 일시적인 OCR 누락도 읽기만 재시도한다. 모르는 확인창에서 Enter를 다시 보내지 않는다.
+        if (!EarnSleep(Min(300, Max(1, deadline - A_TickCount))))
+            return false
     }
+    return EarnFail("금고: " name " 수거 후 60초 내 $0 미확인. 자동 재수거 중단")
 }
 
 ; 다음 입금이 한도를 넘길 수 있으면 지금 수거한다. 꽉 찰 때까지 기다리면 넘치는 입금이 버려진다.
@@ -195,20 +214,25 @@ EarnVinewoodSafeScheduleAll(amounts) {
 
 ; 선택한 행의 사업장 이름과 그 금고 금액을 읽는다. 한 번의 판독이 깨지면(1003 19:22 실측) 흰 글자 전처리와 재판독으로 세 번까지 본다.
 ; 테러바이트처럼 밝은 배경 위의 반투명 설명은 일반 OCR 이 깨뜨린다(1003 17:28 실측: "yOürNightclub").
-EarnVinewoodReadSelected(&name, &amount) {
+EarnVinewoodReadSelected(&name, &amount, deadlineTick := 0, expectedName := "") {
     name := "", amount := -1, lines := false
     Loop 3 {
         for white in [false, true] {
-            read := EarnReadScreen([25,15,450,850], white)
+            if (EarnAborted() || (deadlineTick && A_TickCount >= deadlineTick))
+                return false
+            read := EarnReadScreen([25,15,450,850], white, deadlineTick)
+            if (EarnAborted() || (deadlineTick && A_TickCount >= deadlineTick))
+                return false
             if (!IsObject(read))
                 continue
             lines := read
             name := EarnVinewoodSelectedSafe(read)
             amount := name = "" ? -1 : EarnVinewoodSafeAmountOf(read, name)
-            if (amount >= 0)
+            if (amount >= 0 || (expectedName != "" && name != "" && name != expectedName))
                 return read
         }
-        if (A_Index = 3 || !EarnSleep(500))
+        remaining := deadlineTick ? deadlineTick - A_TickCount : 500
+        if (A_Index = 3 || remaining <= 0 || !EarnSleep(Min(500, remaining)))
             break
     }
     return lines
