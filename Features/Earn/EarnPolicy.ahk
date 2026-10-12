@@ -45,11 +45,9 @@ EarnBunkerPriceAllowed(price, bars) {
 ; 나이트클럽 창고 직원 재배정. 입력은 7품목의 현재 화면 판독 결과이며 변경하지 않는다.
 ; 각 행: {id, count, capacity, unlocked: 0/1, technician: 0..5}.
 ; 누락/중복/범위 오류는 ValueError. capacity는 화면값을 사용하고 저장층 수를 추정하지 않는다.
-; 직원 수만큼 '시간당 판매가가 가장 높은, 만재가 아닌 활성 품목'에 직원을 둔다. 그 밖(만재·더 싼 품목)에 있는 직원이
-; 그 안의 빈 품목으로 옮긴다. 판매 뒤 비싼 품목이 비면 싼 품목에서 생산 중인 직원도 데려온다.
-; 시간당 판매가(장비 업그레이드, 단가/개당 생산 시간): 남미 27000/60분, 의약 11475/30분, 현금 4725/15분,
-; 화물 10000/35분, 스포츠 5000/20분, 유기농 2025/10분, 인쇄 1350/7.5분
-; → 27000 > 22950 > 18900 > 17143 > 15000 > 12150 > 10800 (gtaguide.net 창고 관리, 판매 단가는 위키 Sell Goods 표).
+; 3품목 만재 알림 후 15분 이내 전량 판매하는 표준 계획 모델을 비교한다.
+; 현재 배정 유지와 최대 21개 초기 조합만 비교하며 임의 중간 교대의 전역 최적화는 아니다.
+; 모델 가정/생산 진행 경계/판매시간 민감도는 EarnWarehouseCycleChoice 및 docs/earner-policy.md 참조.
 EarnWarehousePlan(goods) {
     priority := EarnWarehousePriority()
     if (!(goods is Array) || goods.Length != priority.Length)
@@ -83,11 +81,11 @@ EarnWarehousePlan(goods) {
             unlocked: row.unlocked, technician: row.technician}
     }
 
-    ; 직원 수만큼 위에서부터 고른 목적 품목. 나머지 자리의 직원이 옮길 대상이다.
-    staff := assigned.Count, wanted := Map()
-    for id in priority {
+    choice := EarnWarehouseCycleChoice(rows, assigned.Count)
+    wanted := Map()
+    for id in choice.order {
         row := rows[id]
-        if (wanted.Count < staff && row.unlocked && row.count < row.capacity)
+        if (wanted.Count < assigned.Count && row.unlocked && row.count < row.capacity)
             wanted[id] := true
     }
     ; 옮길 직원: 만재 품목을 비싼 순으로 먼저, 다음으로 목적 밖에서 생산 중인 품목을 싼 순으로.
@@ -110,6 +108,9 @@ EarnWarehousePlan(goods) {
         target.technician := source.technician
         source.technician := 0
     }
+    moves.modelReason := choice.reason
+    moves.modelGain := choice.gain
+    moves.modelCandidates := choice.candidates
     return moves
 }
 
@@ -117,12 +118,190 @@ EarnWarehousePriority() {
     return ["south_american", "pharmaceutical", "cash", "cargo", "sporting", "organic", "printing"]
 }
 
-; 계획이 낸 이동인지 실행 직전에 다시 본다: 원래 품목이 만재이거나 목적지가 더 비싼 품목이어야 한다.
-EarnWarehouseMoveJustified(fromId, toId, sourceFull) {
-    if (sourceFull)
-        return true
-    rank := Map()
-    for i, id in EarnWarehousePriority()
-        rank[id] := i
-    return rank.Has(fromId) && rank.Has(toId) && rank[toId] < rank[fromId]
+; 같은 최신 관측으로 생성한 첫 이동만 실행한다. 낮은 고정 순위로의 유효한 주기 계획도 허용한다.
+EarnWarehouseMoveJustified(move, goods) {
+    try {
+        proposal := EarnWarehousePlan(goods)
+        return proposal.Length && move.technician = proposal[1].technician
+            && move.from = proposal[1].from && move.to = proposal[1].to
+    } catch {
+        return false
+    }
+}
+
+; 단가는 실제 OCR stock.tsv의 판매액/수량. 주기는 표준 장비 업그레이드 분/개.
+; 현재 이벤트 배수/공개 세션 보너스/특별 주문을 추정해 기본값에 섞지 않는다.
+EarnWarehouseProductionModel() {
+    return Map("south_american", [27000,120], "pharmaceutical", [11475,60],
+        "cash", [4725,30], "cargo", [10000,70], "sporting", [5000,40],
+        "organic", [2025,20], "printing", [1350,15])
+}
+
+EarnWarehouseCycleChoice(rows, staff) {
+    base := [], full := 0
+    ; 유지 후보: 생산 중 직원은 유지하고 만재로 빈 자리만 고정 수익 순위로 채운다.
+    for id in EarnWarehousePriority() {
+        row := rows[id]
+        full += row.count >= row.capacity
+        if (row.technician && row.unlocked && row.count < row.capacity)
+            base.Push(id)
+    }
+    for id in EarnWarehousePriority()
+        if (!EarnWarehouseOrderHas(base, id))
+            base.Push(id)
+    hold := {order: base, reason: "hold_model_score", gain: 0, candidates: 0}
+    ; 3-full 이후는 판매 대기일 뿐 자동 중단이 아니다. 생산 중 직원은 보존하고 빈 직원만 보충한다.
+    if (staff != 5 || full >= 3) {
+        hold.reason := full >= 3 ? "sale_notice_continue" : "observed_staff_only"
+        return hold
+    }
+    orders := EarnWarehouseCycleOrders(rows)
+    if (!orders.Length)
+        return hold
+    model := EarnWarehouseProductionModel(), empty := Map()
+    for id, row in rows
+        empty[id] := {count: 0, capacity: row.capacity, unlocked: row.unlocked}
+    emptyOrders := EarnWarehouseCycleOrders(empty)
+    emptyCycles := [], rates := []
+    for order in emptyOrders {
+        sale := EarnWarehouseCycleRun(empty, order, model, false)
+        if (sale.reached && sale.time > 0)
+            emptyCycles.Push({time: sale.time, net: EarnWarehouseCycleNet(sale.counts, model)})
+    }
+    ; 주기가 1/2, 표준, 2배인 민감도. 현재 배속을 측정했다는 뜻은 아니다.
+    for scale in [0.5, 1, 2] {
+        for saleMinutes in [0, 15] {
+            rho := 0
+            for cycle in emptyCycles
+                rho := Max(rho, cycle.net / (scale * cycle.time + saleMinutes))
+            if (!rho)
+                return hold
+            rates.Push({scale: scale, saleMinutes: saleMinutes, rho: rho})
+        }
+    }
+    baseline := EarnWarehouseCycleBounds(rows, base, model)
+    if (!baseline)
+        return hold
+    baselineScore := EarnWarehouseCycleScore(baseline, rates)
+    best := hold, bestScore := baselineScore
+    for order in orders {
+        bound := EarnWarehouseCycleBounds(rows, order, model)
+        if (!bound)
+            continue
+        score := EarnWarehouseCycleScore(bound, rates)
+        if (score > bestScore + 0.01) {
+            bestScore := score
+            best := {order: order, reason: "cycle_model_maximin", gain: score - baselineScore, candidates: orders.Length}
+        }
+    }
+    best.candidates := orders.Length
+    return best
+}
+
+; 각 후보와 유지 후보에 동일한 보수점수를 적용한다. 후보 하한 > 유지 상한의 무손해 판정은 아니다.
+; 판매 중 새 생산 없음/판매 뒤 빈 재고·진행0의 계획모형이다. 판매 0/15분과 속도 3종의 6개 시나리오다.
+; 각 시나리오의 판매시간은 빈 주기와 현재 후보에 동일하게 적용한다. 참조 후보별 점수가 판매시간에 단조라 양끝으로 중간 최저점을 포함한다.
+; 실제 후보별 판매시간 차이까지 감싸는 보증은 아니다.
+; 이미 쌓인 재고를 남은 시간만으로 나누지 않고 같은 빈 재고 주기의 rho를 기준으로 전환 가치를 비교한다.
+EarnWarehouseCycleScore(bound, rates) {
+    score := 1.0e30
+    for rate in rates
+        score := Min(score, bound.lowNet - rate.rho * (rate.scale * bound.slow + rate.saleMinutes))
+    return score
+}
+
+EarnWarehouseOrderHas(order, id) {
+    for item in order
+        if (item = id)
+            return true
+    return false
+}
+
+; 직원 5명: 초기 선택 C(7,5) 이하. 보충 순서는 모든 후보에서 공통 고정 수익 순위다.
+; 실행되지 않는 미래 보충 순서를 따로 최적화하지 않는다. 매 관측의 첫 배정만 실행하고 다시 관측한다.
+EarnWarehouseCycleOrders(rows) {
+    available := [], orders := []
+    for id in EarnWarehousePriority()
+        if (rows[id].unlocked && rows[id].count < rows[id].capacity)
+            available.Push(id)
+    wanted := Min(5, available.Length)
+    if (!wanted)
+        return orders
+    Loop (1 << available.Length) {
+        mask := A_Index - 1, selected := [], rest := []
+        for i, id in available {
+            if (mask & (1 << (i - 1)))
+                selected.Push(id)
+            else
+                rest.Push(id)
+        }
+        if (selected.Length != wanted)
+            continue
+        order := selected.Clone()
+        for id in rest
+            order.Push(id)
+        orders.Push(order)
+    }
+    return orders
+}
+
+; 고정목록에서 최초 5작업의 완료시각이 빨라지면 6/7번째의 시작시각도 늦어지지 않는다.
+; 모든 초기 부분진행을 0 또는 한 주기로 둔 두 실행이 고정시각의 재고/3-full 도달시각을 감싼다.
+; 보충시 즉시 배정, 생산 정지 없음의 모델 경계이며 실제 UI 지연/판매 후 생산의 보증은 아니다.
+EarnWarehouseCycleBounds(rows, order, model) {
+    slow := EarnWarehouseCycleRun(rows, order, model, false)
+    fast := EarnWarehouseCycleRun(rows, order, model, true)
+    if (!slow.reached || !fast.reached)
+        return false
+    lowStock := EarnWarehouseCycleRun(rows, order, model, false, fast.time)
+    highStock := EarnWarehouseCycleRun(rows, order, model, true, slow.time)
+    return {slow: slow.time, fast: fast.time,
+        lowNet: EarnWarehouseCycleNet(lowStock.counts, model),
+        highNet: EarnWarehouseCycleNet(highStock.counts, model)}
+}
+
+; horizon=-1이면 최초 3-full에서 멈추고, 0 이상이면 그 고정시각의 재고를 계산한다.
+; 실제 게임에 입력하거나 재고를 수정하지 않는 최대 8개 이벤트의 순수 계산이다.
+EarnWarehouseCycleRun(rows, order, model, phaseHigh, horizon := -1) {
+    counts := Map(), phase := Map(), time := 0
+    for id, row in rows {
+        counts[id] := row.count
+        phase[id] := phaseHigh ? model[id][2] : 0
+    }
+    Loop 8 {
+        full := 0, active := []
+        for id, row in rows
+            full += counts[id] >= row.capacity
+        if (horizon < 0 && full >= 3)
+            return {counts: counts, time: time, reached: true}
+        if (horizon >= 0 && time >= horizon)
+            return {counts: counts, time: time, reached: full >= 3}
+        for id in order
+            if (active.Length < 5 && rows[id].unlocked && counts[id] < rows[id].capacity)
+                active.Push(id)
+        if (!active.Length)
+            return {counts: counts, time: horizon >= 0 ? horizon : time, reached: full >= 3}
+        step := 1.0e30
+        for id in active
+            step := Min(step, (rows[id].capacity - counts[id]) * model[id][2] - phase[id])
+        if (horizon >= 0)
+            step := Min(step, horizon - time)
+        if (step < 0)
+            throw ValueError("EarnWarehouseCycleRun: invalid production step")
+        for id in active {
+            progress := phase[id] + step, period := model[id][2]
+            units := Floor(progress / period)
+            counts[id] := Min(rows[id].capacity, counts[id] + units)
+            phase[id] := progress - units * period
+        }
+        time += step
+    }
+    throw ValueError("EarnWarehouseCycleRun: event bound exceeded")
+}
+
+EarnWarehouseCycleNet(counts, model) {
+    gross := 0
+    for id, count in counts
+        gross += count * model[id][1]
+    return gross - Min(gross * 0.1, 100000)
 }
