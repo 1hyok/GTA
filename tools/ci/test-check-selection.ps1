@@ -30,6 +30,12 @@ $earnCore = Get-CiCheckPlan @('Features/Earn/EarnCore.ahk')
 Check ($earnCore.Suites -contains 'test-dj-templates') 'EarnSeen search-area changes include DJ pixel regression'
 $otherImage = Get-CiCheckPlan @('Images/Earn/1920x1080/unknown.png')
 Check ($otherImage.Suites -contains 'test-dj-templates') 'other shared image changes preserve DJ regression coverage'
+foreach ($path in @('Images/Earn/1920x1080/afk_vinewood_title.png', 'Images/Earn/1920x1080/afk_phone_frame.png',
+    'tools/earn-test/build-afk-overlay-templates.ps1', 'tools/earn-test/afk-overlay-fixtures/afk_vinewood_title-raw.png')) {
+    $overlay = Get-CiCheckPlan @($path)
+    Check (-not $overlay.Full -and ($overlay.Suites -join ',') -eq 'test-afk-overlays') "overlay source selects visual regression: $path"
+    Check ($overlay.PackageRequired -eq $path.StartsWith('Images/')) "only deployable overlay pixels require packaging: $path"
+}
 
 $ci = Get-CiCheckPlan @('tools/ci/run-checks.ps1')
 Check ($ci.Full -and $ci.Suites.Count -eq 37 -and $ci.PackageRequired) 'CI harness change runs full suite and package validation'
