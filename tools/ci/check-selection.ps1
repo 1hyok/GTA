@@ -7,7 +7,7 @@ function Get-CiCheckPlan {
         'test-earnvinewood','test-earnwarehouse-read','test-earnwarehouse','test-earnstaff',
         'test-afk-notification-command','test-afk-input-lock','test-arrow-color','test-cpuboost','test-memguard','test-earndj',
         'test-phone-call-template','test-earnocr','test-notification-dismiss','test-mct-seated-template',
-        'test-bunker-templates','test-earnwarehouse-templates','test-afk-overlays','test-session-guard',
+        'test-bunker-templates','test-dj-templates','test-earnwarehouse-templates','test-afk-overlays','test-session-guard',
         'test-gui-input','test-perf-watch','test-fps-helper','test-screen-capture','test-gta-mode'
     )
     $selected = [Collections.Generic.List[object]]::new()
@@ -15,7 +15,7 @@ function Get-CiCheckPlan {
     $runFull = [bool]$Full
     $earnSuites = @('test-earner','test-earnnav','test-earntasks','test-earnblip','test-earnpolicy',
         'test-earnscreen','test-earnscreen-command','test-earnvinewood','test-earnwarehouse-read',
-        'test-earnwarehouse','test-earnstaff','test-earnocr','test-earnwarehouse-templates','test-phone-call-template')
+        'test-earnwarehouse','test-earnstaff','test-earnocr','test-dj-templates','test-earnwarehouse-templates','test-phone-call-template')
 
     foreach ($rawPath in $ChangedFiles) {
         if ([string]::IsNullOrWhiteSpace($rawPath)) { continue }
@@ -68,7 +68,8 @@ function Get-CiCheckPlan {
         if ($path -match '^Features/MemoryGuard\.ahk$') { $selected.Add('test-memguard'); $packageRequired = $true; continue }
         if ($path -match '^Images/MCT/') { $selected.Add('test-mct-seated-template'); $packageRequired = $true; continue }
         if ($path -match '^Images/Bunker/') { $selected.Add('test-bunker-templates'); $packageRequired = $true; continue }
-        if ($path -match '^Images/') { $selected.Add('test-mct-seated-template'); $selected.Add('test-bunker-templates'); $packageRequired = $true; continue }
+        if ($path -match '^Images/Earn/[^/]+/dj_confirm_(solomun|tale)\.png$') { $selected.Add('test-dj-templates'); $packageRequired = $true; continue }
+        if ($path -match '^Images/') { $selected.AddRange(@('test-mct-seated-template','test-bunker-templates','test-dj-templates')); $packageRequired = $true; continue }
         if ($path -match '^README\.md$' -or $path -match '^docs/') { continue }
         if ($path -match '^tools/earn-test/') { $runFull = $true; continue }
         if ($path -match '^Features/') { $runFull = $true; $packageRequired = $true; continue }
