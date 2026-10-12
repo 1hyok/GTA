@@ -15,9 +15,13 @@ if ($tray.Count -ne 1) { throw 'Expected exactly one production SetupTrayMenu' }
 $timer = [regex]::Matches($src, '(?m)^SetTimer\(CpuBoostTick, 2000, (-?\d+)\)\s*$')
 if ($timer.Count -ne 1) { throw 'Expected exactly one production CpuBoostTick timer' }
 $src = $src.Remove($timer[0].Index, $timer[0].Length)
+$publisher = [regex]::Matches($src, '(?m)^SetTimer\(CpuBoostPublishTick, 2000\)\s*$')
+if ($publisher.Count -ne 1) { throw 'Expected one normal-priority lightweight publisher timer' }
+$src = $src.Remove($publisher[0].Index, $publisher[0].Length)
 $src = $src.Replace('RunWait(', 'TestRunWait(').Replace('FileOpen(', 'TestFpsFileOpen(').
     Replace('FileRead(', 'TestFpsFileRead(').Replace('EnvGet(', 'TestEnvGet(').
-    Replace('A_TrayMenu', 'gTestTray').Replace('A_IconTip', 'gTestIconTip').Replace('A_TickCount', 'TestNow()')
+    Replace('A_TrayMenu', 'gTestTray').Replace('A_IconTip', 'gTestIconTip').Replace('A_TickCount', 'TestNow()').
+    Replace('DllCall("GetTickCount64", "UInt64")', 'TestNow()')
 $configSource = $configSource.Replace('A_ScriptDir', 'gFixtureRoot')
 $traySource = $tray[0].Value.Replace('A_TrayMenu', 'gTestTray').Replace('A_IconTip', 'gTestIconTip')
 if ($src -match '(?m)^SetTimer\(' -or $src -match '(?<!Test)Run(?:Wait)?\(') {
@@ -36,6 +40,7 @@ global gEarnOn := false, testPhys := 0, testOthers := 0, testPowerExit := 0, tes
 global testFpsFail := "", testFpsOpens := 0, testFpsReads := 0, testLogs := [], testTips := []
 global testPowerDelay := 0, testHeld := false, testPowerDuringHold := false, testHoldMs := 0
 global testNowMs := 1000000
+global testPhysicalHeld := false, testAwayFail := false
 @CONFIG@
 @CPU@
 try {
@@ -180,6 +185,44 @@ RunCases() {
     Check(CpuBoostTick(), "saved mode retries after application failure")
     LoadConfig()
     Check(config["Settings"]["AwayMode"] = 1, "application failure does not discard requested manual mode")
+
+    ResetState(0, 300, 24, false, 60000, 60000)
+    config["Settings"]["AutoAwayIdleSec"] := 60
+    Check(CpuBoostTick() && gCpuBoostAutoAway && gCpuBoostState = "off" && ReadFps() = "30", "automatic away works independently of earning")
+    firstSignal := FileRead(gFixtureRoot "\.gta-away-want", "UTF-8")
+    Check(RegExMatch(firstSignal, "^v1\|\d+\|1000000\|1\|0$"), "atomic signal contains producer identity clock and desired states")
+    Check(!FileExist(gFixtureRoot "\.gta-away-want.tmp"), "published signal has no partial temporary file")
+    testNowMs += 2000, testPhys += 2000, testOthers += 2000
+    Check(CpuBoostTick() && FileRead(gFixtureRoot "\.gta-away-want", "UTF-8") != firstSignal, "unchanged state still refreshes heartbeat")
+    Check(testPowerCalls.Length = 1 && testFpsOpens = 1, "heartbeat does not repeat power and FPS writes")
+    testPhys := 0
+    Check(CpuBoostTick() && !gCpuBoostAutoAway && gCpuBoostState = "on" && ReadFps() = "0", "physical input promptly restores normal policy")
+    Check(InStr(FileRead(gFixtureRoot "\.gta-away-want", "UTF-8"), "|0|1"), "normal restoration is published to watcher")
+    testNowMs += 60000, testPhys := 60000, testOthers := 60000
+    Check(CpuBoostTick() && gCpuBoostAutoAway, "automatic away can repeat after renewed idle")
+    testOthers := 0
+    Check(CpuBoostTick() && !gCpuBoostAutoAway, "external injected input also restores normal policy")
+    testNowMs += 60000, testPhys := 60000, testOthers := 60000, testPhysicalHeld := true
+    Check(CpuBoostTick() && !gCpuBoostAutoAway && gCpuBoostState = "on", "held driving key prevents idle transition")
+    testPhysicalHeld := false
+    Check(CpuBoostTick() && !gCpuBoostAutoAway, "release starts a fresh idle period")
+    testNowMs += 60000, testPhys := 60000, testOthers := 60000
+    Check(CpuBoostTick() && gCpuBoostAutoAway, "auto policy resumes after released-key idle period")
+    config["Settings"]["AwayMode"] := 1, testPhys := 0
+    Check(CpuBoostTick() && gCpuBoostState = "off" && ReadFps() = "30", "manual away still overrides user activity with auto enabled")
+    config["Settings"]["AwayMode"] := 0, testAwayFail := true
+    Check(!CpuBoostTick() && gCpuBoostState = "on" && ReadFps() = "0", "IPC failure does not block restoring CPU and FPS")
+    Check(InStr(gCpuBoostError, "자동 외출"), "IPC failure is visible and not cached as success")
+    testAwayFail := false
+    Check(CpuBoostTick() && gCpuBoostError = "", "IPC failure retries next tick")
+    Check(!CpuBoostAutoAway(999999, 0) && !CpuBoostAutoAway(59999, 60) && CpuBoostAutoAway(60000, 60), "auto threshold is inclusive and zero disables")
+    Check(!CpuBoostAutoAway(999999, 60, true), "held-key guard wins over idle duration")
+    Check(CpuBoostLastActive(4294967000, 4295027000, 1) = 4295026999, "activity clock remains monotonic beyond 32 bit uptime")
+    ResetState(0, 300, 30, false, 60000, 60000)
+    config["Settings"]["AutoAwayIdleSec"] := 60
+    Check(CpuBoostTick() && ReadFps() = "30", "automatic FPS cache initialized before stale-writer race")
+    f := FileOpen(gFixtureRoot "\.gta-fps-want", "w", "UTF-8-RAW"), f.Write("0"), f.Close()
+    Check(CpuBoostTick() && ReadFps() = "30" && testPowerCalls.Length = 1, "fresh Main repairs competing stale release despite matching FPS cache")
 }
 
 ResetState(away, sec, fps, earn, phys, others) {
@@ -187,11 +230,15 @@ ResetState(away, sec, fps, earn, phys, others) {
     config["Settings"] := Map("AwayMode", away, "CpuBoostIdleSec", sec, "IdleFpsLimit", fps)
     gCpuBoostState := "", gCpuBoostFps := "", gCpuBoostLastActive := 0
     gCpuBoostWorking := false, gCpuBoostError := "", gEarnOn := earn
+    gCpuBoostAutoAway := false, testPhysicalHeld := false, testAwayFail := false
+    gCpuBoostPublishError := ""
     ; Synthetic idle values must share a deterministic clock, not the CI VM uptime.
     testNowMs := 1000000
     testPhys := phys, testOthers := others, testPowerExit := 0, testPowerCalls := []
     testFpsFail := "", testFpsOpens := 0, testFpsReads := 0, testLogs := [], testTips := []
     try FileDelete(gFixtureRoot "\.gta-fps-want")
+    try FileDelete(gFixtureRoot "\.gta-away-want")
+    try FileDelete(gFixtureRoot "\.gta-away-want.tmp")
 }
 ReadFps() {
     global gFixtureRoot
@@ -218,9 +265,17 @@ AFKOthersIdleMs() {
     global testOthers
     return testOthers
 }
+AFKKeysHeld() {
+    global testPhysicalHeld
+    return testPhysicalHeld
+}
 TestNow() {
     global testNowMs
     return testNowMs
+}
+TestTick() {
+    CpuBoostPublishTick()
+    return CpuBoostTick()
 }
 TestRunWait(command, workingDir := "", options := "") {
     global testPowerCalls, testPowerExit, testPowerDelay, testHeld, testPowerDuringHold
@@ -240,7 +295,12 @@ TestEnvGet(name) {
     return gFixtureRoot
 }
 TestFpsFileOpen(path, mode, encoding) {
-    global gFixtureRoot, testFpsFail, testFpsOpens
+    global gFixtureRoot, testFpsFail, testFpsOpens, testAwayFail
+    if (path = gFixtureRoot "\.gta-away-want.tmp") {
+        if (testAwayFail)
+            throw Error("fixture signal failure")
+        return FileOpen(path, mode, encoding)
+    }
     if (path != gFixtureRoot "\.gta-fps-want")
         throw Error("refusing non-fixture path")
     testFpsOpens++
@@ -283,6 +343,8 @@ class FakeTray {
 }
 @TRAY@
 '@
+$driver = $driver.Replace('Check(CpuBoostTick()', 'Check(TestTick()').Replace('!CpuBoostTick()', '!TestTick()').
+    Replace('&& CpuBoostTick()', '&& TestTick()')
 $driver = $driver.Replace('@FIXTURE@', $fixture).Replace('@CONFIG@', $configSource).
     Replace('@CPU@', $src).Replace('@TRAY@', $traySource)
 $path = Join-Path $fixture 'driver.ahk'
@@ -341,8 +403,34 @@ FinishTiming() {
     ExitApp(ok ? 0 : 1)
 }
 '@
+$heartbeatFunctions = @'
+BeginHeartbeat() {
+    global testHeld, testNowMs
+    ResetState(0, 300, 30, false, 60000, 60000)
+    config["Settings"]["AutoAwayIdleSec"] := 60
+    testHeld := true
+    SetTimer(CpuBoostPublishTick, 20)
+    SetTimer(CpuBoostTick, -20, -10)
+    Sleep(70)
+    first := FileRead(gFixtureRoot "\.gta-away-want", "UTF-8")
+    testNowMs += 2000
+    Sleep(70)
+    next := FileRead(gFixtureRoot "\.gta-away-want", "UTF-8")
+    SetTimer(CpuBoostPublishTick, 0)
+    Check(first != next && InStr(next, "|1|0"), "heartbeat continues while normal-priority macro thread sleeps")
+    Check(testPowerCalls.Length = 0 && testFpsOpens = 0, "heartbeat performs no power or FPS side effects during macro input")
+    testHeld := false
+    SetTimer(FinishHeartbeat, -100)
+}
+FinishHeartbeat() {
+    global testPowerDuringHold, testPowerCalls
+    Check(!testPowerDuringHold && testPowerCalls.Length = 1, "power waits until normal macro thread yields")
+    FileAppend("PASS CpuBoost heartbeat_during_macro=1 power_during_hold=0`n", "*")
+    ExitApp(0)
+}
+'@
 try {
-    Invoke-CpuFixture $driver '^PASS CpuBoost cases=67$'
+    Invoke-CpuFixture $driver '^PASS CpuBoost cases=88$'
     $timingDriver = [regex]::Replace($driver, '(?m)^    RunCases\(\)\r?\n    FileAppend[^\r\n]*\r?\n    ExitApp\(0\)',
         "    SetTimer(BeginTiming, -1)`n    return")
     # Control reproduces the RunWait interruption before the timer-priority fix.
@@ -352,9 +440,11 @@ try {
     if ([int]$priority -ge 0) { throw 'Production CPU timer must not preempt normal input threads.' }
     Invoke-CpuFixture ($timingDriver + "`n" + $timingFunctions.Replace('@PRIORITY@', $priority)) `
         ('^PASS CpuBoost timing priority=' + $priority + ' power_during_hold=0 hold_ms=\d+$')
+    $heartbeatDriver = $timingDriver.Replace('SetTimer(BeginTiming, -1)', 'SetTimer(BeginHeartbeat, -1)')
+    Invoke-CpuFixture ($heartbeatDriver + "`n" + $heartbeatFunctions) '^PASS CpuBoost heartbeat_during_macro=1 power_during_hold=0$'
 } finally {
     # Only delete known generated files in this newly created fixture directory.
-    foreach ($name in @('driver.ahk', 'Config.ini', 'Config.ini.tmp', 'Config.saved', '.gta-fps-want')) {
+    foreach ($name in @('driver.ahk', 'Config.ini', 'Config.ini.tmp', 'Config.saved', '.gta-fps-want', '.gta-away-want', '.gta-away-want.tmp')) {
         $file = Join-Path $fixture $name
         if ([IO.File]::Exists($file)) { [IO.File]::SetAttributes($file, 'Normal'); [IO.File]::Delete($file) }
     }
