@@ -504,59 +504,23 @@ EarnDJTask(manageSession := true) {
     return ok && ended
 }
 
-; MCT 앞 안내가 안 보일 때 시점을 20도씩 한 바퀴 돌려 안내가 뜨는 방향을 찾는다. 찾으면 그 방향에 두고 true.
-; 3인칭에서는 마우스가 카메라만 돌리고 몸은 그대로라 한 바퀴를 돌아도 의자를 등진 채다(1011 01:59 녹화).
-; 그래서 못 찾으면 V 로 카메라 모드를 바꿔 다시 돈다. 걷기 카메라는 3인칭 셋·1인칭 하나라 네 번이면 원래 모드로 돌아온다.
-; 작업 뒤 복귀 회전이 실패하면 MCT 옆에서 몸만 크게 틀어진 채 남는다(1011 01:24 녹화: 노트북이 오른쪽 40도 넘게 비켜 있었다).
-EarnMCTSpotSweep() {
-    global config
-    k := config["Settings"]["EarnTurnUnitsPerDeg"]
-    Loop 4 {
-        mode := A_Index
-        Loop 18 {
-            if (!EarnTurnLoop(Round(20 * k), 0, false))
-                return false
-            if (!EarnSleep(300))
-                return false
-            if (EarnAtMCT() || EarnSeen("mct_sit", [0,0,0.3,0.1]) || EarnSeen("mct_terrorbyte")) {
-                EarnLog("MCT 시작: 카메라 모드 " mode "번째에서 시점을 " (A_Index * 20) "도 돌려 안내 확인")
-                return true
-            }
-        }
-        if (!EarnPress("v") || !EarnSleep(800))
-            return false
-    }
-    EarnLog("MCT 시작: 카메라 모드 넷을 다 돌려도 안내 없음")
-    return false
-}
-
 EarnTaskMCTBegin() {
     global gEarnMCTCleanupOK, gEarnManualStop
     gEarnMCTCleanupOK := true
     probePassed := false, opened := false
     try {
-    ; 이 자동화는 사용자가 둔 MCT 앞에서만 동작한다. 부동산 재접속·임의 길찾기는 하지 않는다.
-    ; 게임 알림 아이콘이 안내 위에 잠깐 겹치면 한 번은 빗나간다(1003 18:25 실측). 5초 다시 보고, 그래도 없으면 끄지 않고 3분 뒤 다시 한다.
-    spotDeadline := A_TickCount + 5000, swept := false
-    while (!EarnAtMCT() && !EarnSeen("mct_sit", [0,0,0.3,0.1]) && !EarnSeen("mct_terrorbyte")) {
-        if (A_TickCount >= spotDeadline || !EarnSleep(500)) {
-            ; MCT 앞인데 시점이 살짝 어긋나 안내가 안 뜰 수 있다(1011 01:09~ 실측: 서 있는데 앉기 안내가 없었다). 한 번 좌우로 돌려 찾는다.
-            if (!swept && !EarnAborted()) {
-                swept := true
-                if (EarnMCTSpotSweep())
-                    break
-            }
-            if (!gEarnManualStop)
-                EarnBossOffIfOn()
-            return EarnSoftFail("MCT 앞에 서 있거나 사업장 목록을 연 상태에서 시작해야 함", 3)
+        ; 알림에 가려진 안내는 잠깐 기다린다. 위치를 확인하기 전에는 입력으로 탐색하지 않는다(#270).
+        spotDeadline := A_TickCount + 5000
+        while (!EarnAtMCT() && !EarnSeen("mct_sit", [0,0,0.3,0.1]) && !EarnSeen("mct_terrorbyte")) {
+            if (A_TickCount >= spotDeadline || !EarnSleep(500))
+                return EarnSoftFail("MCT 앞에 서 있거나 사업장 목록을 연 상태에서 시작해야 함", 3)
         }
-    }
         probePassed := true
         opened := EarnMCTOpen() && EarnMCTRefresh()
         return opened
     } finally {
         ; 초기 MCT 화면 판독 중 F9가 들어온 경우도 정상 종료로 오인하지 않는다. 확인된 화면을 다시 읽어 닫고 CEO를 해제한다.
-        ; 정상적인 "MCT 앞 아님" 실패는 기존처럼 보스 상태만 확인하고, 세션 진입을 통과했거나 수동 종료가 요청된 경우만 전체 정리를 한다.
+        ; 위치 미확인 재시도에는 정리 입력도 보내지 않는다. 수동 종료는 기존 중앙 정리 경로를 따른다.
         if (!opened && (probePassed || gEarnManualStop))
             gEarnMCTCleanupOK := EarnTaskMCTEndWithManualRetry()
     }

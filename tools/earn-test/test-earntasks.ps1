@@ -482,14 +482,14 @@ global config := Map("Settings", Map("EarnMCTOnly",1)), scene := "", failAt := "
 global gEarnManualStop := false
 for c in [["list","",true,"OR"],["stand","",true,"OR"],["chair","",true,"OR"],
     ["need-ceo","",true,"OR"],["away","",false,""],["list","O",false,"OE"],
-    ["stand","O",false,"OE"],["stand","R",false,"ORE"],["flicker","",true,"OR"],["sweep","",true,"OR"]] {
+    ["stand","O",false,"OE"],["stand","R",false,"ORE"],["flicker","",true,"OR"],["sweep","",false,""]] {
     scene := c[1], failAt := c[2], order := "", softRetry := 0, spotClockMs := 0, sweepCalls := 0
     if (EarnTaskMCTBegin() != c[3] || order != c[4])
         throw Error("MCT begin guard: " c[1] "/" c[2] " order=" order)
-    if (c[1] = "away" && softRetry != 3)
+    if ((c[1] = "away" || c[1] = "sweep") && softRetry != 3)
         throw Error("MCT begin away must retry later instead of stopping")
-    if (sweepCalls != ((c[1] = "away" || c[1] = "sweep") ? 1 : 0))
-        throw Error("MCT begin must sweep the view exactly once, and only when no prompt is seen: " c[1] " calls=" sweepCalls)
+    if (sweepCalls != 0)
+        throw Error("MCT begin must wait without camera input when no prompt is seen: " c[1] " calls=" sweepCalls)
 }
 FileAppend("PASS MCTBegin cases=10`n", "*")
 ExitApp(0)
@@ -532,12 +532,8 @@ EarnSleep(ms) {
 SpotClock() => spotClockMs
 EarnAborted() => false
 EarnMCTSpotSweep() {
-    global scene, sweepCalls
+    global sweepCalls
     sweepCalls += 1
-    if (scene = "sweep") {
-        scene := "stand"
-        return true
-    }
     return false
 }
 EarnSoftFail(reason, retryMin) {
