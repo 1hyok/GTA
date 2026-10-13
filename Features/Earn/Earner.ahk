@@ -43,8 +43,9 @@ EarnAFKCloseMCTGuarded(idleSec) {
     global gEarnBusy, gEarnFail, gAbort, gEarnAFKCleanup, gEarnGuardArmed, gEarnGuardStartedTick, gEarnGamePID, gEarnUserAbort, gEarnManualStop, gEarnInputAbortReason
     if ((IsSet(gEarnBusy) && gEarnBusy) || gAbort)
         return ""
+    ; DJ 이름의 흰 글자 템플릿은 야외 하늘에도 일치한다. 화면·확인창으로만 정리에 진입한다(#270).
     if (!EarnAtMCT() && !EarnSeen("nc_dj_menu") && !EarnSeen("bunker_page") && !EarnSeen("bunker_entry")
-        && !EarnSeen("dj_solomun") && !EarnSeen("dj_confirm_solomun") && !EarnSeen("dj_confirm_tale")
+        && !EarnSeen("dj_confirm_solomun") && !EarnSeen("dj_confirm_tale")
         && !EarnSeen("bunker_confirm") && !EarnSeen("bunker_pending"))
         return ""
     ; 수익 작업과 같은 입력 감시를 건다. 정리 중 사람이 키보드·마우스를 만지면 바로 멈춘다.
