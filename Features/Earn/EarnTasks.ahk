@@ -867,11 +867,24 @@ EarnUIClearCursor() {
 ; 사업장 화면의 왼쪽 위 안내(1004 01:17 실측: 배송 접수 뒤 "Supplies are en route..." 6초)가 페이지 표식을 가릴 수 있어
 ; 확인된 화면을 8초까지 기다린다. 기다리는 동안 입력은 없다.
 EarnUIBackToMCT(guard, maxPress) {
+    global gEarnSkipOcr
     Loop maxPress {
         deadline := A_TickCount + 8000
         Loop {
             if (EarnAborted())
                 return false
+            previousSkipOcr := gEarnSkipOcr
+            try {
+                gEarnSkipOcr := true
+                atMCT := EarnSeen("mct_title", [0.3, 0, 0.7, 0.1])
+                pageReady := !atMCT && EarnUIReady(guard)
+            } finally {
+                gEarnSkipOcr := previousSkipOcr
+            }
+            if (atMCT)
+                return true
+            if (pageReady)
+                break
             if (EarnSeen("mct_title", [0.3, 0, 0.7, 0.1]))
                 return true
             ; 배경 복구와 MCT 전환을 함께 확인하고, 확인된 사업장 화면에서만 뒤로 간다.
