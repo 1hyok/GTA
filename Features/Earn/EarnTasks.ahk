@@ -457,7 +457,8 @@ EarnBunkerBuy() {
             || !EarnWaitSeen("bunker_pending", "", 5000))
             return EarnFail("벙커: 배송 접수 미확인, 재구매 금지")
         gEarnBunkerOrdered := true
-        EarnTransactionConfirmed("bunker")
+        if (!EarnTransactionCashConfirmed("bunker", "expense", price, "벙커 보급", "OCR 견적 일치와 배송 중 상태 확인"))
+            return EarnFail("벙커: 확인된 지출의 원장 저장 실패. pending 보류 유지, 재구매 금지")
     }
     if (!EarnUIClick("bunker_pending", 960, 619)
         || !EarnWaitGone("bunker_pending", "", 3000))
@@ -730,7 +731,8 @@ EarnDJSwapLoop(previousMCTReading := "") {
             || !EarnWaitGone(confirmation, "", 15000)
             || !EarnWaitSeen(resident, area, 5000))
             return EarnFail("DJ: 교체 결과 미확인")
-        EarnTransactionConfirmed("dj")
+        if (!EarnTransactionCashConfirmed("dj", "expense", 10000, "Nightclub DJ 재고용", "10,000달러 재고용 항목과 교체 DJ 확인"))
+            return EarnFail("DJ: 확인된 지출의 원장 저장 실패. pending 보류 유지, 재고용 금지")
         rebooks++
         gEarnDJCheckAbove := pop
         EarnDJSchedule(pop, true)

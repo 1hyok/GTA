@@ -50,9 +50,17 @@ EarnTransactionConfirmed(id) {
     gConfirmCalls += 1
     transactionPending.Delete(id)
 }
+EarnTransactionCashConfirmed(id, direction, amount, source, evidence, path := "") {
+    global gCashMovements, gCashFail
+    if (gCashFail)
+        return false
+    gCashMovements.Push({id:id, direction:direction, amount:amount, source:source, evidence:evidence})
+    EarnTransactionConfirmed(id)
+    return true
+}
 global gMode, gState, gSelected, gBiz, gIdx, gReads, gClaims, gClaimAttempts, gKeys, gStandWaits, gMctCloses, gCEOCalls, gFailure, gScheduled, gPhoneFrameVisible, gTests := 0
 global gNowMs := 0, gSleepMs := 0, gTimedReads := 0
-global gClaimPlan := 0, gClaimAt := -1, gClaimReads := [], gAbort := false, gConfirmCalls := 0
+global gClaimPlan := 0, gClaimAt := -1, gClaimReads := [], gAbort := false, gConfirmCalls := 0, gCashMovements := [], gCashFail := false
 ; 입금 알림 감시(EarnSafeFeedWatch)는 스케줄러 전역을 쓴다. 이 시험은 파서만 부른다.
 global gEarnRetryIn := 0, gEarnOn := false, gEarnBusy := false, gEarnDue := Map(), gEarnNextDue := Map()
 global config := Map("Settings", Map("EarnUserIdleSec", 45)), gPhysIdle := 600000, gOthersIdle := 600000
@@ -70,15 +78,24 @@ DefaultBiz() => [["Nightclub",150000], ["Arcade",10000], ["Agency",80000], ["Sal
 ; The live response was absent at +2s and present by +35s. Deterministic
 ; delayed frames reproduce the old 15-second rejection without live input.
 RunClaimTimingTests() {
-    global gNowMs, gClaimAt, gClaimReads, gAbort, gClaimAttempts, gKeys, gConfirmCalls, transactionPending
+    global gNowMs, gClaimAt, gClaimReads, gAbort, gClaimAttempts, gKeys, gConfirmCalls, transactionPending, gCashMovements, gCashFail
     for delay in [35000, 16000, 0] {
         ClaimReset(Map("delay", delay))
         ok := EarnVinewoodClaim("Nightclub", 250000)
         elapsed := gNowMs - gClaimAt
         Check(ok, "claim response at " delay "ms succeeds; elapsed=" elapsed "ms")
+        Check(gCashMovements.Length = 1 && gCashMovements[1].direction = "income"
+            && gCashMovements[1].amount = 250000 && gCashMovements[1].source = "Nightclub",
+            "confirmed safe claim records exact income")
         ClaimSafety(true, "claim response at " delay "ms")
         Check(elapsed >= Max(1000, delay) && elapsed < Max(1500, delay + 500), "delayed claim completes promptly after its result")
     }
+    ClaimReset(Map("delay", 0))
+    gCashFail := true
+    Check(!EarnVinewoodClaim("Nightclub", 250000), "ledger write failure rejects the confirmed claim result")
+    ClaimSafety(false, "ledger write failure")
+    Check(!gCashMovements.Length, "failed ledger write is not counted as recorded income")
+    gCashFail := false
     for plan in [Map("delay", 120000), Map("delay", 120000, "keyCost", 9000),
         Map("delay", 120000, "readCost", 14000), Map("delay", 120000, "missingUntil", 120000)] {
         ClaimReset(plan)
@@ -435,7 +452,9 @@ Reset(mode, state, amounts := "") {
     global gMode, gState, gSelected, gBiz, gIdx, gReads, gClaims, gClaimAttempts, gKeys, gStandWaits, gMctCloses, gCEOCalls, gFailure, gScheduled, gPhysIdle, gOthersIdle, gPhoneFrameVisible
     global gNowMs, gSleepMs, gTimedReads
     global gClaimPlan, gClaimAt, gClaimReads, gAbort, gConfirmCalls
-    gClaimPlan := 0, gClaimAt := -1, gClaimReads := [], gAbort := false, gConfirmCalls := 0
+    global gCashMovements, gCashFail
+    gClaimPlan := 0, gClaimAt := -1, gClaimReads := [], gAbort := false, gConfirmCalls := 0, gCashMovements := []
+    gCashFail := false
     gMode := mode, gState := state = "earnings_mid" ? "earnings" : state, gBiz := DefaultBiz(), gIdx := state = "earnings_mid" ? 4 : 1
     gPhoneFrameVisible := mode != "phone_texts_hdr"
     if (mode = "unknown_business")

@@ -106,7 +106,8 @@ EarnVinewoodClaim(name, amount) {
         if (after != "" && after != name)
             return EarnFail("금고: " name " 수거 결과 확인 중 다른 사업장 선택. 자동 재수거 중단")
         if (IsObject(lines) && after = name && left = 0) {
-            EarnTransactionConfirmed("safe")
+            if (!EarnTransactionCashConfirmed("safe", "income", amount, name, "OCR 금액과 수거 뒤 빈 금고 확인"))
+                return EarnFail("금고: 확인된 수입의 원장 저장 실패. pending 보류 유지, 재수거 금지")
             EarnLog("금고: " name " $" amount " 수거 뒤 빈 금고 확인 (요청 후 " (A_TickCount - requestedAt) "ms)")
             return true
         }

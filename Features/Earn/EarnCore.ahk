@@ -68,6 +68,33 @@ EarnTransactionConfirmed(id) {
     EarnStateSet("pending_" id, "")
 }
 
+; 거래 금액·완료 근거를 확정 원장에 남긴 뒤 기존 pending 상태를 정리한다.
+EarnTransactionCashConfirmed(id, direction, amount, source, evidence, path := "") {
+    global gEarnHeld
+    if (EarnStateGet("pending_" id) = "") {
+        reason := "원장 거래 확인 도중 pending 상태 누락, 실제 결과 확인 필요"
+        EarnStateSet("pending_" id, reason)
+        if (EarnStateGet("pending_" id) = reason)
+            EarnLog("원장: " id " 거래의 pending 누락. 재요청 방지를 위해 보류 상태를 저장함")
+        else {
+            if (IsSet(gEarnHeld) && IsObject(gEarnHeld))
+                gEarnHeld[id] := reason
+            EarnLog("원장: " id " 거래의 pending 누락과 보류 상태 저장 실패. 거래를 재요청하지 말고 결과 확인 필요")
+        }
+        return false
+    }
+    if (!EarnLedgerRecord(direction, amount, id, source, evidence, path)) {
+        EarnLog("원장: " id " 기록 실패. pending 상태를 유지해 거래 재요청을 막음")
+        return false
+    }
+    EarnTransactionConfirmed(id)
+    if (EarnStateGet("pending_" id) != "") {
+        EarnLog("원장: " id " 행은 기록했지만 pending 정리를 확인하지 못함. 거래 재요청 금지")
+        return false
+    }
+    return true
+}
+
 ; 작업이 화면에서 읽은 상태로 다음 확인까지의 시간을 정한다. 작업이 성공으로 끝날 때만 스케줄러가 이 값을 쓴다.
 EarnScheduleNext(id, ms) {
     global gEarnNextDue

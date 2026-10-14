@@ -2,7 +2,7 @@ function Get-CiCheckPlan {
     param([string[]]$ChangedFiles, [switch]$Full)
 
     $suiteNames = @(
-        'test-earner','test-antiafk','test-altf4teleport','test-botwarp-stop','test-claw-stop','test-autoclick-stop',
+        'test-earner','test-earnledger','test-antiafk','test-altf4teleport','test-botwarp-stop','test-claw-stop','test-autoclick-stop',
         'test-earnnav','test-earntasks','test-earnblip','test-earnpolicy','test-earnscreen','test-earnscreen-command',
         'test-earnvinewood','test-earnwarehouse-read','test-earnwarehouse','test-earnstaff',
         'test-afk-notification-command','test-afk-input-lock','test-arrow-color','test-cpuboost','test-discord-hud','test-overlay-place','test-memguard','test-earndj',
@@ -15,7 +15,7 @@ function Get-CiCheckPlan {
     $runFull = [bool]$Full
     $earnSuites = @('test-earner','test-earnnav','test-earntasks','test-earnblip','test-earnpolicy',
         'test-earnscreen','test-earnscreen-command','test-earnvinewood','test-earnwarehouse-read',
-        'test-earnwarehouse','test-earnstaff','test-earnocr','test-dj-templates','test-earnwarehouse-templates','test-phone-call-template')
+        'test-earnwarehouse','test-earnstaff','test-earnocr','test-earnledger','test-dj-templates','test-earnwarehouse-templates','test-phone-call-template')
 
     foreach ($rawPath in $ChangedFiles) {
         if ([string]::IsNullOrWhiteSpace($rawPath)) { continue }
@@ -36,6 +36,7 @@ function Get-CiCheckPlan {
 
         if ($path -match '^Features/Earn/') {
             switch -Regex ($path) {
+                '^Features/Earn/EarnLedger\.ahk$' { $selected.AddRange(@('test-earnledger','test-earner')); break }
                 '^Features/Earn/EarnStaff\.ahk$' { $selected.AddRange(@('test-earnstaff','test-earner','test-earnvinewood')); break }
                 '^Features/Earn/EarnVinewood\.ahk$' { $selected.AddRange(@('test-earnvinewood','test-earner','test-earnstaff')); break }
                 '^Features/Earn/Earner\.ahk$' { $selected.AddRange(@('test-earner','test-discord-hud')); break }

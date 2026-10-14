@@ -28,6 +28,7 @@ $djTemplate = Get-CiCheckPlan @('Images/Earn/1920x1080/dj_confirm_tale.png')
 Check (-not $djTemplate.Full -and ($djTemplate.Suites -join ',') -eq 'test-dj-templates' -and $djTemplate.PackageRequired) 'DJ confirmation pixels select their visual regression and package'
 $earnCore = Get-CiCheckPlan @('Features/Earn/EarnCore.ahk')
 Check ($earnCore.Suites -contains 'test-dj-templates') 'EarnSeen search-area changes include DJ pixel regression'
+Check ($earnCore.Suites -contains 'test-earnledger') 'transaction wrapper changes include ledger persistence regression'
 $otherImage = Get-CiCheckPlan @('Images/Earn/1920x1080/unknown.png')
 Check ($otherImage.Suites -contains 'test-dj-templates') 'other shared image changes preserve DJ regression coverage'
 foreach ($path in @('Images/Earn/1920x1080/afk_vinewood_title.png', 'Images/Earn/1920x1080/afk_phone_frame.png',
@@ -38,16 +39,20 @@ foreach ($path in @('Images/Earn/1920x1080/afk_vinewood_title.png', 'Images/Earn
 }
 
 $ci = Get-CiCheckPlan @('tools/ci/run-checks.ps1')
-Check ($ci.Full -and $ci.Suites.Count -eq 38 -and $ci.PackageRequired) 'CI harness change runs full suite and package validation'
+Check ($ci.Full -and $ci.Suites.Count -eq 39 -and $ci.PackageRequired) 'CI harness change runs full suite and package validation'
 
 $workflow = Get-CiCheckPlan @('.github/workflows/ci.yml')
-Check ($workflow.Full -and $workflow.Suites.Count -eq 38 -and $workflow.PackageRequired) 'workflow change runs full suite and package validation'
+Check ($workflow.Full -and $workflow.Suites.Count -eq 39 -and $workflow.PackageRequired) 'workflow change runs full suite and package validation'
 
 $gitStylePath = Get-CiCheckPlan @('./Features/Earn/EarnStaff.ahk')
 Check (($gitStylePath.Suites -join ',') -eq 'test-earner,test-earnvinewood,test-earnstaff') 'leading ./ is normalized without losing dot-prefixed paths'
 
 $unknown = Get-CiCheckPlan @('Features/NewFeature.ahk')
-Check ($unknown.Full -and $unknown.Suites.Count -eq 38) 'unknown production paths conservatively run all suites'
+Check ($unknown.Full -and $unknown.Suites.Count -eq 39) 'unknown production paths conservatively run all suites'
+$ledger = Get-CiCheckPlan @('Features/Earn/EarnLedger.ahk')
+Check (-not $ledger.Full -and ($ledger.Suites -join ',') -eq 'test-earner,test-earnledger') 'ledger source selects transaction and scheduler checks'
+$ledgerTest = Get-CiCheckPlan @('tools/earn-test/test-earnledger.ps1')
+Check (($ledgerTest.Suites -join ',') -eq 'test-earnledger') 'ledger test selects its registered suite'
 
 $frameWatch = Get-CiCheckPlan @('tools/frame-watch/frame-watch.ps1')
 Check (-not $frameWatch.Full -and ($frameWatch.Suites -join ',') -eq 'test-perf-watch') 'frame watcher selects performance regressions'
