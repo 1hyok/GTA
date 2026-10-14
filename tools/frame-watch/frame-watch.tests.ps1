@@ -50,7 +50,7 @@ try {
     $workerScript = Join-Path $PSScriptRoot 'frame-watch.ps1'
     $info = New-Object Diagnostics.ProcessStartInfo
     $info.FileName = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $info.Arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + $workerScript + '" -RunSeconds 1 -OutputDirectory "' + $workerDirectory + '"'
+    $info.Arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + $workerScript + '" -RunSeconds 1 -MutexName "Local\GTAFrameEvidenceWatch-Test-' + $PID + '" -OutputDirectory "' + $workerDirectory + '"'
     $info.UseShellExecute = $false
     $info.CreateNoWindow = $true
     $info.RedirectStandardError = $true

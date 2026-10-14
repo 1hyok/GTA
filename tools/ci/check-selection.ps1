@@ -5,7 +5,7 @@ function Get-CiCheckPlan {
         'test-earner','test-earnledger','test-antiafk','test-altf4teleport','test-botwarp-stop','test-claw-stop','test-autoclick-stop',
         'test-earnnav','test-earntasks','test-earnblip','test-earnpolicy','test-earnscreen','test-earnscreen-command',
         'test-earnvinewood','test-earnwarehouse-read','test-earnwarehouse','test-earnstaff',
-        'test-afk-notification-command','test-afk-input-lock','test-arrow-color','test-cpuboost','test-discord-hud','test-overlay-place','test-memguard','test-earndj',
+        'test-afk-notification-command','test-afk-input-lock','test-arrow-color','test-cpuboost','test-discord-hud','test-discordhud-launch','test-overlay-place','test-memguard','test-earndj',
         'test-phone-call-template','test-earnocr','test-notification-dismiss','test-mct-seated-template',
         'test-bunker-templates','test-dj-templates','test-earnwarehouse-templates','test-afk-overlays','test-session-guard',
         'test-gui-input','test-perf-watch','test-fps-helper','test-screen-capture','test-gta-mode'
@@ -66,7 +66,7 @@ function Get-CiCheckPlan {
         if ($path -match '^Features/Teleport/AltF4Teleport\.ahk$') { $selected.Add('test-altf4teleport'); $packageRequired = $true; continue }
         if ($path -match '^Features/SessionSwitch\.ahk$') { $selected.Add('test-session-guard'); $packageRequired = $true; continue }
         if ($path -match '^Features/CpuBoost\.ahk$') { $selected.Add('test-cpuboost'); $packageRequired = $true; continue }
-        if ($path -match '^Features/DiscordHUD\.ahk$') { $selected.AddRange(@('test-earner','test-discord-hud')); $packageRequired = $true; continue }
+        if ($path -match '^Features/DiscordHUD\.ahk$') { $selected.AddRange(@('test-earner','test-discord-hud','test-discordhud-launch')); $packageRequired = $true; continue }
         if ($path -match '^Features/Overlay\.ahk$') { $selected.AddRange(@('test-earner','test-overlay-place')); $packageRequired = $true; continue }
         if ($path -match '^Features/MemoryGuard\.ahk$') { $selected.Add('test-memguard'); $packageRequired = $true; continue }
         if ($path -match '^Images/Earn/[^/]+/afk_(phone_frame|vinewood_title)\.png$' -or
