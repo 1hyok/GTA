@@ -8,7 +8,7 @@ $loader = Get-Content (Join-Path $root 'Core\ConfigLoader.ahk') -Raw -Encoding U
 $config = Get-Content (Join-Path $root 'Config.ini') -Raw -Encoding UTF8
 $expectedAppId = 'alex6483.DiscordChatHUD_dc909tavazxht!DiscordChatHUD'
 if ($loader -notmatch '(?s)"DiscordHUDAppID",\s*""' -or
-    $config -notmatch ('(?m)^DiscordHUDAppID=' + [regex]::Escape($expectedAppId) + '$')) {
+    $config -notmatch ('(?m)^DiscordHUDAppID=' + [regex]::Escape($expectedAppId) + '\r?$')) {
     throw 'The app ID default must remain empty and tracked Config.ini must select the installed package.'
 }
 
