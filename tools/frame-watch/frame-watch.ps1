@@ -5,6 +5,7 @@ param(
     [string]$PerfDirectory = (Join-Path $env:LOCALAPPDATA 'gta-perf'),
     [string]$PresentMon = (Join-Path $env:USERPROFILE 'gta-perf\PresentMon-2.6.0-x64.exe'),
     [int]$RunSeconds = 0,
+    [string]$MutexName = 'Local\GTAFrameEvidenceWatch',
     [switch]$LibraryOnly
 )
 $ErrorActionPreference = 'Stop'
@@ -126,7 +127,7 @@ if ($PSVersionTable.PSEdition -eq 'Desktop') {
         (Join-Path $env:ProgramFiles 'WindowsPowerShell\Modules') + ';' +
         (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell\Modules')
 }
-$mutex = New-Object Threading.Mutex($false, 'Local\GTAFrameEvidenceWatch')
+$mutex = New-Object Threading.Mutex($false, $MutexName)
 $ownsMutex = $false
 try { $ownsMutex = $mutex.WaitOne(0) } catch [Threading.AbandonedMutexException] { $ownsMutex = $true }
 if (-not $ownsMutex) { $mutex.Dispose(); exit 0 }

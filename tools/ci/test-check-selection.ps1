@@ -39,16 +39,16 @@ foreach ($path in @('Images/Earn/1920x1080/afk_vinewood_title.png', 'Images/Earn
 }
 
 $ci = Get-CiCheckPlan @('tools/ci/run-checks.ps1')
-Check ($ci.Full -and $ci.Suites.Count -eq 39 -and $ci.PackageRequired) 'CI harness change runs full suite and package validation'
+Check ($ci.Full -and $ci.Suites.Count -eq 40 -and $ci.PackageRequired) 'CI harness change runs full suite and package validation'
 
 $workflow = Get-CiCheckPlan @('.github/workflows/ci.yml')
-Check ($workflow.Full -and $workflow.Suites.Count -eq 39 -and $workflow.PackageRequired) 'workflow change runs full suite and package validation'
+Check ($workflow.Full -and $workflow.Suites.Count -eq 40 -and $workflow.PackageRequired) 'workflow change runs full suite and package validation'
 
 $gitStylePath = Get-CiCheckPlan @('./Features/Earn/EarnStaff.ahk')
 Check (($gitStylePath.Suites -join ',') -eq 'test-earner,test-earnvinewood,test-earnstaff') 'leading ./ is normalized without losing dot-prefixed paths'
 
 $unknown = Get-CiCheckPlan @('Features/NewFeature.ahk')
-Check ($unknown.Full -and $unknown.Suites.Count -eq 39) 'unknown production paths conservatively run all suites'
+Check ($unknown.Full -and $unknown.Suites.Count -eq 40) 'unknown production paths conservatively run all suites'
 $ledger = Get-CiCheckPlan @('Features/Earn/EarnLedger.ahk')
 Check (-not $ledger.Full -and ($ledger.Suites -join ',') -eq 'test-earner,test-earnledger') 'ledger source selects transaction and scheduler checks'
 $ledgerTest = Get-CiCheckPlan @('tools/earn-test/test-earnledger.ps1')
@@ -57,11 +57,13 @@ Check (($ledgerTest.Suites -join ',') -eq 'test-earnledger') 'ledger test select
 $frameWatch = Get-CiCheckPlan @('tools/frame-watch/frame-watch.ps1')
 Check (-not $frameWatch.Full -and ($frameWatch.Suites -join ',') -eq 'test-perf-watch') 'frame watcher selects performance regressions'
 $hud = Get-CiCheckPlan @('Features/DiscordHUD.ahk')
-Check (-not $hud.Full -and ($hud.Suites -join ',') -eq 'test-earner,test-discord-hud' -and $hud.PackageRequired) 'HUD source selects lifecycle and visibility regressions'
+Check (-not $hud.Full -and ($hud.Suites -join ',') -eq 'test-earner,test-discord-hud,test-discordhud-launch' -and $hud.PackageRequired) 'HUD source selects lifecycle, visibility, and launch regressions'
 $earner = Get-CiCheckPlan @('Features/Earn/Earner.ahk')
 Check (($earner.Suites -join ',') -eq 'test-earner,test-discord-hud') 'scheduler hooks select HUD regression'
 $hudTest = Get-CiCheckPlan @('tools/earn-test/test-discord-hud.ps1')
 Check (($hudTest.Suites -join ',') -eq 'test-discord-hud') 'HUD test selects its registered suite'
+$hudLaunchTest = Get-CiCheckPlan @('tools/earn-test/test-discordhud-launch.ps1')
+Check (($hudLaunchTest.Suites -join ',') -eq 'test-discordhud-launch') 'HUD launch test selects its registered suite'
 $statusOverlay = Get-CiCheckPlan @('Features/Overlay.ahk')
 Check (-not $statusOverlay.Full -and ($statusOverlay.Suites -join ',') -eq 'test-earner,test-overlay-place' -and $statusOverlay.PackageRequired) 'status overlay selects content consumer and geometry regression'
 $positionTest = Get-CiCheckPlan @('tools/earn-test/test-overlay-place.ps1')

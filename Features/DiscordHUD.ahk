@@ -1,29 +1,77 @@
 ﻿; === 디스코드 오버레이(DiscordChatHUD) 함께 띄우기 ===
 ; DiscordChatHUD 는 남이 만든 별도 프로그램이다(실행 파일만 배포, hud.wukwookoock.online). Main 을 켜면 같이 띄워 따로 실행할 필요를 없앤다.
-; 이미 떠 있으면(HUD 본체나 설정·로그인 창) 건드리지 않는다. 경로가 비었거나 파일이 없으면 아무것도 안 한다.
+; Store AppUserModelID가 있으면 패키지 앱을 우선 실행하고, 비었으면 기존 실행 파일 경로를 사용한다.
+; 같은 패키지 앱은 다시 실행하지 않는다. 구형 EXE는 종료하지 않고 Store 앱 활성화를 시도한다.
 ; 띄우면 시작 때 자동 업데이트·로그인 창이 GTA 포커스를 가져간다(1003 19:55 실측: 업데이트 뒤 설정 창이 떠 수익 작업이 중단됐다).
 ; GTA 가 앞이었으면 1분 동안 HUD 창이 앞으로 올 때마다 GTA 를 다시 앞으로 가져온다. 로그인 창은 작업 표시줄에 남는다.
 StartDiscordHUD() {
     global config, GTA_WIN
-    path := config["Settings"]["DiscordHUDPath"]
-    if (path = "")
-        return false
-    path := StrReplace(path, "%LOCALAPPDATA%", EnvGet("LOCALAPPDATA"))
-    if (!FileExist(path))
-        return false
-    if (ProcessExist("DiscordChatHUD.exe") || ProcessExist("DiscordChatHUD_Config.exe"))
-        return false
-    SplitPath(path, , &dir)
+    settings := config["Settings"]
+    appId := settings.Get("DiscordHUDAppID", "")
+    path := settings.Get("DiscordHUDPath", "")
+    if (appId != "") {
+        if (!RegExMatch(appId, "^[A-Za-z0-9._-]+![A-Za-z0-9._-]+$")) {
+            MacroLog("hud", "Store 앱 AUMID 형식이 잘못되어 실행하지 않음")
+            return false
+        }
+        if (DiscordHUDTargetAppRunning(appId))
+            return false
+        target := "explorer.exe shell:AppsFolder\" appId
+        dir := ""
+    } else {
+        if (path = "")
+            return false
+        path := StrReplace(path, "%LOCALAPPDATA%", EnvGet("LOCALAPPDATA"))
+        if (!FileExist(path))
+            return false
+        if (ProcessExist("DiscordChatHUD.exe") || ProcessExist("DiscordChatHUD_Config.exe"))
+            return false
+        SplitPath(path, , &dir)
+        target := '"' path '"'
+    }
     gtaWasActive := WinExist(GTA_WIN) && WinActive(GTA_WIN)
-    try Run('"' path '"', dir)
-    catch as e {
-        MacroLog("hud", "디코 오버레이 실행 실패: " e.Message)
+    try Run(target, dir)
+    catch as hudError {
+        MacroLog("hud", "디코 오버레이 실행 실패: " hudError.Message)
         return false
     }
-    MacroLog("hud", "디코 오버레이 실행: " path)
+    MacroLog("hud", appId != "" ? "디코 Store 앱 활성화 요청: " appId : "디코 오버레이 실행: " path)
     if (gtaWasActive)
         DiscordHUDKeepGTAFront(A_TickCount + 60000)
     return true
+}
+
+DiscordHUDTargetAppRunning(appId) {
+    checked := Map()
+    for hwnd in WinGetList("ahk_exe DiscordChatHUD.exe") {
+        pid := WinGetPID("ahk_id " hwnd)
+        if (checked.Has(pid))
+            continue
+        checked[pid] := true
+        if (DiscordHUDProcessAppId(pid) = appId)
+            return true
+    }
+    ; 창이 아직 만들어지지 않은 단일 패키지 프로세스도 중복 활성화를 피한다.
+    pid := ProcessExist("DiscordChatHUD.exe")
+    return pid && !checked.Has(pid) && DiscordHUDProcessAppId(pid) = appId
+}
+
+; 패키지 실행 프로세스의 실제 AUMID를 확인해 구형 데스크톱 EXE와 구분한다.
+DiscordHUDProcessAppId(pid) {
+    process := DllCall("OpenProcess", "uint", 0x1000, "int", false, "uint", pid, "ptr")
+    if (!process)
+        return ""
+    try {
+        chars := 0
+        result := DllCall("kernel32\GetApplicationUserModelId", "ptr", process, "uint*", &chars, "ptr", 0, "uint")
+        if (result != 122 || chars < 2)
+            return ""
+        appId := Buffer(chars * 2, 0)
+        result := DllCall("kernel32\GetApplicationUserModelId", "ptr", process, "uint*", &chars, "ptr", appId, "uint")
+        return result = 0 ? StrGet(appId, "UTF-16") : ""
+    } finally {
+        DllCall("CloseHandle", "ptr", process)
+    }
 }
 
 DiscordHUDKeepGTAFront(deadline) {
