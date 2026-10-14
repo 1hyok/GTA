@@ -236,7 +236,7 @@ DiscordHUDWindowRead(hwnd) {
     DetectHiddenWindows true
     try {
         title := WinGetTitle("ahk_id " hwnd)
-        if (title != "DiscordChatHUD C#" || WinGetProcessName("ahk_id " hwnd) != "DiscordChatHUD.exe")
+        if (!DiscordHUDMainWindowIdentity(title, WinGetProcessName("ahk_id " hwnd)))
             return false
         pid := WinGetPID("ahk_id " hwnd)
         process := DllCall("OpenProcess", "uint", 0x1000, "int", false, "uint", pid, "ptr")
@@ -254,6 +254,11 @@ DiscordHUDWindowRead(hwnd) {
     } finally {
         DetectHiddenWindows previousHidden
     }
+}
+
+DiscordHUDMainWindowIdentity(title, processName) {
+    return processName = "DiscordChatHUD.exe"
+        && (title = "DiscordChatHUD C#" || title = "WukChatHUD")
 }
 
 DiscordHUDWindowVisible(hwnd, visible) {

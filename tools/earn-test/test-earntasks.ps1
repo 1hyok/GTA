@@ -1805,16 +1805,24 @@ for c in [[Map("alreadyMCT",true),true,0,0],
     [Map("secondPageAfter",1200),true,2,1900],
     [Map("secondPageAfter",9000),false,1,8650],
     [Map("mctAfterLast",1200),true,2,1900],
-    [Map("alreadyMCT",true,"aborted",true),false,0,0]] {
+    [Map("alreadyMCT",true,"aborted",true),false,0,0],
+    [Map("slowTitleOcr",true),true,2,1300],
+    [Map("slowTitleOcr",true,"alreadyMCT",true),true,0,0]] {
     backOptions := c[1], backClockMs := 0, backAborted := backOptions.Get("aborted",false), backspaces := 0,
         backPageReadyAt := backOptions.Get("pageAt",0), backMCTAt := -1, backFocused := true
     result := EarnUIBackToMCT("bunker_page",2)
     if (result != c[2] || backspaces != c[3] || backClockMs != c[4])
         throw Error("Return wait result=" result " inputs=" backspaces " elapsed=" backClockMs)
+    if (gEarnSkipOcr)
+        throw Error("Return probe leaked its template-only state")
 }
-FileAppend("PASS UIBackToMCT cases=14`n", "*")
+FileAppend("PASS UIBackToMCT cases=16`n", "*")
 ExitApp(0)
 EarnSeen(name,*) {
+    global backClockMs
+    if (name = "mct_title" && !gEarnSkipOcr && backOptions.Get("slowTitleOcr",false)
+        && !backOptions.Get("alreadyMCT",false) && backMCTAt < 0)
+        backClockMs += 9000
     if (name = "mct_title")
         return backOptions.Get("alreadyMCT",false) || (backMCTAt >= 0 && backClockMs >= backMCTAt)
     return name = "bunker_page" && backspaces < 2 && backClockMs >= backPageReadyAt
@@ -1829,7 +1837,8 @@ EarnWaitSeen(name,area,timeoutMs) {
 }
 EarnPress(key) {
     global backspaces, backPageReadyAt, backMCTAt
-    if (EarnAborted() || key != "Backspace" || !EarnSeen("bunker_page") || EarnSeen("mct_title"))
+    if (EarnAborted() || key != "Backspace" || !EarnSeen("bunker_page")
+        || backOptions.Get("alreadyMCT",false) || (backMCTAt >= 0 && backClockMs >= backMCTAt))
         throw Error("Return input before the page recovered or after interruption")
     backspaces++
     if (backspaces = 1)
@@ -1860,7 +1869,7 @@ BackClock() => backClockMs
     $savedBackSource = $sourceText
     try {
         $sourceText = $sourceText.Replace('A_TickCount', 'BackClock()')
-        Invoke-EarnOfflineCheck 'UIBackToMCT' 'EarnUIBackToMCT' $uiBackDriver 14
+        Invoke-EarnOfflineCheck 'UIBackToMCT' 'EarnUIBackToMCT' $uiBackDriver 16
     } finally { $sourceText = $savedBackSource }
     $sourceText = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\Earner.ahk') -Raw -Encoding UTF8
     $listDriver = @'

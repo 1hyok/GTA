@@ -31,7 +31,7 @@ ExitApp(0)
         $production = [regex]::Replace($production, ('(?ms)^' + $name + '\([^\r\n]*\) \{.*?^\}\s*'), '')
     }
     if ($production -match 'DllCall\(|WinGet|ShowWindow|WinActivate|\bRun\(') { throw 'Native side effect remains in HUD fixture' }
-    if (-not $source.Contains('title != "DiscordChatHUD C#" || WinGetProcessName("ahk_id " hwnd) != "DiscordChatHUD.exe"') -or
+    if (-not $source.Contains('DiscordHUDMainWindowIdentity(title, WinGetProcessName("ahk_id " hwnd))') -or
         -not $source.Contains('GetProcessTimes') -or -not $source.Contains('visible ? 8 : 0')) {
         throw 'Exact HUD identity and non-activating visibility boundary must be retained'
     }
@@ -180,6 +180,17 @@ try {
         DiscordHUDMCTSet(false)
     }
     Check(EarnUIReady("afk_vinewood_title") && windows[1].visible, "real screen-ready keeps Vinewood HUD visible")
+    for title in ["DiscordChatHUD C#", "WukChatHUD"]
+        Check(DiscordHUDMainWindowIdentity(title, "DiscordChatHUD.exe"), "confirmed main HUD title: " title)
+    for title in ["WukChatHUD · 설정", "WukChatHUD Store session", "계정 연결", "WukChatHUD other"]
+        Check(!DiscordHUDMainWindowIdentity(title, "DiscordChatHUD.exe"), "non-main window excluded: " title)
+    Check(!DiscordHUDMainWindowIdentity("WukChatHUD", "other.exe"), "foreign process excluded")
+    windows[1] := Window(1, true, "WukChatHUD")
+    windows[3] := Window(3, true, "WukChatHUD · 설정")
+    DiscordHUDMCTSet(true)
+    Check(!windows[1].visible && windows[3].visible, "Store main hidden without touching settings")
+    DiscordHUDMCTSet(false)
+    Check(windows[1].visible, "Store main restored after MCT")
     FileAppend("PASS DiscordHUD: " n " cases; no window or game input`n", "*")
     ExitApp(0)
 } catch as fixtureFailure {
@@ -197,7 +208,7 @@ DiscordHUDWindowList() => [1, 2, 3, 4, 5]
 DiscordHUDWindowRead(hwnd) {
     if (failRead)
         throw Error("identity unavailable")
-    if (!windows.Has(hwnd) || windows[hwnd].title != "DiscordChatHUD C#")
+    if (!windows.Has(hwnd) || !DiscordHUDMainWindowIdentity(windows[hwnd].title, "DiscordChatHUD.exe"))
         return false
     return windows[hwnd].Clone()
 }
@@ -231,7 +242,7 @@ OnExit(fn) => exits.Push(fn)
 '@
     $driver = $driver.Replace('@PRODUCTION@', $production)
     $production = ''
-    $expected = '^PASS DiscordHUD: 64 cases; no window or game input$'
+    $expected = '^PASS DiscordHUD: 73 cases; no window or game input$'
 }
 $info = New-Object Diagnostics.ProcessStartInfo
 $info.FileName = $AhkPath
