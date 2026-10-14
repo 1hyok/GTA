@@ -59,6 +59,10 @@ EarnTransactionBegin(id, reason) {
     return true
 }
 EarnTransactionConfirmed(id) => transactionPending.Delete(id)
+EarnTransactionCashConfirmed(id, direction, amount, source, evidence, path := "") {
+    EarnTransactionConfirmed(id)
+    return true
+}
 EarnNotifyStockFull(source, reason) {
     global stockNotices, stockNoticeSources, gEarnSellNotices
     if (gEarnSellNotices.Get(source, "") = reason)

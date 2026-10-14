@@ -43,6 +43,10 @@ EarnTransactionBegin(id, reason) {
     return true
 }
 EarnTransactionConfirmed(id) => transactionPending.Delete(id)
+EarnTransactionCashConfirmed(id, direction, amount, source, evidence, path := "") {
+    EarnTransactionConfirmed(id)
+    return true
+}
 global mode, screenState, selected, statuses, requests, keys, reads, failure, checks := 0
 global config, cargoNames, cargoStatuses, cargoRequests, cargoReads, activeCount, opens, postReads
 global fixtureData := Map(), fixtureKey := ""
