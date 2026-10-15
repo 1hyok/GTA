@@ -411,3 +411,5 @@ F9 진단은 `gta-macro.log`의 `[hotkey] Earner` 기록으로 등록, 키 접�
 - `third_party/CodeSwine GTA5O - Private Public Lobby V1.0.1/`: `CodeSwine-Private_Public_Lobby.exe`와 인접한 DLL·설정.
 
 실측 캡처·영상(`docs/evidence/`)도 로컬에만 둔다. 근거 화면은 PR 본문에 첨부하고, 시험이 쓰는 화면만 `tools/earn-test/*-fixtures/` 에 넣는다.
+
+MCT 복귀 회전 종료 시 `[mct-turn]`은 실제 마우스 입력 조각 수와 누적 단위, 전체 경과 시간, 목표·체력·메뉴 판독 횟수와 시간을 기록한다. `read_ms`는 기존 제한 계산에 더한 판독 시간이며 마지막 목표 확인은 `terminal_ms`로 따로 기록한다. `budget_kind=total-cap`은 전체 90초 상한, `nonread`는 판독 시간을 제외한 9초 예산이다. 입력 단위는 게임 화면의 실제 회전 각도나 이동 거리를 증명하지 않는다.

@@ -2409,6 +2409,7 @@ EarnLog(*) => true
     $mctCloseDriver += "`n" + (Get-EarnFunctionBody $sourceText 'EarnMCTFindChairPrompt')
     Invoke-EarnOfflineCheck 'MCTClose' 'EarnMCTClose' $mctCloseDriver 26
     $turnGuardDriver = @'
+global turnLogs := [], logThrows := false
 global turnCase := [], moves := 0, movedX := 0, movedY := 0, turnMs := 0, menuChecks := 0, menuAbort := false
 global EARN_PROMPT_AREA := [], goalAfter := -1, goalCost := 0, goalAbort := false, goalMenuOnly := false
 ; Relative mouse calls are intercepted. Run the actual turn loop and input guards.
@@ -2424,10 +2425,16 @@ for scenario in [[5220,0,-1,-1,true,261,5220,0],
     [5220,0,-1,0,false,0,0,0,true,true,100,true],
     [5220,0,-1,0,false,17,340,0,true,true,0,false,0,1]] {
     sIndex := (IsSet(sIndex) ? sIndex : 0) + 1
+    turnLogs := []
     turnCase := scenario, moves := 0, movedX := 0, movedY := 0, turnMs := 0, menuChecks := 0, menuAbort := false
     if (EarnTurn(scenario[1],0,scenario.Length >= 9 ? scenario[9] : false) != scenario[5] || moves != scenario[6]
         || movedX != scenario[7] || movedY != scenario[8])
         throw Error("Camera recovery must preserve abort/HUD guards and bounded movement: moves=" moves " time=" turnMs " expected=" scenario[6] " scenario=" sIndex)
+    recovering := scenario.Length >= 9 && scenario[9]
+    if (turnLogs.Length != (recovering ? 1 : 0))
+        throw Error("Recovery logs once; ordinary turns do not log")
+    if (recovering && (!InStr(turnLogs[1], "moves=" moves "/261") || !InStr(turnLogs[1], "emitted=" movedX "," movedY)))
+        throw Error("Diagnostic movement must match intercepted native calls")
     if (scenario.Length >= 11 && scenario[11] = 1200 && (menuChecks != 3 || turnMs > 12500))
         throw Error("Slow menu checks must be throttled while HDR recovery remains bounded")
 }
@@ -2435,16 +2442,27 @@ for scenario in [[5220,0,-1,-1,true,261,5220,0],
 ; The late-arrival case makes a slow menu check cross the deadline with the prompt now visible.
 for arrival in [[1,0,false,0,true], [0,0,false,0,true], [0,50,true,0,false],
     [0,0,false,9500,true,true], [-1,0,false,9500,true], [0,50,true,9500,false,true],
-    [0,9500,false,0,true], [-1,40000,false,0,false], [0,9500,true,0,false]] {
+    [0,9500,false,0,true], [-1,40000,false,0,false], [0,9500,true,0,false], [0,50,false,90001,true,true]] {
     aIndex := (IsSet(aIndex) ? aIndex : 0) + 1
+    turnLogs := []
     goalAfter := arrival[1], goalCost := arrival[2], goalAbort := arrival[3]
     goalMenuOnly := arrival.Length >= 6 && arrival[6]
     turnCase := [5220,0,-1,0,false,0,0,0,true,true,arrival[4]]
     moves := 0, movedX := 0, movedY := 0, turnMs := 0, menuChecks := 0, menuAbort := false
     if (EarnTurn(5220,0,true) != arrival[5] || (moves >= 261 && goalAfter >= 0) || (goalAfter = 0 && !goalMenuOnly && moves != 0) || (goalMenuOnly && moves > 16))
         throw Error("MCT prompt arrival must stop movement, including at deadline; moves=" moves " arrival=" aIndex)
+    if (turnLogs.Length != 1 || !InStr(turnLogs[1], "elapsed_ms=" turnMs))
+        throw Error("Each arrival exit must report actual elapsed time")
+    if (aIndex = 8 && (!InStr(turnLogs[1], "budget_ms=90000") || !InStr(turnLogs[1], "budget_kind=total-cap")))
+        throw Error("Slow probes must expose the whole-turn cap")
+    if (aIndex = 10 && !InStr(turnLogs[1], "stage=terminal-goal"))
+        throw Error("Final deadline probe must be distinguished")
 }
-FileAppend("PASS TurnGuard cases=22`n", "*")
+logThrows := true, goalAfter := 0, goalCost := 0, goalAbort := false, goalMenuOnly := false
+menuAbort := false
+if (!EarnTurn(5220,0,true))
+    throw Error("Diagnostic log failure must preserve the turn result")
+FileAppend("PASS TurnGuard cases=24`n", "*")
 ExitApp(0)
 EarnAborted() => menuAbort || (turnCase[3] >= 0 && moves >= turnCase[3])
 EarnHudVisible() => turnCase[4] < 0 || moves < turnCase[4]
@@ -2480,10 +2498,15 @@ Sleep(ms) {
     return true
 }
 EarnFail(*) => false
+EarnLog(message) {
+    if (logThrows)
+        throw Error("Synthetic log failure")
+    turnLogs.Push(message)
+}
 '@
     $turnSource = $sourceText
     $sourceText = $sourceText.Replace('A_TickCount','TurnClock()')
-    try { Invoke-EarnOfflineCheck 'TurnGuard' 'EarnTurn' $turnGuardDriver 22 }
+    try { Invoke-EarnOfflineCheck 'TurnGuard' 'EarnTurn' $turnGuardDriver 24 }
     finally { $sourceText = $turnSource }
     $recoveryArrivedDriver = @'
 global EARN_PROMPT_AREA := [0,0,0.3,0.1], prompt := false, hud := false
