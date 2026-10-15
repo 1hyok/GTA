@@ -1309,6 +1309,9 @@ EarnUIReady(name,area) {
     return fixtureContext = "home" && !fixtureAbort
 }
 EarnSeen(name,*) => name = "mct_title" && fixtureContext = "mct"
+EarnLog(*) {
+    throw Error("Non-bunker bar must not emit bunker diagnostics")
+}
 IsGTAActive() => fixtureActive ? 1 : 0
 WinGetClientPos(&cx,&cy,&cw,&ch,*) {
     cx := 0, cy := 0, cw := 1920, ch := 1080

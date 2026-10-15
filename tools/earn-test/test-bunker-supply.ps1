@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 Runs the production bunker page reader and bar sampler against saved pixels.
 No desktop reads, windows, input, Main.ahk execution, or game processes.
@@ -118,7 +118,21 @@ for scenario in cases {
     if (Abs(result - supplyCase[5]) > 0.000001 || pixelReads != supplyCase[6])
         throw Error("Bunker supply " supplyCase[1] ": result=" result ", pixels=" pixelReads)
 }
-FileAppend("PASS BunkerSupplyReader cases=" cases.Length "`n", "*")
+diagnosticMode := true
+for throwing in [false,true] {
+    diagnosticThrow := throwing, diagnosticLogs := [], pixelReads := 0, fixtureFocused := true
+    result := EarnBarFill(766,1154,577,"blue")
+    if (result != 18/130 || pixelReads != 130 || diagnosticLogs.Length != 1)
+        throw Error("Blue diagnostics changed observed result or read count")
+    message := diagnosticLogs[1]
+    if (!InStr(message,"rect=320,260,1920,1080") || !InStr(message,"hits=18/130")
+        || !InStr(message,"1086,837:3D81C4:1") || !InStr(message,"1140,837:2B455E:0"))
+        throw Error("Blue diagnostics did not preserve the actual coordinates, colors and classifications")
+}
+fixtureFocused := false, diagnosticLogs := [], pixelReads := 0
+if (EarnBarFill(766,1154,577,"blue") != -1 || pixelReads || diagnosticLogs.Length)
+    throw Error("Inactive blue diagnostics must not read pixels")
+FileAppend("PASS BunkerSupplyReader cases=" (cases.Length+3) "`n", "*")
 ExitApp(0)
 EarnUIReady(name, area := "") {
     global contextReads, fixtureFocused
@@ -141,7 +155,9 @@ IsGTAActive() => fixtureFocused ? 1 : 0
 WinGetClientPos(&x, &y, &w, &h, title) {
     if (title != "ahk_id 1")
         throw Error("Unexpected window query")
-    x := 0, y := 0, w := 1920, h := 1080
+    x := IsSet(diagnosticMode) && diagnosticMode ? 320 : 0
+    y := IsSet(diagnosticMode) && diagnosticMode ? 260 : 0
+    w := 1920, h := 1080
 }
 CoordMode(target, relative) {
     if (target != "Pixel" || relative != "Screen")
@@ -149,6 +165,12 @@ CoordMode(target, relative) {
 }
 PixelGetColor(x, y) {
     global pixelReads, fixtureAborted, fixtureFocused
+    if (IsSet(diagnosticMode) && diagnosticMode) {
+        if (y != 837 || x != 1086 + pixelReads*3 || pixelReads >= 130)
+            throw Error("Unexpected blue sample coordinate")
+        pixelReads++
+        return pixelReads <= 18 ? 0x3D81C4 : 0x2B455E
+    }
     if (y != 379 || x != 994 + pixelReads * 3 || pixelReads >= 200)
         throw Error("Pixel request outside observed supply bar: " x "," y)
     pixelReads++
@@ -159,6 +181,11 @@ PixelGetColor(x, y) {
             fixtureFocused := false
     }
     return IsObject(supplyCase[2]) ? supplyCase[2][pixelReads] : supplyCase[2]
+}
+EarnLog(message) {
+    diagnosticLogs.Push(message)
+    if (diagnosticThrow)
+        throw Error("Simulated local log failure")
 }
 EarnAborted() => fixtureAborted || !fixtureFocused
 FixtureFailure(failure, *) {
@@ -193,12 +220,12 @@ try {
     }
     $stdout = $testProcess.StandardOutput.ReadToEnd().Trim()
     $stderr = $testProcess.StandardError.ReadToEnd().Trim()
-    if ($testProcess.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS BunkerSupplyReader cases=15') {
+    if ($testProcess.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS BunkerSupplyReader cases=18') {
         throw "Bunker supply reader failed (exit=$($testProcess.ExitCode))`nstdout: $stdout`nstderr: $stderr"
     }
     Write-Output "PASS BunkerSupplyTemplate cases=$templateCases"
     Write-Output $stdout
-    Write-Output "PASS BunkerSupply cases=$($templateCases+15)"
+    Write-Output "PASS BunkerSupply cases=$($templateCases+18)"
 } finally {
     if ($null -ne $testProcess) {
         if (-not $testProcess.HasExited) { $testProcess.Kill(); $testProcess.WaitForExit() }
