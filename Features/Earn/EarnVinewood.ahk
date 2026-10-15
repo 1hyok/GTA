@@ -8,15 +8,9 @@ EarnSafeLimits() {
         "Agency", [250000, 20000],
         "Salvage Yard", [100000, 24000],      ; 벽 금고 업그레이드가 있으면 한도 $250,000. 확인 전이라 작게
         "Bail Office", [100000, 20000],       ; 요원 둘이 각각 최대 $10,000 (앱 직원 파견이 보낸다)
-        "Garment Factory", [100000, 2500])   ; 1004 실측: 06:51 $49,750 → 11:34 $61,150, 48분당 약 $2,400
+        "Garment Factory", [100000, 2500],   ; 1004 실측: 06:51 $49,750 → 11:34 $61,150, 48분당 약 $2,400
+        "Hands On Car Wash", [100000, 100000]) ; 수입 변동을 고려해 양수 잔액은 매 관측 회수한다. docs/earner-policy.md
     return limits
-}
-
-; 쓰지 않는 사업장. 목록에 있어도 읽기만 건너뛰고 수거·다음 확인 계산에서 뺀다.
-; 세차장은 활성화하지 않는다(1004 사용자 결정). 금고가 $0 으로 남는다.
-EarnSafeIgnored() {
-    static ignored := Map("Hands On Car Wash", true)
-    return ignored
 }
 
 EarnVinewoodSafeTask(manageMCT := true) {
@@ -49,9 +43,7 @@ EarnVinewoodSafeTask(manageMCT := true) {
         if (seen.Has(name))
             break
         seen[name] := true
-        if (EarnSafeIgnored().Has(name)) {
-            ; 쓰지 않는 사업장은 금액을 기록하지 않는다.
-        } else if (!safes.Has(name)) {
+        if (!safes.Has(name)) {
             ; 모르는 사업장은 한도를 모르므로 금액만 남기고 수거하지 않는다.
             EarnLog("금고: 모르는 사업장 " name (amount >= 0 ? " $" amount : "") ", 수거 안 함")
         } else if (amount < 0 || amount > safes[name][1]) {
@@ -173,14 +165,12 @@ EarnVinewoodSelectedSafe(lines) {
     if (emptyCount != 1)
         return ""
     found := ""
-    for knownSet in [safes, EarnSafeIgnored()] {
-        for known in knownSet {
-            if (EarnVinewoodSafeAmountOf(lines, known) != 0)
-                continue
-            if (found != "")
-                return ""
-            found := known
-        }
+    for known in safes {
+        if (EarnVinewoodSafeAmountOf(lines, known) != 0)
+            continue
+        if (found != "")
+            return ""
+        found := known
     }
     return found
 }
