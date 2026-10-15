@@ -184,6 +184,7 @@ SetEarner(on, reason := "", *) {
     setCalls++, setOn := on, setReason := reason
 }
 ToggleCayoPericoTimer(*) => 0
+EarnModeTick(*) => 0
 '@
 # Every input, timer, environment lookup and wait call is supplied above; Main is never loaded.
 foreach ($name in @('Send', 'Click', 'SetTimer', 'Sleep', 'MouseGetPos', 'WinGetProcessName', 'GetKeyState', 'IsGTAActive', 'IsAnyKeyPressed', 'ShowTooltip', 'MacroLog')) {
