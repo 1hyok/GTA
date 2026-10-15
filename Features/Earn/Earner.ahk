@@ -221,16 +221,13 @@ SetEarner(on, reason := "", stopMode := "hard", mode := "full", preserveSchedule
         if (config["Features"]["AntiAFK"] && !afkOn)
             SetAntiAFK(true)
         SetTimer(EarnTick, 1000)
-        if (s["EarnSafe"])
-            SetTimer(EarnSafeFeedWatch, 4000)
         ShowTooltip(mode = "apps" ? "💰 유휴 앱 자동 (" KeyLabelFor("Earner") " 두 번: 전체 수익, End: 멈춤)" : "💰 전체 수익 켜짐 (" KeyLabelFor("Earner") " 두 번: 유휴 앱, End: 멈춤)", 2500)
         EarnLog("켜짐: " EarnEnabledText())
     } else {
         SetTimer(EarnTick, 0)
-        SetTimer(EarnSafeFeedWatch, 0)
         gEarnInputAbortReason := ""
-        ; gEarnBusy는 예약 작업 외에 금고 알림 OCR과 AFK 정리도 공유한다. 정리를 소비할 주체가 있는 구간만
-        ; 수동 종료 latch를 세워야 OCR 도중 F9가 영구적인 "끄는 중" 상태를 남기지 않는다.
+        ; gEarnBusy는 예약 작업과 AFK 정리가 공유한다. 정리를 소비할 주체가 있는 구간에만
+        ; 수동 종료 latch를 세워 종료 처리가 없는 busy 상태에 남지 않게 한다.
         manualCleanup := stopMode = "manual" && gEarnBusy && (gEarnTaskActive || gEarnAFKCleanup)
         if (reason != "")
             gEarnFail := reason
@@ -665,6 +662,9 @@ EarnFinishScheduledTask(result) {
         finishedTick := A_TickCount
         explicitNext := gEarnNextDue.Has(task.id)
         nextDue := explicitNext ? gEarnNextDue.Delete(task.id) : result.startTick + task.every
+        ; 앱 확인은 완료부터 설정 간격을 기다린다. MCT의 명시 예약과 시작 기준 주기는 유지한다.
+        if (task.id = "safe" || task.id = "staff")
+            nextDue := finishedTick + task.every
         ; 벙커의 짧은 상태 관측 예약이 MCT 정리 중 만료됐으면 즉시 재진입하지 않는다.
         if (task.id = "bunker" && explicitNext && nextDue <= finishedTick)
             nextDue := finishedTick + 60000

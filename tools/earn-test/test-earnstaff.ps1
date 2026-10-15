@@ -62,8 +62,7 @@ try {
     RunCargoTests()
     RunMenuTests()
     RunFixtureTests()
-    RunScheduleTests()
-} catch as testError {
+    } catch as testError {
     FileAppend(testError.Message " at line " testError.Line "`n" testError.Stack, "*")
     ExitApp(1)
 }
@@ -512,10 +511,8 @@ RunCargoTests() {
 
     Reset("cargo_after_full",["busy","busy"])
     activeCount := 1
-    EarnStaffTrack("reset")
     Check(EarnStaffCargoWarehouses() && cargoRequests[1] = 1 && !transactionPending.Has("staff"),
         "post-request full is confirmed once without leaving a pending transaction")
-    Check(EarnStaffTrack() = 300000, "post-request full is tracked as full rather than newly sent")
 
     ; A full Hangar never dispatches and also returns through the confirmed app-close path.
     Reset("normal",["busy","busy"])
@@ -564,8 +561,7 @@ RunCargoTests() {
     Reset("grey_staff_menu",["busy","busy"])
     screenState := "main", selected := "Claim Business Earnings"
     config["Settings"]["EarnHangarStaff"] := 1
-    Check(EarnVinewoodStaffTask() && failure = "" && Sum(requests) = 0 && Sum(cargoRequests) = 0 && hangarRequests = 0
-        && EarnStaffTrack() = 300000, "grey Manage Staff Members skips every staff job")
+    Check(EarnVinewoodStaffTask() && failure = "" && Sum(requests) = 0 && Sum(cargoRequests) = 0 && hangarRequests = 0, "grey Manage Staff Members skips every staff job")
     ; 1005 19:24·20:01 녹화 프레임을 실제 판독기로 읽은 회색 줄
     for text in ["Manage Staff Mem ers", "Manage SfaffMem>ers", "Manage Staff _Members", "Manage StaffMembers", "Manage S!affMembers",
         "anageSta", "anag+t"] {   ; 1006 02:24 녹화: 첫 글자 M 이 빠짐
@@ -589,8 +585,7 @@ RunCargoTests() {
     greyText := "Manage S!affMembers"
     screenState := "main", selected := "Claim Business Earnings"
     config["Settings"]["EarnHangarStaff"] := 1
-    Check(EarnVinewoodStaffTask() && failure = "" && Sum(requests) = 0 && Sum(cargoRequests) = 0 && hangarRequests = 0
-        && EarnStaffTrack() = 300000, "grey Manage Staff Mem ers split read skips every staff job, not a failure")
+    Check(EarnVinewoodStaffTask() && failure = "" && Sum(requests) = 0 && Sum(cargoRequests) = 0 && hangarRequests = 0, "grey Manage Staff Mem ers split read skips every staff job, not a failure")
     Reset("grey_bail_root",["busy","busy"])
     Check(EarnStaffRoot() && keys.Length = 0, "grey Bail Office list is still the staff list")
     Reset("grey_bail_root",["ready","ready"])
@@ -1147,24 +1142,7 @@ EarnVinewoodOpen(manageMCT := true) {
     opens += 1
     return mode != "open_fail"
 }
-EarnScheduleNext(*) => true
-RunScheduleTests() {
-    EarnStaffTrack("reset")
-    Check(EarnStaffTrack() = 300000, "schedule: nothing seen uses 5 min")
-    EarnStaffTrack("sched cargo", "full")
-    Check(EarnStaffTrack() = 300000, "schedule: full warehouse alone uses 5 min")
-    EarnStaffTrack("sched agent A", "busy")
-    Check(EarnStaffTrack() = 300000, "schedule: busy with unknown send time rechecks in 5 min")
-    EarnStaffTrack("sched agent B", "sent")
-    ms := EarnStaffTrack()
-    Check(ms > 48 * 60000 && ms <= 49 * 60000, "schedule: sent agent returns after about 49 min")
-    EarnStaffTrack("sched agent B", "busy")
-    EarnStaffTrack("sched agent A", "busy")
-    Check(EarnStaffTrack() = 300000, "schedule: unknown busy agent wins over later known return")
-    EarnStaffTrack("sched agent B", "busy")
-    ms := EarnStaffTrack()
-    Check(ms > 48 * 60000 && ms <= 49 * 60000, "schedule: known busy agent keeps its return time")
-}
+
 ShowTooltip(*) {
 }
 EarnLog(reason) {

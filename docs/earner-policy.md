@@ -57,7 +57,7 @@ GTA+의 Vinewood Club 앱은 사업장 금고 수익을 원격 회수하는 기�
 
 앱 메인에서 `Claim Business Earnings`를 열면 사업장 목록이 나온다(1004 실측: Nightclub, Arcade, Agency, Salvage Yard, Bail Office, Garment Factory, Hands On Car Wash). 메인과 목록은 모두 `THE VINEWOOD CLUB APP` 제목을 쓰며 행 자체에는 금액이 없다. Down 으로 한 줄씩 내려가며 선택한 행과 같은 사업장의 하단 `Claim $X from your <사업장> safe.` 문장만 금액 근거로 사용하고, 처음 본 행이 다시 선택되면(목록이 맨 위로 돈다) 멈춘다. 긴 이름은 문장이 두 줄로 넘어간다. 다른 사업장 이름, 여러 금액, 손상된 숫자는 수거 근거가 될 수 없다. 표에 없는 사업장은 금액만 남기고 회수하지 않는다.
 
-메인의 `No earnings to claim.`이나 `Your <사업장> safe is empty.`는 수거 없이 넘어간다. 회수할 때는 선택과 금액을 다시 읽고 한 번만 수거를 요청한다. 성공 확인은 그 사업장의 빈 금고 문구이고, 목록을 다 돈 뒤 앱 종료와 MCT 접근 안내를 확인한다. 다음 확인은 금고마다 회수 시점까지 남은 입금 횟수로 구해 가장 이른 것으로 정하고, 판독 못 한 금고가 있으면 40분 안에 다시 본다. 결과가 불명확해도 수거 Enter를 다시 보내지 않는다.
+메인의 `No earnings to claim.`이나 `Your <사업장> safe is empty.`는 수거 없이 넘어간다. 회수할 때는 선택과 금액을 다시 읽고 한 번만 수거를 요청한다. 성공 확인은 그 사업장의 빈 금고 문구이고, 목록을 다 돈 뒤 앱·전화 닫힘을 확인한다. 성공 완료부터 `EarnSafeIntervalMin`(현재 설정 5분) 뒤에 다시 확인한다. 금고 입금 예측이나 알림으로 예약을 변경하지 않는다. 결과가 불명확해도 수거 Enter를 다시 보내지 않는다.
 
 ## 나이트클럽 창고 직원
 
@@ -97,7 +97,7 @@ GTA+의 Vinewood Club 앱은 사업장 금고 수익을 원격 회수하는 기�
 
 스페셜 패키지 직원 조달의 기본 비용은 창고당 회당 $7,500다. [Rockstar 1.61 패치노트](https://support.rockstargames.com/articles/5aud9bTiQluHnVEP6x7YRp/gtav-title-update-1-61-notes-ps4-ps5-xbox-one-xbox-series-x-s-pc) 보석 집행 요원의 수익은 Bail Office 금고에 들어간다. [Rockstar 1.69 패치노트](https://support.rockstargames.com/articles/eUgRHVRSN2V9gimBT32YX/gtav-title-update-1-69-notes-ps5-ps4-xbox-series-x-s-xbox-one-pc) 두 직원의 평시 복귀 시간 약 48분은 플레이 관측과 교차 확인한 값이며, 공식 패치노트에 시간 수치가 실려 있지는 않다. [창고 직원 플레이 기록](https://gtaforums.com/topic/984368-bug-lupe-generic-warehouse-staff-crate-sourcing/), [보석 집행 요원 플레이 기록](https://gtaforums.com/topic/997642-gta-online-bottom-dollar-bounties-out-now/page/13/)
 
-`EarnVinewoodStaffTask`는 Main과 F9 스케줄러에 연결돼 있다. 앱 메인의 `Manage Staff Members`를 열고 Bail Office와 Warehouse를 각각 확인한다. 준비 상태가 돌아왔을 때만 다시 파견한다. 파견한 대상은 49분 뒤에 다시 보고(1003 실측: 보석 요원·스페셜 패키지 모두 파견 43분 뒤 작업 중, 55분 뒤 준비), 그때도 작업 중이거나 언제 보냈는지 모르면 기본 5분 간격으로 본다. 49분은 확인 시각일 뿐 재주문은 여전히 준비 문구를 읽은 뒤에만 한다.
+`EarnVinewoodStaffTask`는 Main과 F9 스케줄러에 연결돼 있다. 앱 메인의 `Manage Staff Members`를 열고 Bail Office와 Warehouse를 각각 확인한다. 준비 상태가 돌아왔을 때만 다시 파견한다. 직원 확인과 앱 닫기가 성공한 시각부터 `EarnStaffIntervalMin`(현재 설정 5분) 뒤에 다시 본다. 복귀 예정 시각으로 예약을 미루지 않으며 재주문은 준비 문구를 읽은 뒤에만 한다. 실패 backoff와 pending 보류는 그대로 적용한다.
 
 앱 제목과 메뉴 행은 메뉴 영역을 잘라 읽는다. 일반 OCR이 투명 배경의 흰 글자를 놓치면 같은 영역을 흰 글자 전처리로 다시 읽되, 정확한 전체 문구와 행 위치를 요구한다. 선택된 행의 검은 글자는 일반 OCR로 확인하며 Enter 직전에도 같은 대상의 선택을 새로 확인한다. 잘린 이름을 완전한 문구로 간주하지 않는다.
 
