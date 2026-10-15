@@ -20,6 +20,9 @@ $dialogPattern = '(?ms)^EarnWarehouseDialogClick\([^
 ]*\) \{.*?^\}'
 if ([regex]::Matches($production, $dialogPattern).Count -ne 1) { throw 'Expected one production dialog click.' }
 $production = [regex]::Replace($production, $dialogPattern, '')
+$capturePattern = '(?ms)^EarnWarehouseSnapReadFailure\([^\r\n]*\) \{.*?^\}'
+if ([regex]::Matches($production, $capturePattern).Count -ne 1) { throw 'Expected one warehouse failure capture helper.' }
+$production = [regex]::Replace($production, $capturePattern, '')
 $production += "`n" + (Get-Content -LiteralPath (Join-Path $root 'Features\Earn\EarnPolicy.ahk') -Raw -Encoding UTF8)
 $production += "`n" + (Get-Content -LiteralPath (Join-Path $root 'Features\Earn\EarnWarehouseRead.ahk') -Raw -Encoding UTF8)
 $earner = Get-Content -LiteralPath (Join-Path $root 'Features\Earn\Earner.ahk') -Raw -Encoding UTF8
@@ -38,7 +41,7 @@ global whTests := 0, whMode, whState, whAssigned, whCounts, whActive, whSelected
     whSelections, whAttempts, whMoves, whBegins, whEnds, whError, whHistory,
     whPending := "", whCancels := 0, whTooltips := 0, whSellStops := [], whNoticeLogs := 0, whNoticeClears := 0
 global gEarnSellNotices := Map()
-global whReadLogs := [], whReadCalls := [], whLogThrows := false
+global whReadLogs := [], whReadCalls := [], whLogThrows := false, whCaptures := 0, whCaptureThrows := false
 try {
     RunWarehouseTests()
     RunObservationTests()
@@ -472,12 +475,14 @@ EarnLog(reason) {
         whNoticeClears++
 }
 RunReadDiagnosticTests() {
-    global whState, whSelected, whReadLogs, whReadCalls, whLogThrows
+    global whState, whSelected, whReadLogs, whReadCalls, whLogThrows, whCaptures, whCaptureThrows
     for scenario in [["normal","mct",1,"title",0], ["full_missing","warehouse",3,"none",14],
         ["ambiguous_identity","warehouse",1,"multiple",0], ["normal","warehouse",1,"",13]] {
         ResetWarehouse(scenario[1])
         whState := scenario[2], whSelected := scenario[3], whReadLogs := [], whReadCalls := []
+        whCaptures := 0
         selected := EarnWarehouseSelectedGood()
+        Check(whCaptures = (scenario[4] = "none" ? 1 : 0), scenario[4] " captures only missing assignment")
         if (scenario[4] = "") {
             Check(selected = "cargo" && whReadLogs.Length = 0, "successful read remains silent")
         } else {
@@ -494,6 +499,16 @@ RunReadDiagnosticTests() {
     whLogThrows := true, whState := "mct"
     Check(EarnWarehouseSelectedGood() = "", "diagnostic write failure preserves failed read result")
     whLogThrows := false
+    ResetWarehouse("full_missing")
+    whState := "warehouse", whSelected := 3, whCaptureThrows := true
+    Check(EarnWarehouseSelectedGood() = "", "capture failure preserves failed read result")
+    whCaptureThrows := false
+}
+EarnWarehouseSnapReadFailure() {
+    global whCaptures, whCaptureThrows
+    whCaptures++
+    if (whCaptureThrows)
+        throw Error("capture failed")
 }
 Check(condition, description) {
     global whTests, whError
@@ -522,7 +537,7 @@ try {
     }
     $stdout = $process.StandardOutput.ReadToEnd().Trim()
     $stderr = $process.StandardError.ReadToEnd().Trim()
-    if ($process.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnWarehouse cases=163 (no game input)') {
+    if ($process.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnWarehouse cases=168 (no game input)') {
         throw "Warehouse flow failed (exit=$($process.ExitCode))`nstdout: $stdout`nstderr: $stderr"
     }
     Write-Output $stdout

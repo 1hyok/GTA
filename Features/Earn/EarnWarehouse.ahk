@@ -188,9 +188,51 @@ EarnWarehouseSelectedGood() {
             selected := id
         }
     }
-    if (selected = "")
+    if (selected = "") {
         try EarnLog("[warehouse-read] stage=none hits=none templates=" observed)
+        try EarnWarehouseSnapReadFailure()
+    }
     return selected
+}
+
+
+; 실패한 Main의 발 중앙색과 원본 크기 격자를 정리 입력 전에 보존한다. 고정 파일 두 개만 덮어쓴다.
+EarnWarehouseSnapReadFailure() {
+    hwnd := IsGTAActive()
+    if (!hwnd)
+        return
+    started := A_TickCount
+    previous := DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
+    try {
+        WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
+        if (cw != 1920 || ch != 1080)
+            return
+        CoordMode("Pixel", "Screen")
+        pixels := "time=" FormatTime(, "yyyy-MM-dd HH:mm:ss") " tick=" started
+            . " client=" cx "," cy "," cw "," ch "`n"
+        for id, tile in EarnWarehouseTiles() {
+            ; 관측한 15x17 발의 가운데 한 줄만 읽는다. 총 105픽셀로 정리 지연을 제한한다.
+            y := tile[2] + 57
+            pixels .= id " y=" y " x=" (tile[1]+241) " colors="
+            Loop 15 {
+                x := tile[1] + 240 + A_Index
+                pixels .= (A_Index = 1 ? "" : ",") Format("{:06X}", PixelGetColor(cx+x, cy+y))
+            }
+            pixels .= "`n"
+        }
+        path := A_Temp "\gta-warehouse-read-fail-pixels.txt"
+        file := FileOpen(path, "w", "UTF-8")
+        file.Write(pixels "elapsed_ms=" (A_TickCount-started) "`n")
+        file.Close()
+        if (!IsGTAActive())
+            return
+        SplitPath(A_LineFile, , &sourceDir)
+        captureScript := sourceDir "\..\..\Core\ScreenCapture.ps1"
+        result := RunWait('"' A_WinDir '\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "'
+            captureScript '" -Name "gta-warehouse-read-fail-grid" -X ' (cx+728) ' -Y ' (cy+548) ' -W 876 -H 264 -Scale 1', , "Hide")
+        EarnLog("[warehouse-capture] exit=" result " elapsed_ms=" (A_TickCount-started)
+            " pixels=" path " grid=" A_Temp "\claude\gta-warehouse-read-fail-grid.png")
+    } finally DllCall("SetThreadDpiAwarenessContext", "ptr", previous, "ptr")
 }
 
 EarnWarehouseAvailable(id, lines) {
