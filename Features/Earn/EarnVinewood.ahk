@@ -28,7 +28,6 @@ EarnVinewoodSafeTask(manageMCT := true) {
         return false
     if (EarnFindText(lines, "i)^No earnings to claim\.?$")) {
         EarnLog("금고: 바인우드 앱에 수거할 수익 없음")
-        EarnVinewoodSafeScheduleAll(Map())
         return EarnVinewoodClose()
     }
     ; 앱 메인과 수익 하위 목록은 제목이 같다. 이미 하위 목록이면 다시 Enter를 보내지 않는다.
@@ -38,7 +37,7 @@ EarnVinewoodSafeTask(manageMCT := true) {
             return EarnFail("금고: 수익 목록 진입 실패")
     }
     ; 목록은 맨 아래에서 Down 을 누르면 맨 위로 돈다(1004 실측: 7개 행). 처음 본 행이 다시 선택되면 한 바퀴다.
-    amounts := Map(), seen := Map()
+    seen := Map()
     Loop 12 {
         lines := EarnVinewoodReadSelected(&name, &amount)
         if (!IsObject(lines))
@@ -55,25 +54,20 @@ EarnVinewoodSafeTask(manageMCT := true) {
         } else if (!safes.Has(name)) {
             ; 모르는 사업장은 한도를 모르므로 금액만 남기고 수거하지 않는다.
             EarnLog("금고: 모르는 사업장 " name (amount >= 0 ? " $" amount : "") ", 수거 안 함")
-            amounts[name] := -1
         } else if (amount < 0 || amount > safes[name][1]) {
             EarnLog("금고: " name " 금액 판독 실패. 판독한 줄 " EarnVinewoodAmountDebug(lines))
-            amounts[name] := -1
         } else {
             EarnLog("금고: " name " $" amount)
             if (amount > 0 && EarnVinewoodSafeClaimDue(amount, safes[name]*)) {
                 if (!EarnVinewoodClaim(name, amount))
                     return false
-                amount := 0
             }
-            amounts[name] := amount
         }
         if (!EarnPress("Down") || !EarnSleep(700))
             return false
     }
     if (!seen.Count)
         return EarnFail("금고: 수익 목록이 비어 있음")
-    EarnVinewoodSafeScheduleAll(amounts)
     return EarnVinewoodClose()
 }
 
@@ -125,92 +119,6 @@ EarnVinewoodClaim(name, amount) {
 ; 다음 입금이 한도를 넘길 수 있으면 지금 수거한다. 꽉 찰 때까지 기다리면 넘치는 입금이 버려진다.
 EarnVinewoodSafeClaimDue(amount, cap := 250000, daily := 50000) {
     return amount + daily > cap
-}
-
-; 입금 때마다 미니맵 위에 뜨는 알림으로 금고를 지킨다. 예약 확인을 빗나간 입금(1004 14:18 실측: 꺼진 동안 나이트클럽이
-; "Safe total: $250000 (at capacity)" 로 넘쳐 약 $40,000 손실)을 놓치지 않으려는 보조 장치다. 수거 자체는 앱에서 다시 읽고 한다.
-; 알림 문구(1004 녹화): "Your daily Nightclub take has been added to the office safe. Safe total: $245000",
-; "Your daily Salvage Yard earnings have been added to the office safe. Safe total: $11400". 일반 판독은 $ 를 5 로 읽어 흰 글자로만 읽는다.
-global gEarnFeedSeen := Map()
-
-EarnSafeFeedWatch() {
-    global gEarnOn, gEarnBusy, gEarnDue, gEarnNextDue, gEarnFeedSeen, config
-    if (!gEarnOn || gEarnBusy || A_TimeIdlePhysical < config["Settings"]["EarnUserIdleSec"] * 1000 || !IsGTAActive())
-        return
-    ; 판독 중 Sleep 사이에 예약 작업이 끼어들지 않게 막는다.
-    gEarnBusy := true
-    try lines := EarnReadScreen([20, 560, 460, 300], true)
-    finally gEarnBusy := false
-    for note in EarnSafeFeedParse(lines) {
-        key := note.name "|" note.total "|" note.full
-        if (gEarnFeedSeen.Has(key) && A_TickCount - gEarnFeedSeen[key] < 120000)
-            continue
-        gEarnFeedSeen[key] := A_TickCount
-        limits := EarnSafeLimits()
-        due := note.full || note.total >= 0 && EarnVinewoodSafeClaimDue(note.total, limits[note.name]*)
-        EarnLog("금고 알림: " note.name (note.total >= 0 ? " $" note.total : "") (note.full ? " 가득 참" : "") (due ? " → 금고 확인 앞당김" : ""))
-        if (due && gEarnDue.Has("safe")) {
-            gEarnDue["safe"] := Min(gEarnDue["safe"], A_TickCount)
-            if (gEarnNextDue.Has("safe"))
-                gEarnNextDue.Delete("safe")
-        }
-    }
-}
-
-; 판독한 줄에서 아는 사업장의 입금 알림을 찾는다. 이름은 글자만 비교한다(1004 판독: "Night.club", "earrnings").
-; 금액이 깨지면 -1, "(at capacity)" 가 있으면 full. 모르는 사업장·무시하는 사업장은 돌려주지 않는다.
-EarnSafeFeedParse(lines) {
-    notes := []
-    if (!IsObject(lines))
-        return notes
-    text := ""
-    for line in lines
-        text .= " " line.text
-    pos := 1
-    while (pos := RegExMatch(text, "i)Your daily (.+?) (?:take|ear\w*) ha", &m, pos)) {
-        pos += m.Len
-        raw := RegExReplace(StrLower(m[1]), "[^a-z]")
-        name := ""
-        for known in EarnSafeLimits()
-            if (RegExReplace(StrLower(known), "[^a-z]") = raw)
-                name := known
-        if (name = "")
-            continue
-        rest := SubStr(text, pos, 120)
-        next := RegExMatch(rest, "i)Your daily ")
-        if (next)
-            rest := SubStr(rest, 1, next - 1)
-        total := RegExMatch(rest, "i)Safe total: \$([0-9,]+)(?:\s|$)", &t) ? EarnReadDollars("$" t[1]) : -1
-        notes.Push({name: name, total: total, full: RegExMatch(rest, "i)at\s+capacity") > 0})
-    }
-    return notes
-}
-
-; 수거할 때가 되려면 입금이 몇 번 더 들어와야 하는지로 다음 확인을 미룬다. 매번 앱을 열지 않는다.
-; k번째 입금이 수거 금액(> 한도-하루 입금)을 만든다면 그 입금은 빨라야 (k-1)×48분 뒤이고, 늦어도 k×48분 뒤다.
-; 수거는 그 입금과 다음 입금 사이 48분 안에 하면 되므로 k×48-8분 뒤에 본다. 아직이면 그때 k=1 로 40분 뒤 다시 본다.
-; 실제 입금이 최대보다 작으면 더 늦게 차므로 일찍 보는 쪽으로만 어긋난다.
-EarnVinewoodSafeNextMs(amount, cap := 250000, daily := 50000) {
-    due := cap - daily
-    deposits := amount > due ? 1 : (due - amount) // daily + 1
-    return Max(300000, (deposits * 48 - 8) * 60000)
-}
-
-; 금고마다 다음 확인 시각을 구해 가장 이른 것으로 미룬다. 판독 못 한 금고가 있으면 40분 안에 다시 본다.
-; 목록을 못 봤으면(수거할 수익 없음) 아는 금고가 모두 $0 이라고 보고 계산한다.
-EarnVinewoodSafeScheduleAll(amounts) {
-    safes := EarnSafeLimits()
-    if (!amounts.Count)
-        for name in safes
-            amounts[name] := 0
-    ms := 0, first := ""
-    for name, amount in amounts {
-        next := amount < 0 || !safes.Has(name) ? 40 * 60000 : EarnVinewoodSafeNextMs(amount, safes[name]*)
-        if (!ms || next < ms)
-            ms := next, first := name
-    }
-    EarnLog("금고: 다음 확인 " Round(ms / 60000) "분 뒤 (" first " 기준)")
-    return EarnScheduleNext("safe", ms)
 }
 
 ; 선택한 행의 사업장 이름과 그 금고 금액을 읽는다. 한 번의 판독이 깨지면(1003 19:22 실측) 흰 글자 전처리와 재판독으로 세 번까지 본다.

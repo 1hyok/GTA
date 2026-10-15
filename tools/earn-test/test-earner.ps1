@@ -42,10 +42,6 @@ foreach ($functionName in @('EarnOcrHas','EarnMCTSeatedOcrMatches','EarnMCTNeedC
 foreach ($use in @('EarnMCTSeatedOcrMatches(EarnOcrLines("prompt"','EarnMCTTitleOcrMatches(EarnOcrLines("title"','EarnMCTNeedCeoOcrMatches(EarnOcrLines("prompt"')) {
     if (-not $core.Contains($use)) { throw "EarnSeen must consume $use" }
 }
-$vinewood = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnVinewood.ahk') -Raw -Encoding UTF8
-$safeFeedWatch = [regex]::Match($vinewood, '(?ms)^EarnSafeFeedWatch\([^\r\n]*\) \{.*?^\}').Value
-if (-not $safeFeedWatch) { throw 'Production EarnSafeFeedWatch missing' }
-$production += "`n" + $safeFeedWatch.Replace('A_TimeIdlePhysical', 'idleMs').Replace('A_TickCount', 'fakeTick')
 $tasks = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnTasks.ahk') -Raw -Encoding UTF8
 $mctBegin = [regex]::Match($tasks, '(?ms)^EarnTaskMCTBegin\([^\r\n]*\) \{.*?^\}').Value
 if (-not $mctBegin) { throw 'Production EarnTaskMCTBegin missing' }
@@ -74,13 +70,13 @@ EarnerOfflineFailure(failure, *) {
 global gEarnMode, gEarnModeRequest, gEarnIdleEnabled
 global gEarnOn, gEarnBusy, gEarnDue, gEarnDone, gEarnTasks, gEarnCurrent, gEarnFail, gEarnNextDue, gEarnSoftFails, gEarnRetryIn, gAbort, config, GTA_WIN, afkOn
 global calls, releaseCount, stopped, mode, windowExists, focused, otherBusy, activationCount, idleMs, gEarnGuardArmed, timers
-global feedTimer := 0, modeTimer := 0
+global modeTimer := 0
 global gEarnGamePID, fakePID, fakeTick, gEarnGuardStartedTick, gEarnUserAbort, lockAvailable, lockCalls, lockReleases, lockHeld, hooks, checkCount := 0
 global beginCount, endCount, beginCleanupCount, beginOK, endOK, endNoScreen, beginThrows, endThrows, mctOpen, events, logs, taskModes, taskDurations, beginDelay, endDelay, endInput
 global endStopMode, bossOffCount, bossProbeOK, bossProbeCount, bossProbeStrictCount, bossProbeGuardedCount, bossProbeMode, bossStopInjected, bossInitialGuardTick, bossRetryBaselineOK, bossRetryCleanupStateOK, staleFailInjected, blockedRestartObserved
 global gEarnHeld, gEarnFailures, gEarnRecovery, appCloseOK, appCloseCount
 global gEarnManualStop, gEarnManualCleanupActive, gEarnManualCleanupAttempted, gEarnTaskActive, gEarnAFKCleanup, gEarnMCTCleanupOK, stopStatus
-global gEarnFeedSeen, beginStopInjected, gEarnSellNotices, tooltips
+global beginStopInjected, gEarnSellNotices, tooltips
 global lifecycleTrace, lifecycleEvents, finalizerProbeStages
 global gEarnInputAbortReason, metadataFailure, metadataCalls
 global recoveryHud, recoveryHudAfter, recoveryMenuCloseOK, visibleModal
@@ -282,14 +278,6 @@ EarnTick()
 Check(!gEarnOn && !gAbort && gEarnFail = "" && EarnStatusText() = "" && gEarnDone["safe"] = 0
     && endCount = 0 && bossOffCount = 0,
     "manual off outside MCT stops without cleanup input or a false CEO warning")
-Reset()
-mode := "feed-manual-stop"
-EarnSafeFeedWatch()
-Check(!gEarnOn && !gEarnBusy && !gEarnManualStop && gAbort && gEarnFail = "",
-    "F9 during safe feed OCR finishes without leaving a manual cleanup latch")
-ToggleEarner()
-Check(gEarnOn && !gEarnBusy && !gEarnManualStop && !gAbort && TimerPeriodCount(1000) = 1,
-    "safe feed OCR can be enabled again after its F9 stop returns")
 Reset()
 mctOpen := true
 endStopMode := "afk-manual"
@@ -784,7 +772,7 @@ SetEarner(true)
 Check(gEarnOn && gEarnGamePID = fakePID && hooks = 2 && timers[timers.Length] = 1000
     && gEarnSellNotices.Get("bunker", "") = "벙커 재고 만재: 판매 필요",
     "enable binds current game and one-second timer without clearing confirmed notices")
-Check(feedTimer = 4000, "enable starts the safe deposit feed watch")
+Check(timers.Length = 1, "enable only starts the one-second task scheduler")
 Check(gEarnDue["safe"] >= start && gEarnDue["safe"] <= A_TickCount
     && gEarnDue["warehouse"] >= start && gEarnDue["warehouse"] <= A_TickCount, "safe and warehouse first check immediately")
 Check(gEarnDue["bunker"] <= A_TickCount && gEarnDue["dj"] <= A_TickCount, "bunker and DJ fresh read immediately")
@@ -933,6 +921,31 @@ gEarnRecovery := {task:{id:"bunker",label:"bunker"},mct:true,nextTick:fakeTick+3
 ToggleEarner()
 EarnModeTick()
 Check(!gEarnOn && !gEarnIdleEnabled && modeTimer = 0 && IsObject(gEarnRecovery) && InStr(gEarnFail,"정리 복구"), "F9 during delayed MCT recovery stops explicitly and retains evidence")
+for appId in ["safe", "staff"] {
+    for explicitOffset in [-1000, 49*60000] {
+        Reset()
+        fixedTask := {id:appId,label:appId,every:300000}
+        gEarnDone[appId] := 0
+        gEarnNextDue[appId] := fakeTick + explicitOffset
+        fixedResult := {task:fixedTask,startTick:fakeTick-120000,ok:true}
+        EarnFinishScheduledTask(fixedResult)
+        Check(gEarnDue[appId] = fakeTick+300000 && !gEarnNextDue.Has(appId), "fixed app interval ignores past or predicted explicit schedule: " appId)
+    }
+    Reset()
+    fixedTask := {id:appId,label:appId,every:420000}
+    gEarnDone[appId] := 0
+    EarnFinishScheduledTask({task:fixedTask,startTick:fakeTick-900000,ok:true})
+    Check(gEarnDue[appId] = fakeTick+420000, "long app execution still waits configured interval from completion: " appId)
+    Reset()
+    fixedTask := {id:appId,label:appId,every:300000}
+    EarnFinishScheduledTask({task:fixedTask,startTick:fakeTick-1000,ok:false,reason:"read failure",retryIn:90000})
+    Check(gEarnDue[appId] = fakeTick+90000, "app failure retains explicit retry instead of success interval: " appId)
+    Reset()
+    fixedTask := {id:appId,label:appId,every:300000}
+    state["pending_" appId] := "unconfirmed request"
+    EarnFinishScheduledTask({task:fixedTask,startTick:fakeTick-1000,ok:false,reason:"pending",retryIn:90000})
+    Check(gEarnHeld.Has(appId) && gEarnFailures[appId].nextTick = 0, "pending app remains held without repeat scheduling: " appId)
+}
 FileAppend("PASS Earner: " checkCount " cases; no game input`n", "*")
 if (hudDepth != 0 || hudTakes != 0 || hudReturns != 0)
     throw Error("Scheduler must not acquire task-wide HUD hiding")
@@ -982,7 +995,7 @@ Reset() {
     gEarnOn := true, gEarnBusy := false, gEarnCurrent := "", gEarnFail := "", gEarnRetryIn := 0, gAbort := false, afkOn := false
     gEarnManualStop := false, gEarnManualCleanupActive := false, gEarnManualCleanupAttempted := false
     gEarnTaskActive := false, gEarnAFKCleanup := false, gEarnMCTCleanupOK := true, stopStatus := ""
-    gEarnFeedSeen := Map(), beginStopInjected := false
+    beginStopInjected := false
     gEarnSellNotices := Map(), tooltips := []
     endStopMode := "", bossOffCount := 0, bossProbeOK := true, bossProbeCount := 0, bossProbeStrictCount := 0, bossProbeGuardedCount := 0
     bossProbeMode := "", bossStopInjected := false, bossInitialGuardTick := 0, bossRetryBaselineOK := false, bossRetryCleanupStateOK := false
@@ -1147,13 +1160,9 @@ SetAntiAFK(*) {
     throw Error("unexpected AFK call")
 }
 SetTimer(fn, period) {
-    global timers, stopped, feedTimer, lifecycleTrace, lifecycleEvents, modeTimer
+    global timers, stopped, lifecycleTrace, lifecycleEvents, modeTimer
     if (fn.Name = "EarnModeTick") {
         modeTimer := period
-        return
-    }
-    if (fn.Name = "EarnSafeFeedWatch") {
-        feedTimer := period
         return
     }
     if (lifecycleTrace && fn.Name = "EarnInputWatch")
@@ -1235,19 +1244,6 @@ EarnVinewoodClose() {
     return appCloseOK
 }
 EarnDispatchTask() => RunTask("dispatch")
-EarnReadScreen(*) {
-    global mode, idleMs, gEarnBusy
-    if (mode != "feed-manual-stop")
-        throw Error("Unexpected screen read in the offline scheduler test")
-    if (!gEarnBusy)
-        throw Error("Safe feed F9 must be injected while its OCR busy guard is held")
-    idleMs := 0
-    ToggleEarner()
-    return []
-}
-EarnSafeFeedParse(*) => []
-EarnSafeLimits() => Map()
-EarnVinewoodSafeClaimDue(*) => false
 EarnAtMCT() {
     global mode, beginStopInjected, idleMs, mctOpen
     if (mode = "begin-initial-manual" && !beginStopInjected) {
@@ -1415,7 +1411,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 207 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 215 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout

@@ -61,7 +61,6 @@ EarnTransactionCashConfirmed(id, direction, amount, source, evidence, path := ""
 global gMode, gState, gSelected, gBiz, gIdx, gReads, gClaims, gClaimAttempts, gKeys, gStandWaits, gMctCloses, gCEOCalls, gFailure, gScheduled, gPhoneFrameVisible, gTests := 0
 global gNowMs := 0, gSleepMs := 0, gTimedReads := 0
 global gClaimPlan := 0, gClaimAt := -1, gClaimReads := [], gAbort := false, gConfirmCalls := 0, gCashMovements := [], gCashFail := false
-; 입금 알림 감시(EarnSafeFeedWatch)는 스케줄러 전역을 쓴다. 이 시험은 파서만 부른다.
 global gEarnRetryIn := 0, gEarnOn := false, gEarnBusy := false, gEarnDue := Map(), gEarnNextDue := Map()
 global config := Map("Settings", Map("EarnUserIdleSec", 45)), gPhysIdle := 600000, gOthersIdle := 600000
 IsGTAActive() => false
@@ -251,7 +250,7 @@ RunTests() {
         label := c[1] "/" c[2] "/" claimed
         Check(result = c[4] && claimed = c[5] && gState = c[6], label " result=" result " claims=" claimed " state=" gState)
         if (c[7])
-            Check(gScheduled = c[7] * 60000, label " scheduled " Round(gScheduled / 60000) " min, expected " c[7])
+            Check(gScheduled = 0, label " leaves interval ownership to scheduler")
         Check(gClaimAttempts <= gClaims.Length + 1, label " never replays collection")
         if (c[1] = "post_unconfirmed" && !transactionPending.Has("safe"))
             throw Error("Unconfirmed collection must retain pending state")
@@ -396,34 +395,8 @@ RunTests() {
     gSelected := "Garment Factory"
     wrapped := [FakeLine("THE VINEWOOD CLUB APP"), FakeLine("Garment Factory"), FakeLine("Claim $35720 from your Garment Factory"), FakeLine("safe.")]
     Check(EarnVinewoodSelectedSafe(wrapped) = "Garment Factory" && EarnVinewoodSafeAmountOf(wrapped, "Garment Factory") = 35720, "footer wrapped onto two lines")
-    ; 입금 알림(1004 녹화의 흰 글자 판독 그대로). 깨진 금액은 -1, 가득 참은 full.
-    feedCases := [
-        [["Your daily Salvage Yard","earrnings have been added to","the office. safe _","Safe total: $11400"], "Salvage Yard", 11400, false],
-        [["Galaxy","Your daily Nightclub take has","been added to the office","safe.","Safe total: $245000"], "Nightclub", 245000, false],
-        [["Galaxy","Your daily Night.club take has","been added to the office","safe.","Safe total: $245c•oa"], "Nightclub", -1, false],
-        [["kicked for idlina: 13rn0Qs","Galaxy","Your daily Nightclub take has","been added to the office","safe.","Safe total: $24500Q"], "Nightclub", -1, false],
-        [["Galaxy","Your daily Nightclub take has","been added to the office","safe.","Safe total: $250000 (at","capacity)"], "Nightclub", 250000, true]]
-    for c in feedCases {
-        feed := []
-        for text in c[1]
-            feed.Push(FakeLine(text))
-        notes := EarnSafeFeedParse(feed)
-        Check(notes.Length = 1 && notes[1].name = c[2] && notes[1].total = c[3] && notes[1].full = c[4], "safe feed " c[2] " " c[3])
-    }
-    both := []
-    for text in ["Your daily Salvage Yard","earnings have been added to","the office safe.","Safe total: $11700","Galaxy","Your daily Nightclub take has","been added to the office","safe.","Safe total: $250000 (at","capacity)"]
-        both.Push(FakeLine(text))
-    notes := EarnSafeFeedParse(both)
-    Check(notes.Length = 2 && notes[1].name = "Salvage Yard" && notes[1].total = 11700 && !notes[1].full
-        && notes[2].name = "Nightclub" && notes[2].total = 250000 && notes[2].full, "two stacked safe feeds")
-    Check(!EarnSafeFeedParse([FakeLine("Your daily Hands On Car Wash earnings have been added"), FakeLine("Safe total: $90000")]).Length, "ignored or unknown business feed")
-    Check(!EarnSafeFeedParse(false).Length, "unreadable feed")
     Check(EarnVinewoodSafeAmountOf(wrapped, "Nightclub") = -1, "another business footer is not this safe's amount")
     gSelected := "Nightclub"
-    for item in [[0,232],[50000,184],[150000,88],[200000,40],[245000,40]]
-        Check(EarnVinewoodSafeNextMs(item[1]) = item[2]*60000, "nightclub next check after $" item[1])
-    for item in [[10000,100000,5000,856],[0,100000,30000,136],[35720,100000,2000,1528],[80000,250000,20000,376]]
-        Check(EarnVinewoodSafeNextMs(item[1], item[2], item[3]) = item[4]*60000, "next check $" item[1] " cap " item[2] " daily " item[3])
     Check(EarnVinewoodNightclubAmount(Frame("Your Nightclub safe is empty.")) = 0, "explicit nightclub empty detail")
     Check(EarnVinewoodNightclubAmount(Frame("Your Nightclub safe is empty")) = 0, "empty detail read without its period (1006 06:51)")
     Check(EarnVinewoodNightclubAmount(Frame("Your Nightclub safe is empty now")) = -1, "empty detail with trailing words is rejected")

@@ -5,7 +5,6 @@ EarnVinewoodStaffTask() {
     bail := s["EarnBailAgents"], cargo := s["EarnCargoStaff"], hangar := s.Get("EarnHangarStaff", 0)
     if (!bail && !cargo && !hangar)
         return true
-    EarnStaffTrack("reset")
     if (!EarnVinewoodOpen(false))
         return false
     root := EarnStaffRoot()
@@ -13,7 +12,6 @@ EarnVinewoodStaffTask() {
         return false
     if (root = "idle") {
         EarnLog("직원: 직원 관리 메뉴 회색(모든 직원 작업 중), 건너뜀")
-        EarnStaffTrack("all", "busy")
     } else {
         ; 목록 맨 윗줄 Hangar 를 먼저 보낸다. 창고·요원 단계가 중단돼도 격납고는 이 회차에 빠지지 않는다(1013 03:14 회차는 창고에서 멈춰 격납고를 건너뛰었다).
         if (hangar) {
@@ -29,39 +27,7 @@ EarnVinewoodStaffTask() {
                 return false
         }
     }
-    ms := EarnStaffTrack()
-    EarnLog("직원: 다음 확인 " Round(ms / 60000) "분 뒤")
-    EarnScheduleNext("staff", ms)
     return EarnVinewoodClose()
-}
-
-; 보석 집행 요원과 스페셜 패키지 직원은 파견 뒤 게임 하루(48분) 안팎에 돌아온다
-; (1003 실측: 두 종류 모두 파견 43분 뒤엔 작업 중, 55분 뒤엔 준비). 앱에는 남은 시간이 안 나온다.
-; 이 회차에 본 대상마다 보낸 시각으로 복귀 예정을 잡고, 가장 이른 복귀 1분 뒤에 다시 본다.
-; 언제 보냈는지 모르는 작업 중 대상(Main 재시작 뒤)이나 예정을 넘겨도 작업 중인 대상은 5분 뒤 다시 본다. 만재 창고는 판매 전에는 안 바뀌므로 빼고 센다.
-EarnStaffTrack(key := "", state := "") {
-    static sent := Map(), seen := Map()
-    if (key = "reset") {
-        seen.Clear()
-        return 0
-    }
-    if (key != "") {
-        if (state = "sent")
-            sent[key] := A_TickCount, state := "busy"
-        seen[key] := state
-        return 0
-    }
-    now := A_TickCount, next := 0
-    for name, st in seen {
-        if (st != "busy")
-            continue
-        due := sent.Has(name) ? sent[name] + 49 * 60000 : 0
-        if (due <= now)
-            due := now + 300000
-        next := next ? Min(next, due) : due
-    }
-    seen.Clear()
-    return next ? Max(60000, next - now) : 300000
 }
 
 ; 직원 관리 목록(Hangar·Warehouse·Bail Office)인지 본다. 요원이 모두 나가 Bail Office 가 회색이면
@@ -160,13 +126,11 @@ EarnStaffBailAgents() {
     white := EarnReadScreen([25,125,450,263], true)
     if (IsObject(white) && EarnStaffUniqueRow(white, "~Warehouse") && !EarnStaffUniqueRow(white, "~Bail Office")) {
         EarnLog("직원: 보석 사무소 회색(요원 모두 작업 중), 건너뜀")
-        EarnStaffTrack("bail 1", "busy"), EarnStaffTrack("bail 2", "busy")
         return true
     }
     if (!EarnStaffSelectEnter("~Bail Office", 3)) {
         if (EarnStaffSectionBusy("office")) {
             EarnLog("직원: 보석 사무소 작업 중 문구 확인, 건너뜀")
-            EarnStaffTrack("bail 1", "busy"), EarnStaffTrack("bail 2", "busy")
             return true
         }
         return EarnFail("직원: 보석 사무소 목록 진입 실패")
@@ -176,7 +140,6 @@ EarnStaffBailAgents() {
     if (!EarnStaffMenuTarget("i)^Agent [1Il]$") && (EarnStaffSectionBusy("office")
         || EarnStaffMenuTarget("~Warehouse") && EarnStaffMenuTarget("~Bail Office"))) {
         EarnLog("직원: 보석 사무소 비활성(요원 모두 작업 중), 건너뜀")
-        EarnStaffTrack("bail 1", "busy"), EarnStaffTrack("bail 2", "busy")
         return true
     }
     Loop 2 {
@@ -186,7 +149,6 @@ EarnStaffBailAgents() {
         state := EarnStaffReadBail(agent)
         if (state = "busy") {
             EarnLog("직원: 보석 집행 요원 " agent " 작업 중, 건너뜀")
-            EarnStaffTrack("bail " agent, "busy")
             continue
         }
         if (state != "ready")
@@ -202,7 +164,6 @@ EarnStaffBailAgents() {
             return EarnFail("직원: 보석 집행 요원 " agent " 파견 결과 미확인, 재요청 중단")
         EarnTransactionConfirmed("staff")
         EarnLog("직원: 보석 집행 요원 " agent " 파견 확인")
-        EarnStaffTrack("bail " agent, "sent")
     }
     return true
 }
@@ -211,7 +172,6 @@ EarnStaffCargoWarehouses() {
     if (!EarnStaffSelectEnter("~Warehouse", 3)) {
         if (EarnStaffSectionBusy("ehouse")) {
             EarnLog("직원: 창고 직원 작업 중 문구 확인, 건너뜀")
-            EarnStaffTrack("cargo all", "busy")
             return true
         }
         return EarnFail("직원: 스페셜 패키지 창고 목록 진입 실패")
@@ -222,7 +182,6 @@ EarnStaffCargoWarehouses() {
     if (!IsObject(current) && (EarnStaffSectionBusy("ehouse") || EarnStaffMenuTarget("~Warehouse")
         && (EarnStaffMenuTarget("~Bail Office") || EarnStaffMenuTarget("~Hangar")))) {
         EarnLog("직원: 창고 직원 모두 조달 중(Warehouse 비활성), 건너뜀")
-        EarnStaffTrack("cargo all", "busy")
         return true
     }
     if (!IsObject(current) || current.index != 1)
@@ -240,7 +199,6 @@ EarnStaffCargoWarehouses() {
         }
         if (!EarnStaffCargoInOrder(current, A_Index, count, visited)) {
             EarnLog("직원: 스페셜 패키지 " A_Index "번째 창고 판독 어긋남, 남은 창고는 건너뜀")
-            EarnStaffTrack("cargo all", "busy")
             return EarnStaffCargoLeave()
         }
         if (current.name != "")
@@ -250,7 +208,6 @@ EarnStaffCargoWarehouses() {
         noticeKey := "cargo:" current.index
         if (current.state = "busy" || current.state = "full") {
             EarnLog("직원: " displayName (current.state = "busy" ? " 조달 중" : " 만재") ", 건너뜀")
-            EarnStaffTrack("cargo " displayName, current.state)
             if (current.state = "full")
                 EarnNotifyStockFull(noticeKey, "스페셜 패키지 " displayName " 만재: 판매 필요")
         } else {
@@ -259,11 +216,9 @@ EarnStaffCargoWarehouses() {
             fresh := EarnStaffReadCargo()
             if (EarnStaffSameWarehouse(fresh, current) && fresh.state = "full") {
                 EarnLog("직원: " displayName " 조달 직전 만재 확인, 이 창고는 사지 않고 건너뜀")
-                EarnStaffTrack("cargo " displayName, "full")
                 EarnNotifyStockFull(noticeKey, "스페셜 패키지 " displayName " 만재: 판매 필요")
             } else if (!EarnStaffSameWarehouse(fresh, current) || fresh.state != "ready" || fresh.price != 7500) {
                 EarnLog("직원: " current.name " 조달 직전 재확인 어긋남, 남은 창고는 사지 않고 건너뜀")
-                EarnStaffTrack("cargo all", "busy")
                 return EarnStaffCargoLeave()
             } else {
                 EarnClearStockNotice(noticeKey)
@@ -278,11 +233,9 @@ EarnStaffCargoWarehouses() {
                     return EarnFail("직원: 확인된 창고 조달의 원장 저장 실패. pending 보류 유지, 추가 구매 금지")
                 if (resultState = "full") {
                     EarnLog("직원: " displayName " 조달 뒤 만재 확인, 다음 창고 계속")
-                    EarnStaffTrack("cargo " displayName, "full")
                     EarnNotifyStockFull(noticeKey, "스페셜 패키지 " displayName " 만재: 판매 필요")
                 } else {
                     EarnLog("직원: " current.name " $7,500 조달 확인")
-                    EarnStaffTrack("cargo " current.name, "sent")
                 }
             }
         }
@@ -347,7 +300,6 @@ EarnStaffHangar() {
     if (state = "busy" || state = "full" || state = "invalid") {
         ; 작업 중·만재 문구는 아직 실측 전이다. 모르는 상태에서는 사지 않고 5분 뒤 다시 본다.
         EarnLog("직원: 격납고 " (state = "busy" ? "조달 중" : state = "full" ? "만재" : "상태 미확인") ", 건너뜀")
-        EarnStaffTrack("hangar", state = "full" ? "full" : "busy")
         if (state = "full")
             EarnNotifyStockFull("hangar", "격납고 재고 만재: 판매 필요")
         return true
@@ -356,13 +308,11 @@ EarnStaffHangar() {
     recheck := EarnStaffReadHangar()
     if (recheck = "full") {
         EarnLog("직원: 격납고 조달 직전 만재 확인, 사지 않고 건너뜀")
-        EarnStaffTrack("hangar", "full")
         EarnNotifyStockFull("hangar", "격납고 재고 만재: 판매 필요")
         return true
     }
     if (recheck != "ready") {
         EarnLog("직원: 격납고 조달 직전 재확인 " recheck ", 사지 않고 건너뜀")
-        EarnStaffTrack("hangar", "busy")
         return true
     }
     EarnClearStockNotice("hangar")
@@ -380,7 +330,6 @@ EarnStaffHangar() {
             if (!EarnTransactionCashConfirmed("staff", "expense", 25000, "격납고 조달", "OCR 25,000달러 항목과 조달 완료 상태 확인"))
                 return EarnFail("직원: 확인된 격납고 조달의 원장 저장 실패. pending 보류 유지, 재구매 금지")
             EarnLog("직원: 격납고 $25,000 조달 확인")
-            EarnStaffTrack("hangar", state = "full" ? "full" : "sent")
             if (state = "full")
                 EarnNotifyStockFull("hangar", "격납고 재고 만재: 판매 필요")
             return true
