@@ -24,6 +24,16 @@ foreach ($functionName in @('EarnReadScreen', 'EarnMenuRowSelected')) {
     $definitions += [regex]::Replace($matches[0].Value, '^' + $functionName + '\(', $functionName + 'NativeForTest(') + "`n"
 }
 
+$screenSource = Get-Content (Join-Path $PSScriptRoot '..\..\Core\Screen.ahk') -Raw -Encoding UTF8
+foreach ($functionName in @('TemplateSeen', 'TemplateAt')) {
+    $body = [regex]::Match($screenSource, ('(?ms)^' + $functionName + '\([^\r\n]*\) \{.*?^\}')).Value
+    if (-not $body) { throw "Missing $functionName" }
+    foreach ($api in @('IsGTAActive', 'WinGetClientPos', 'FileExist', 'DllCall', 'CoordMode', 'ImageSearch')) {
+        $body = $body.Replace(($api + '('), ('Probe' + $api + '('))
+    }
+    $definitions += $body + "`n"
+}
+
 $driver = @'
 #Requires AutoHotkey v2.0
 #SingleInstance Off
@@ -88,6 +98,7 @@ try {
     Check(!SelectClaim(0) && presses = 0 && reads = 1, "zero movement budget is read-only")
     Setup([[heading, selected]])
     Check(SelectClaim(0) = selected && presses = 0, "zero budget still recognizes selection")
+    ProbeRunTests()
     FileAppend("PASS EarnScreen cases=" checks " (no game input)`n", "*")
     ExitApp(0)
 } catch as testFailure {
@@ -138,6 +149,64 @@ IsGTAActive() {
 EarnFail(reason) {
     return false
 }
+ProbeRunTests() {
+    global gImageRoot := "fixture-images", probeCase, probeReads, probeLogs, probeDpiContext, probeClients
+    ; method, original hit, gain hit, shifted original, active, exists, log throws, result, reads, logs, name
+    probeCases := [["seen",true,false,false,true,true,false,true,1,1,"dj_resident"],
+        ["seen",false,true,false,true,true,false,true,2,1,"warehouse_person_foot"],
+        ["seen",false,false,false,true,true,false,false,2,1,"mct_seated_mansion"],
+        ["at",true,false,false,true,true,false,true,1,1,"mct_seated_mansion_bg"],
+        ["at",true,false,true,true,true,false,false,2,1,"mct_seated_mansion_bg"],
+        ["at",false,true,false,true,true,false,true,2,1,"mct_seated_mansion_bg"],
+        ["seen",false,false,false,true,false,false,false,0,1,"dj_resident_right"],
+        ["at",false,false,false,false,true,false,false,0,1,"mct_seated_mansion_bg"],
+        ["seen",true,false,false,true,true,true,true,1,1,"warehouse_person_full_foot"],
+        ["seen",true,false,false,true,true,false,true,1,0,"unrelated"]]
+    for probeCase in probeCases {
+        probeReads := 0, probeClients := 0, probeLogs := [], probeDpiContext := 43025
+        result := probeCase[1] = "seen" ? TemplateSeen("Earn",probeCase[11],[0,0,0.3,0.1])
+            : TemplateAt("Earn",probeCase[11],392,288)
+        valid := result = probeCase[8] && probeReads = probeCase[9] && probeLogs.Length = probeCase[10]
+            && probeDpiContext = 43025 && probeClients = (probeCase[5] ? 1 : 0)
+        if (probeLogs.Length && probeCase[5]) {
+            valid := valid && InStr(probeLogs[1], "client=320,260,1920,1080")
+                && InStr(probeLogs[1], "image=fixture-images\Earn\1920x1080\" probeCase[11] ".png")
+                && InStr(probeLogs[1], "final=" (probeCase[8] ? 1 : 0))
+            if (probeReads)
+                valid := valid && InStr(probeLogs[1], "dpi_search=-4") && InStr(probeLogs[1], "original=" (probeCase[2] ? 1 : 0))
+                    && InStr(probeLogs[1], probeCase[1] = "seen" ? "roi=320,260,895,367" : "roi=392,288,2239,348")
+        }
+        Check(valid, "Template probe changed search count/origin/return/DPI restoration or reported wrong observations: " A_Index)
+    }
+}
+ProbeIsGTAActive() => probeCase[5] ? 264902 : 0
+ProbeWinGetClientPos(&x,&y,&w,&h,*) {
+    global probeClients
+    probeClients++, x := 320, y := 260, w := 1920, h := 1080
+}
+ProbeFileExist(*) => probeCase[6] ? "A" : ""
+ProbeCoordMode(*) => 0
+ProbeDllCall(name, args*) {
+    global probeDpiContext
+    if (name = "GetThreadDpiAwarenessContext")
+        return probeDpiContext
+    old := probeDpiContext, probeDpiContext := args[2]
+    return old
+}
+ProbeImageSearch(&x,&y,x1,y1,*) {
+    global probeReads
+    probeReads++, x := x1 + (probeReads = 1 && probeCase[4] ? 1 : 0), y := y1
+    return probeReads = 1 ? probeCase[2] : probeCase[3]
+}
+TemplateGainImages(*) => ["gain-image"]
+TemplateGainBackgroundOK(*) => true
+MacroLog(tag, message) {
+    if (tag = "screen-probe") {
+        probeLogs.Push(message)
+        if (probeCase[7])
+            throw Error("Simulated log failure")
+    }
+}
 '@
 
 $info = New-Object Diagnostics.ProcessStartInfo
@@ -160,7 +229,7 @@ try {
     }
     $stdout = $testProcess.StandardOutput.ReadToEnd().Trim()
     $stderr = $testProcess.StandardError.ReadToEnd().Trim()
-    if ($testProcess.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnScreen cases=48 (no game input)') {
+    if ($testProcess.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnScreen cases=58 (no game input)') {
         throw "EarnScreen test failed (exit=$($testProcess.ExitCode))`nstdout: $stdout`nstderr: $stderr"
     }
     Write-Output $stdout
