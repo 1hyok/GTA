@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 [CmdletBinding()]
 param(
     [string]$AhkPath = "$env:LOCALAPPDATA\Programs\AutoHotkey\v2\AutoHotkey64.exe",
@@ -141,13 +141,17 @@ try {
     failWrite := false
     DiscordHUDMCTSet(true)
     failWrite := true
-    try DiscordHUDMCTSet(false)
-    catch {
-    }
+    Check(EarnUIReady("mct_seated"), "confirmed seated screen continues game cleanup despite restore failure")
+    Check(DiscordHUDMCTSet(false), "explicit close continues standing and CEO cleanup despite restore failure")
     Check(!windows[1].visible && gDiscordHUDOwned.Has(1) && !gDiscordHUDMCTOpen, "restore failure retains ownership and closed state")
+    Check(gDiscordHUDError = "HUD 원상복구 미확인", "deferred restoration remains an observable failure")
+    count := logs.Length
+    DiscordHUDVisibilityTick()
+    Check(!windows[1].visible && gDiscordHUDOwned.Has(1) && logs.Length = count, "failed retry preserves ownership without duplicate error log")
     failWrite := false
     DiscordHUDVisibilityTick()
     Check(windows[1].visible && !gDiscordHUDOwned.Has(1), "timer retries restore")
+    Check(gDiscordHUDError = "" && logs.Length = count + 1, "observed restoration clears error and logs completion")
     failRead := true, rejected := false
     try DiscordHUDMCTSet(true)
     catch {
@@ -242,7 +246,7 @@ OnExit(fn) => exits.Push(fn)
 '@
     $driver = $driver.Replace('@PRODUCTION@', $production)
     $production = ''
-    $expected = '^PASS DiscordHUD: 73 cases; no window or game input$'
+    $expected = '^PASS DiscordHUD: 78 cases; no window or game input$'
 }
 $info = New-Object Diagnostics.ProcessStartInfo
 $info.FileName = $AhkPath
