@@ -37,9 +37,12 @@ foreach ($functionName in @('TemplateSeen', 'TemplateAt')) {
 foreach ($functionName in @('TemplateOriginProbe', 'TemplateMaskStats')) {
     $body = [regex]::Match($screenSource, ('(?ms)^' + $functionName + '\([^\r\n]*\) \{.*?^\}')).Value
     if (-not $body) { throw "Missing $functionName" }
-    $definitions += $body.Replace('A_TickCount', 'ProbeClock()').Replace('TemplateOriginPixels(', 'ProbeOriginPixels(') + "`n"
+    $definitions += $body.Replace('A_TickCount', 'ProbeClock()').Replace('TemplateOriginPixels(', 'ProbeOriginPixels(').Replace('TemplateOriginSave(', 'ProbeOriginSave(') + "`n"
 }
 
+foreach ($functionName in @('TemplateOriginSave', 'TemplateBitmapHeader')) {
+    $definitions += [regex]::Match($screenSource, ('(?ms)^' + $functionName + '\([^\r\n]*\) \{.*?^\}')).Value + "`n"
+}
 $nativeBody = [regex]::Match($screenSource, '(?ms)^TemplateOriginPixels\([^\r\n]*\) \{.*?^\}').Value
 $definitions += $nativeBody.Replace('TemplateOriginPixels(', 'FixtureOriginPixels(').Replace('DllCall(', 'OriginDllCall(').Replace('LoadPicture(', 'OriginLoadPicture(') + "`n"
 
@@ -48,6 +51,7 @@ $driver = @'
 #SingleInstance Off
 #NoTrayIcon
 #Warn All, StdOut
+global saveThrows := false
 global nativeStage := "", nativeCalls := [], nativeBits := 0
 global originClock := 100000, originReads := 0, originThrows := false
 global checks := 0, frames := [], reads := 0, presses := 0, allowPress := true
@@ -112,6 +116,7 @@ try {
     ProbeRunTests()
     OriginRunTests()
     OriginNativeTests()
+    OriginBitmapTests()
     FileAppend("PASS EarnScreen cases=" checks " (no game input)`n", "*")
     ExitApp(0)
 } catch as testFailure {
@@ -268,6 +273,36 @@ OriginDllCall(name, args*) {
         return 1
     throw Error("Unexpected native capture API: " name)
 }
+OriginBitmapTests() {
+    global originClock, originThrows, saveThrows
+    header := TemplateBitmapHeader(240,24,23040)
+    Check(header.Size = 54 && NumGet(header,0,"ushort") = 0x4D42 && NumGet(header,2,"uint") = 23094
+        && NumGet(header,10,"uint") = 54 && NumGet(header,14,"uint") = 40, "BMP file and DIB headers")
+    Check(NumGet(header,18,"int") = 240 && NumGet(header,22,"int") = -24
+        && NumGet(header,26,"ushort") = 1 && NumGet(header,28,"ushort") = 32
+        && NumGet(header,30,"uint") = 0 && NumGet(header,34,"uint") = 23040, "top-down uncompressed 32-bit BMP")
+    path := A_Temp "\gta-origin-fixture-" DllCall("GetCurrentProcessId") ".bmp"
+    screen := Buffer(16,0)
+    NumPut("uint",0x00112233,"uint",0x00445566,"uint",0x00778899,"uint",0x00AABBCC,screen)
+    try {
+        TemplateOriginSave(screen,2,2,path)
+        raw := FileRead(path,"RAW")
+        Check(raw.Size = 70 && NumGet(raw,54,"uint") = 0x00112233 && NumGet(raw,66,"uint") = 0x00AABBCC, "exact raw pixel bytes and row order")
+        TemplateOriginSave(Buffer(4,0),1,1,path)
+        Check(FileGetSize(path) = 58, "latest bitmap truncates the previous file")
+    } finally {
+        if (FileExist(path))
+            FileDelete(path)
+    }
+    originClock += 30000, originThrows := false, saveThrows := true
+    result := TemplateOriginProbe("fixture",392,288,110,originClock)
+    Check(InStr(result,"mask=6") && InStr(result,"bmp=error="), "save failure preserves sampled statistics")
+    saveThrows := false
+}
+ProbeOriginSave(*) {
+    if (IsSet(saveThrows) && saveThrows)
+        throw Error("synthetic save failure")
+}
 ProbeClock() => originClock
 ProbeOriginPixels(*) {
     global originReads
@@ -328,7 +363,7 @@ try {
     }
     $stdout = $testProcess.StandardOutput.ReadToEnd().Trim()
     $stderr = $testProcess.StandardError.ReadToEnd().Trim()
-    if ($testProcess.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnScreen cases=68 (no game input)') {
+    if ($testProcess.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnScreen cases=73 (no game input)') {
         throw "EarnScreen test failed (exit=$($testProcess.ExitCode))`nstdout: $stdout`nstderr: $stderr"
     }
     Write-Output $stdout
