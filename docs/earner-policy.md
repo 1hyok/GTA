@@ -53,6 +53,8 @@ CEO 메뉴를 닫은 뒤 MCT 접근 안내가 돌아오는 데 최대 8초를 �
 
 ## Vinewood 금고
 
+세차장(Hands On Car Wash)은 2026-10-15 사용자 요청으로 수거에 포함한다. [금고 한도는 $100,000](https://www.gtaboom.com/money-fronts-guide-eb4f)이며 소유 사업장·보너스에 따라 입금액이 달라지므로 양수 잔액은 매 관측 회수한다. 표의 두 번째 값 $100,000은 실제 하루 수입 추정이 아닌 즉시 수거를 위한 보수적 정책값이다. 기존 금액 재확인과 수거 뒤 빈 금고 확인을 그대로 적용한다.
+
 GTA+의 Vinewood Club 앱은 사업장 금고 수익을 원격 회수하는 기능을 제공한다. 현재 정책은 목록의 모든 금고를 읽고, 다음 입금(게임 하루 48분마다의 최대 입금)이 그 금고 한도를 넘길 수 있는 금고만 회수한다. 한도와 하루 입금은 `EarnSafeLimits()` 표가 정본이다(1004 공략 조사, 불확실한 값은 일찍 회수하는 쪽). [Rockstar의 앱 기능 안내](https://support.rockstargames.com/articles/eUgRHVRSN2V9gimBT32YX/gtav-title-update-1-69-notes-ps5-ps4-xbox-series-x-s-xbox-one-pc)
 
 앱 메인에서 `Claim Business Earnings`를 열면 사업장 목록이 나온다(1004 실측: Nightclub, Arcade, Agency, Salvage Yard, Bail Office, Garment Factory, Hands On Car Wash). 메인과 목록은 모두 `THE VINEWOOD CLUB APP` 제목을 쓰며 행 자체에는 금액이 없다. Down 으로 한 줄씩 내려가며 선택한 행과 같은 사업장의 하단 `Claim $X from your <사업장> safe.` 문장만 금액 근거로 사용하고, 처음 본 행이 다시 선택되면(목록이 맨 위로 돈다) 멈춘다. 긴 이름은 문장이 두 줄로 넘어간다. 다른 사업장 이름, 여러 금액, 손상된 숫자는 수거 근거가 될 수 없다. 표에 없는 사업장은 금액만 남기고 회수하지 않는다.
