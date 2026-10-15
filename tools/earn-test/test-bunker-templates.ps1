@@ -11,6 +11,9 @@ $evidence = Join-Path $root 'tools\earn-test\mct-capture-fixtures'
 $assetDirectory = Join-Path $root 'Images\Earn\1920x1080'
 $core = Get-Content -LiteralPath (Join-Path $root 'Features\Earn\EarnCore.ahk') -Raw
 $cases = 0
+$pageLimitMatch = [regex]::Match($core, 'if \(name = "bunker_page"\)\s+variation := Max\(variation, (\d+)\)')
+if (-not $pageLimitMatch.Success) { throw 'Bunker page tolerance must be applied by EarnSeen before the shared template lookup' }
+$pageLimit = [int]$pageLimitMatch.Groups[1].Value
 . (Join-Path $PSScriptRoot 'compare-png-pixels.ps1')
 
 # Reuse the existing ImageSearch-compatible per-channel/magenta matcher.
@@ -84,8 +87,7 @@ foreach ($name in @('bunker_page', 'bunker_entry', 'bunker_resupply', 'bunker_bu
         $right = [int][Math]::Round(1920 * $ratios[2])
         $bottom = [int][Math]::Round(1080 * $ratios[3])
         $area = New-Object Drawing.Rectangle $left, $top, ($right - $left), ($bottom - $top)
-        # EarnSeen 이 구매 버튼만 오차 100까지 본다(가격에 따라 글자 위치가 1~2px 밀림).
-        $limit = if ($name -eq 'bunker_buy') { 100 } else { 40 }
+        $limit = if ($name -eq 'bunker_buy') { 100 } elseif ($name -eq 'bunker_page') { $pageLimit } else { 60 }
         $pairs = @($samples | ForEach-Object { ,@((Join-Path $evidence $_[0]), ($_.Item(1).Split(',') -contains $name)) })
         foreach ($path in $AdditionalResupplySamplePath) {
             $pairs += ,@([IO.Path]::GetFullPath($path), ($name -in @('bunker_page', 'bunker_resupply', 'bunker_buy')))
@@ -114,7 +116,9 @@ foreach ($name in @('bunker_page', 'bunker_entry', 'bunker_resupply', 'bunker_bu
         foreach ($fixture in @(
             @('bunker-buy-75000.png', 'bunker_buy', 802, 769, 165, 29),
             @('bunker-buy-60000.png', 'bunker_buy', 800, 769, 165, 29),
-            @('bunker-confirm-75000.png', 'bunker_confirm', 700, 463, 519, 31)
+            @('bunker-confirm-75000.png', 'bunker_confirm', 700, 463, 519, 31),
+            # 2026-10-15 12:33:08 Steam frame: unobscured resupply logo after delivery confirmation.
+            @('bunker-page-return-20261015.png', 'bunker_page', 305, 24, 345, 87)
         )) {
             $crop = [Drawing.Bitmap]::FromFile((Join-Path $PSScriptRoot ('mct-template-fixtures\' + $fixture[0])))
             $canvas = New-Object Drawing.Bitmap 1920, 1080
@@ -127,6 +131,9 @@ foreach ($name in @('bunker_page', 'bunker_entry', 'bunker_resupply', 'bunker_bu
                 $x = 0; $y = 0
                 $variation = [EarnNightclubTemplateTest]::MinimumVariation($canvas, $template, $area, [ref]$x, [ref]$y)
                 $expected = $name -eq $fixture[1]
+                if ($name -eq 'bunker_page' -and $fixture[0] -eq 'bunker-page-return-20261015.png' -and $variation -le 60) {
+                    throw 'Live return fixture no longer reproduces the previous page guard miss'
+                }
                 if (($variation -le $limit) -ne $expected -or ($expected -and ($x -ne $fixture[2] -or $y -ne $fixture[3]))) {
                     throw "$name $($fixture[0]) expected=$expected minVariation=$variation at $x,$y"
                 }
