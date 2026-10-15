@@ -127,10 +127,12 @@ EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
     ; 1015 12:33 배송 확인 뒤 녹화의 벙커 로고 차이는 76이었다. 확인창·DJ·MCT는 같은 영역에서 217 이상이다.
     if (name = "bunker_page")
         variation := Max(variation, 80)
-    ; 1015 데스크톱 실측: 재고용 버튼과 보유 직원 얼굴이 40에서 실패하고 55에서 일치했다.
-    if (name = "dj_rebook_10k" || name = "dj_rebook_10k_right"
-        || RegExMatch(name, "^warehouse_staff_[1-5]$"))
+    ; 1015 데스크톱 실측: 재고용 버튼이 40에서 실패하고 55에서 일치했다.
+    if (name = "dj_rebook_10k" || name = "dj_rebook_10k_right")
         variation := Max(variation, 55)
+    ; 1015 13:59 GDI에서 직원2·4·5는 밝기 사본도55에서 실패하고65에서 일치했다.
+    if (RegExMatch(name, "^warehouse_staff_[1-5]$"))
+        variation := Max(variation, 65)
     ; 실제 밝은 전화 홈의 제목 변형. 다른 메뉴의 허용 오차를 넓히지 않는다.
     if (name = "ph_joblist_sel" || name = "ph_vinewood_sel")
         return TemplateSeen("Earn", name, area, &fx, &fy, Max(variation, 70))

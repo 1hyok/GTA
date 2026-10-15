@@ -134,6 +134,14 @@ $liveCases = @(
     @('live-staff-one-20261015.png','warehouse_staff_4',0,0,166,164,$false),
     @('live-staff-one-20261015.png','warehouse_staff_5',0,0,166,164,$false)
 )
+$staffSetting = [regex]::Match($core, '(?s)if \(RegExMatch\(name, "\^warehouse_staff_\[1-5\]\$"\)\)\s+variation := Max\(variation, (?<variation>\d+)\)')
+if (-not $staffSetting.Success) { throw 'Expected the production warehouse staff tolerance.' }
+$staffTolerance = [int]$staffSetting.Groups['variation'].Value
+for ($face = 1; $face -le 5; $face++) {
+    for ($identity = 1; $identity -le 5; $identity++) {
+        $liveCases += ,@("native-staff-$face-20261015.png","warehouse_staff_$identity",0,0,166,164,($face -eq $identity))
+    }
+}
 foreach ($c in $liveCases) {
     $source = [Drawing.Bitmap]::FromFile((Join-Path $evidence $c[0]))
     $template = [Drawing.Bitmap]::FromFile((Join-Path $root ('Images\Earn\1920x1080\'+$c[1]+'.png')))
@@ -153,10 +161,11 @@ foreach ($c in $liveCases) {
         }
         $gainVariation=[EarnNightclubTemplateTest]::MinimumVariation($source,$template,$area,[ref]$x,[ref]$y)
         $variation=[Math]::Min($variation,$gainVariation)
-        if (($variation -le 55) -ne $c[6]) { throw "Live $($c[1]) expected=$($c[6]) variation=$variation" }
+        $limit = if ($c[1] -like 'warehouse_staff_*') { $staffTolerance } else { 55 }
+        if (($variation -le $limit) -ne $c[6]) { throw "Live $($c[0])/$($c[1]) expected=$($c[6]) variation=$variation" }
         if ($c[6] -and $variation -le 40) { throw 'Live fixture no longer reproduces the old miss.' }
         $cases++
-        Write-Output "PASS live $($c[1]) minVariation=$variation"
+        Write-Output "PASS live $($c[0])/$($c[1]) minVariation=$variation"
     } finally { $source.Dispose(); $template.Dispose() }
 }
 # Native GDI button crops: clearing the restored cursor removes hover and occlusion.
