@@ -387,6 +387,57 @@ $bound = [int]$boundMatch.Groups[1].Value
 $textMask = [Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_seated_mansion.png'))
 $bgMask = [Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_seated_mansion_bg.png'))
 try {
+    # Native followup crop: video independently confirms the seated prompt.
+    # The sample is later than ImageSearch, not its internal captured frame.
+    $native = [Drawing.Bitmap]::FromFile((Join-Path $PSScriptRoot 'mct-template-fixtures\mct-seated-native-20261015.bmp'))
+    try {
+        $area = New-Object Drawing.Rectangle 0,0,240,24
+        $x=0; $y=0; $bx=0; $by=0
+        $textDifference = [EarnNightclubTemplateTest]::MinimumVariation($native,$textMask,$area,[ref]$x,[ref]$y)
+        $bgDifference = [EarnNightclubTemplateTest]::MinimumVariation($native,$bgMask,$area,[ref]$bx,[ref]$by)
+        if ($textDifference -gt 60 -or $bgDifference -ne 112 -or $bgDifference -gt $bound -or $x -ne 0 -or $y -ne 0 -or $bx -ne 0 -or $by -ne 0) {
+            throw "Native seated crop rejected: text=$textDifference background=$bgDifference bound=$bound"
+        }
+        $cases++
+        Write-Output "PASS native seated crop text=$textDifference background=$bgDifference bound=$bound; old110 rejects"
+    } finally { $native.Dispose() }
+    $transition = [Drawing.Bitmap]::FromFile((Join-Path $PSScriptRoot 'mct-template-fixtures\mct-seated-transition-20261015.bmp'))
+    try {
+        $area = New-Object Drawing.Rectangle 0,0,240,24
+        $x=0; $y=0; $bx=0; $by=0
+        $textDifference = [EarnNightclubTemplateTest]::MinimumVariation($transition,$textMask,$area,[ref]$x,[ref]$y)
+        $bgDifference = [EarnNightclubTemplateTest]::MinimumVariation($transition,$bgMask,$area,[ref]$bx,[ref]$by)
+        if ($textDifference -le 60 -or $bgDifference -le $bound) { throw 'Transition crop must remain rejected by both masks' }
+        $cases++
+        Write-Output "PASS native transition text=$textDifference background=$bgDifference rejected"
+    } finally { $transition.Dispose() }
+    foreach ($frame in @(74,80,88)) {
+        $skyCapture = [Drawing.Bitmap]::FromFile((Join-Path $PSScriptRoot "mct-template-fixtures\mct-sky-20261003-f$frame.png"))
+        try {
+            $area = New-Object Drawing.Rectangle 0,0,576,108
+            $x=0; $y=0; $bx=0; $by=0
+            $textDifference = [EarnNightclubTemplateTest]::MinimumVariation($skyCapture,$textMask,$area,[ref]$x,[ref]$y)
+            $bgDifference = [EarnNightclubTemplateTest]::MinimumVariation($skyCapture,$bgMask,$area,[ref]$bx,[ref]$by)
+            # Global background minimum rejects every candidate, not only the best text hit.
+            if ($textDifference -gt 60 -or $bgDifference -le $bound) { throw "Historical sky f$frame must reproduce text false positives but reject background across the entire ROI" }
+            $cases++
+            Write-Output "PASS historical sky f$frame text=$textDifference global-background-min=$bgDifference rejected"
+        } finally { $skyCapture.Dispose() }
+    }
+    $sky = New-Object Drawing.Bitmap 576,108
+    $graphics = [Drawing.Graphics]::FromImage($sky)
+    try {
+        $graphics.Clear([Drawing.Color]::FromArgb(239,239,239))
+        $graphics.Dispose(); $graphics = $null
+        $area = New-Object Drawing.Rectangle 0,0,576,108
+        $x=0; $y=0; $bx=0; $by=0
+        $textDifference = [EarnNightclubTemplateTest]::MinimumVariation($sky,$textMask,$area,[ref]$x,[ref]$y)
+        $bgDifference = [EarnNightclubTemplateTest]::MinimumVariation($sky,$bgMask,$area,[ref]$bx,[ref]$by)
+        if ($textDifference -gt 60 -or $bgDifference -le $bound) { throw 'Uniform bright sky must match text but fail background throughout ROI' }
+        $cases++
+        Write-Output "PASS synthetic uniform sky text=$textDifference background=$bgDifference rejected"
+    } finally { if ($null -ne $graphics) { $graphics.Dispose() }; $sky.Dispose() }
+
     foreach ($sample in @(
         @((Join-Path $PSScriptRoot 'mct-template-fixtures\mct-seated-light-line.png'), $true),
         @((Join-Path $PSScriptRoot 'mct-template-fixtures\mct-ceiling-light-no-prompt.png'), $false),

@@ -1,0 +1,68 @@
+[
+  {
+    "file": "mct-sky-20261003-f74.png",
+    "source_video": "GTA-2026-10-03_23-43-22.mkv",
+    "offset_seconds": 74,
+    "source_sha256": "d3540e0cbe6dfac680b479029ddff27a4dc24e8b2f94d328f1e48af99fe7813e",
+    "crop_xywh": [
+      0,
+      0,
+      576,
+      108
+    ],
+    "sha256": "7774da26c6933387dd2913b17d3f412386d57843c7d4be87367c882ee89ac184",
+    "expected": "negative"
+  },
+  {
+    "file": "mct-sky-20261003-f80.png",
+    "source_video": "GTA-2026-10-03_23-43-22.mkv",
+    "offset_seconds": 80,
+    "source_sha256": "f82b348eed920e3b170b3b0f29114cadda1387a3ed1f3726fddc644784136f92",
+    "crop_xywh": [
+      0,
+      0,
+      576,
+      108
+    ],
+    "sha256": "f0199a0213f6d021e6ba90c16bd8d66322603006be3c45f8d886ec2180c966b8",
+    "expected": "negative"
+  },
+  {
+    "file": "mct-sky-20261003-f88.png",
+    "source_video": "GTA-2026-10-03_23-43-22.mkv",
+    "offset_seconds": 88,
+    "source_sha256": "ec6f7cd295d1213ef94055b4ff8f2432ae2223da53e658db63b26ac42ae5f2db",
+    "crop_xywh": [
+      0,
+      0,
+      576,
+      108
+    ],
+    "sha256": "dfada0310d1afcb9a804e5c002e0485d2f3e0be9f188d3fdc2e904c7407d7a48",
+    "expected": "negative"
+  },
+  {
+    "file": "mct-seated-native-20261015.bmp",
+    "source": "origin-stable-173805.bmp",
+    "sha256": "c9f18418ff1a1777297f5412db3df5bc44ddc3cd97d225555e09b99cde0abdde",
+    "crop_screen_xywh": [
+      72,
+      28,
+      240,
+      24
+    ],
+    "evidence_scope": "normal prompt independently confirmed by replay; later GDI sample at 17:38:05 KST, 109ms after original search"
+  },
+  {
+    "file": "mct-seated-transition-20261015.bmp",
+    "source": "origin-native-173034-910.bmp",
+    "sha256": "0c93d0527eaad70f3e3e42c5d0aae27d75a88cdb09c0faa31b8c6f6b6775142a",
+    "crop_screen_xywh": [
+      72,
+      28,
+      240,
+      24
+    ],
+    "evidence_scope": "cleanup transition; not a stable positive; later GDI sample at 17:30:34 KST"
+  }
+]
