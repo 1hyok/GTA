@@ -1,0 +1,11 @@
+unix_epoch	local_time	cash_delta	direction	transaction	source	evidence
+1792022700	2026-10-15 09:05:00	250000	income	safe_nightclub	Nightclub	금고 수거 완료 표본
+1792022820	2026-10-15 09:07:00	-10000	expense	dj_rebook	Nightclub	DJ 재고용 완료 표본
+1792023300	2026-10-15 09:15:00	-60000	expense	bunker_supply	Bunker	보급 구매 완료 표본
+1792026600	2026-10-15 10:10:00	-7500	expense	warehouse_north	Warehouse North	창고 조달 완료 표본
+1792026660	2026-10-15 10:11:00	-7500	expense	warehouse_south	Warehouse South	창고 조달 완료 표본
+1792033500	2026-10-15 12:05:00	50000	income	safe_nightclub	Nightclub	금고 수거 완료 표본
+1792037400	2026-10-15 13:10:00	30000	income	safe_bail	Bail Office	금고 수거 완료 표본
+1792037400	2026-10-15 13:10:00	30000	income	safe_bail	Bail Office	금고 수거 완료 표본
+1792040400	2026-10-15 14:00:00	-7500	income	bad_direction	Warehouse	부호 불일치 표본
+1792040460	2026-10-15 14:01
