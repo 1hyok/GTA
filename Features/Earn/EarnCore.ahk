@@ -1344,7 +1344,7 @@ EarnBarFill(x1, x2, y, kind) {
             c := PixelGetColor(px, py)
             r := (c >> 16) & 0xFF, g := (c >> 8) & 0xFF, b := c & 0xFF
             if (kind = "green")
-                hit := g > 100 && g > r + 30
+                hit := g > 100 && g > r + 30 && g > b + 30
             else if (kind = "blue")
                 hit := b > 110 && b > r + 30 && b > g + 30
             else if (kind = "orange")

@@ -5,16 +5,24 @@ No desktop reads, windows, input, Main.ahk execution, or game processes.
 The full fixture is the (653,367,940,33) Supplies Level region from the
 2026-10-12 23:57:44 KST Steam recording (timed-21.png). It contains no account UI.
 The label is its (11,1,192,30) text crop, retaining only min(R,G,B) >= 200 pixels.
+-LegacyGreenMutation deliberately restores the old predicate in the extracted
+driver only; the observed green regression must fail with exit code 1.
 #>
 [CmdletBinding()]
 param(
-    [string]$AhkPath = "$env:LOCALAPPDATA\Programs\AutoHotkey\v2\AutoHotkey64.exe"
+    [string]$AhkPath = "$env:LOCALAPPDATA\Programs\AutoHotkey\v2\AutoHotkey64.exe",
+    [switch]$LegacyGreenMutation
 )
 
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $tasks = Get-Content -LiteralPath (Join-Path $root 'Features\Earn\EarnTasks.ahk') -Raw -Encoding UTF8
 $core = Get-Content -LiteralPath (Join-Path $root 'Features\Earn\EarnCore.ahk') -Raw -Encoding UTF8
+if ($LegacyGreenMutation) {
+    $fixedPredicate = 'hit := g > 100 && g > r + 30 && g > b + 30'
+    if (-not $core.Contains($fixedPredicate)) { throw 'Green mutation requires the production fix' }
+    $core = $core.Replace($fixedPredicate, 'hit := g > 100 && g > r + 30')
+}
 $fixtureDirectory = Join-Path $PSScriptRoot 'test-earntasks-fixtures'
 $captureDirectory = Join-Path $PSScriptRoot 'mct-capture-fixtures'
 if (-not (Test-Path -LiteralPath $AhkPath -PathType Leaf)) { throw "AutoHotkey executable not found: $AhkPath" }
@@ -87,6 +95,7 @@ try {
 } finally { $full.Dispose(); $partial.Dispose(); $label.Dispose() }
 
 $barColors = Get-Content (Join-Path $fixtureDirectory 'bunker-bar-colors.json') -Raw | ConvertFrom-Json
+if ($barColors.observedGreen.Count -ne 130) { throw 'Expected all 130 observed stock samples' }
 if ($barColors.emptyBlue.Count -ne 130) { throw 'Expected all 130 observed empty-bar samples' }
 
 $driver = @'
@@ -139,7 +148,17 @@ barCases := [
     ["observed-dark-empty","blue",577,0x2B455E,0],
     ["mixed-bright-empty","blue",577,[],18/130],
     ["observed-green-fill","green",555,0x3BC07B,1],
-    ["observed-green-empty","green",555,0x29514D,0]]
+    ["observed-green-empty","green",555,0x29514D,0],
+    ["observed-green-two-thirds","green",555,[__OBSERVED_GREEN__],88/130],
+    ["observed-green-bright-empty","green",555,0x3A6661,0],
+    ["observed-green-bright-empty-second","green",555,0x3A6663,0],
+    ["observed-green-fill-latest","green",555,0x3EC07F,1],
+    ["observed-green-fill-earlier","green",555,0x3CC07C,1],
+    ["observed-green-fill-1558","green",555,0x3EC080,1],
+    ["observed-green-empty-1558","green",555,0x37635E,0],
+    ["observed-green-empty-1558-second","green",555,0x35615C,0],
+    ["blue-fill-not-green","green",555,0x4088C4,0],
+    ["green-fill-not-blue","blue",577,0x3EC07F,0]]
 for scenario in barCases {
     barScenario := scenario, diagnosticLogs := [], pixelReads := 0, fixtureFocused := true
     diagnosticThrow := false
@@ -220,6 +239,7 @@ FixtureFailure(failure, *) {
     ExitApp(1)
 }
 '@
+$driver = $driver.Replace('__OBSERVED_GREEN__', (($barColors.observedGreen | ForEach-Object { '0x' + $_ }) -join ','))
 $driver = $driver.Replace('__EMPTY_BLUE__', (($barColors.emptyBlue | ForEach-Object { '0x' + $_ }) -join ','))
 $driver = $driver.Replace('__FULL_PIXELS__', ($fullPixels -join ',')).Replace('__PARTIAL_PIXELS__', ($partialPixels -join ','))
 $driver += "`n" + (Get-BunkerSourceFunction $tasks 'EarnBunkerPageSupply')
@@ -248,12 +268,12 @@ try {
     }
     $stdout = $testProcess.StandardOutput.ReadToEnd().Trim()
     $stderr = $testProcess.StandardError.ReadToEnd().Trim()
-    if ($testProcess.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS BunkerSupplyReader cases=25') {
+    if ($testProcess.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS BunkerSupplyReader cases=35') {
         throw "Bunker supply reader failed (exit=$($testProcess.ExitCode))`nstdout: $stdout`nstderr: $stderr"
     }
     Write-Output "PASS BunkerSupplyTemplate cases=$templateCases"
     Write-Output $stdout
-    Write-Output "PASS BunkerSupply cases=$($templateCases+25)"
+    Write-Output "PASS BunkerSupply cases=$($templateCases+35)"
 } finally {
     if ($null -ne $testProcess) {
         if (-not $testProcess.HasExited) { $testProcess.Kill(); $testProcess.WaitForExit() }
