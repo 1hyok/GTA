@@ -10,6 +10,8 @@ if (-not [IO.Directory]::Exists($target)) { throw 'OutputDir must already exist.
 $fixtures = Join-Path $PSScriptRoot 'mct-template-fixtures'
 # Rectangles refer to the observed 1920x1080 screenshots, never inferred UI.
 $items = @(
+ @('terrorbyte-native-20261016','mct_terrorbyte_access_native',40,172,392,28),
+ @('terrorbyte-ceo-native-20261016','mct_terrorbyte_ceo_native',40,25,275,58),
  @('mansion-mct-return2','mct_bunker_card',830,228,260,26),
  @('mansion-mct-return2','mct_nightclub_card',470,228,106,25),
  @('mct-bunker-card-hdr-20261008','mct_bunker_card_hdr',0,0,260,26),
@@ -60,6 +62,22 @@ foreach ($item in $items) {
   $rect = New-Object Drawing.Rectangle ([int]$item[2]),([int]$item[3]),([int]$item[4]),([int]$item[5])
   $crop = $source.Clone($rect, $source.PixelFormat)
   try {
+  if ($item[1] -in @('mct_terrorbyte_access_native','mct_terrorbyte_ceo_native')) {
+   $background = $crop.Clone((New-Object Drawing.Rectangle 0,0,$crop.Width,$crop.Height),$crop.PixelFormat)
+   try {
+    for ($y=0; $y -lt $crop.Height; $y++) {
+     for ($x=0; $x -lt $crop.Width; $x++) {
+      $c=$crop.GetPixel($x,$y)
+      $crop.SetPixel($x,$y,$(if ([Math]::Min($c.R,[Math]::Min($c.G,$c.B)) -ge 220) { $c } else { [Drawing.Color]::Magenta }))
+      if ($y -ne 0 -and $y -lt $crop.Height-2) { $background.SetPixel($x,$y,[Drawing.Color]::Magenta) }
+     }
+    }
+    $crop.Save((Join-Path $target ($item[1]+'.png')),[Drawing.Imaging.ImageFormat]::Png)
+    $background.Save((Join-Path $target ($item[1]+'_bg.png')),[Drawing.Imaging.ImageFormat]::Png)
+    $saved += 2
+   } finally { $background.Dispose() }
+   continue
+  }
   if ($item[1] -in @('mct_bunker_card_hdr','mct_nightclub_card_hdr')) {
    $background=$crop.Clone((New-Object Drawing.Rectangle 0,0,$crop.Width,$crop.Height),$crop.PixelFormat)
    $legacy=[Drawing.Bitmap]::FromFile((Join-Path $PSScriptRoot ('..\..\Images\Earn\1920x1080\'+$item[1].Replace('_hdr','')+'.png')))

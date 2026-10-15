@@ -614,7 +614,7 @@ EarnUIBackToMCT(guard,presses) {
         endScene := "mct_title"
     return true
 }
-EarnMCTClose(requireChairPrompt := true) {
+EarnMCTClose(requireChairPrompt := true, &terminalKind := "") {
     global endScene, endFailure, endOrder
     if (requireChairPrompt)
         throw Error("CEO retirement must not wait to reacquire the chair prompt")
@@ -626,6 +626,7 @@ EarnMCTClose(requireChairPrompt := true) {
     if (endFailure = "close")
         return EarnFail("cleanup close failed")
     endScene := "mct_standing"
+    terminalKind := endFailure = "terrorbyte" ? "terrorbyte" : "chair"
     return true
 }
 EarnCEO(on) {
@@ -641,7 +642,7 @@ EarnCEO(on) {
             throw Error("registration exception")
         return true
     }
-    if (endScene != "mct_sit" && endScene != "mct_standing")
+    if (endScene != "mct_sit" && endScene != "mct_standing" && endScene != "mct_terrorbyte")
         throw Error("Retire attempted before returning to confirmed standing state")
     endOrder .= "-"
     if (endFailure = "retire")
@@ -649,8 +650,13 @@ EarnCEO(on) {
     endBoss := false
     return true
 }
-EarnMCTFindChairPrompt() {
+EarnTerrorbyteMCTReady() => !endBoss
+EarnMCTReturnReady(terminalKind) {
     global endScene, endBoss
+    if (terminalKind = "terrorbyte")
+        return EarnTerrorbyteMCTReady()
+    if (terminalKind != "chair")
+        throw Error("Unknown return kind")
     if (endBoss || endScene != "mct_standing")
         throw Error("Chair alignment must follow CEO retirement")
     endScene := "mct_sit"
@@ -697,7 +703,10 @@ cases := [
  ["mct_title","close",false,"",false,"C"],
  ["mct_title","",false,"",true,"C-"],
  ["mct_sit","retire",false,"original",false,"-"],
- ["mct_title","close_error",false,"original",false,"C"]
+ ["mct_title","close_error",false,"original",false,"C"],
+ ["mct_terrorbyte","",false,"original",true,"-"],
+ ["mct_terrorbyte","retire",false,"original",false,"-"],
+ ["mct_title","terrorbyte",false,"original",true,"C-"]
 ]
 for c in cases {
     endScene := c[1], endFailure := c[2], endAbort := c[3], gEarnFail := c[4], endOrder := "", endLogs := [], endBoss := true
@@ -709,11 +718,11 @@ for c in cases {
     if (c[4] = "" && ((!result && gEarnFail = "") || (result && gEarnFail != "")))
         throw Error("Cleanup must retain its own failure only when no prior failure exists")
 }
-FileAppend("PASS MCTEnd cases=32`n", "*")
+FileAppend("PASS MCTEnd cases=35`n", "*")
 ExitApp(0)
 '@
     $mctEndDriver += "`n" + $mctCleanupSupport
-    Invoke-EarnOfflineCheck 'MCTEnd' 'EarnTaskMCTEnd' $mctEndDriver 32
+    Invoke-EarnOfflineCheck 'MCTEnd' 'EarnTaskMCTEnd' $mctEndDriver 35
     $deadlineDriver = @'
 global endScene := "unknown", endFailure := "", endOrder := "", endAbort := false, endBoss := true, gEarnFail := "original", endLogs := []
 global clockMs := 0, reads := 0, abortRead := 0, foundRead := 0
@@ -2212,6 +2221,9 @@ EarnFail(*) => false
 '@
     $openWaitBody = (Get-EarnFunctionBody $sourceText 'EarnWaitSeen').Replace('EarnWaitSeen(', 'FixtureOpenWaitSeen(').Replace('A_TickCount', 'OpenClock()')
     $mctOpenDriver += "`nEarnLog(*) => true`n" + $openWaitBody + "`n" + (Get-EarnFunctionBody $sourceText 'EarnSleep').Replace('A_TickCount', 'OpenClock()')
+    foreach ($fn in @('EarnChairMCTOpen','EarnTerrorbyteMCTOpen')) {
+        $mctOpenDriver += "`n" + (Get-EarnFunctionBody $sourceText $fn)
+    }
     Invoke-EarnOfflineCheck 'MCTOpen' 'EarnMCTOpen' $mctOpenDriver 11
     $mctCloseDriver = @'
 global EARN_PROMPT_AREA := [], config := Map("Settings",Map("EarnTurnUnitsPerDeg",29))
@@ -2271,11 +2283,11 @@ for scenario in cases {
             throw Error("Recovery must turn 180 degrees first, then calibrated quarter-turns")
     if (backspaces > 1 || (scenario[1] = "seated" && seatedWaits))
         throw Error("A known seated state needs no close key; a transition must never resend it")
-    if (scenario[1] = "delayed-seated" && (seatedWaits != 1 || seatedReads < 7 || seatedAt != 1200))
+    if (scenario[1] = "delayed-seated" && (seatedReads < 7 || seatedAt != 1200))
         throw Error("A prompt absent at 900ms must be allowed to arrive later without resending Backspace")
-    if (scenario[1] = "close-timeout" && (seatedWaits != 1 || closeClockMs != 20000))
+    if (scenario[1] = "close-timeout" && (closeClockMs != 20000))
         throw Error("Close transition must stop at its single 20-second deadline")
-    if (scenario[1] = "abort-transition" && (seatedWaits != 1 || closeClockMs != 400))
+    if (scenario[1] = "abort-transition" && (closeClockMs != 400))
         throw Error("User input during the transition must stop before any stand/camera input")
     if (result && !FixtureCEOEntryReady())
         throw Error("Close allowed CEO menu entry before the stand animation finished")
@@ -2407,7 +2419,121 @@ EarnLog(*) => true
     $mctCloseDriver += "`n" + $closeWaitBody + "`n" + (Get-EarnFunctionBody $sourceText 'EarnSleep').Replace('A_TickCount', 'CloseClock()')
     $mctCloseDriver += "`n" + (Get-EarnFunctionBody $sourceText 'EarnWaitCallEnd')
     $mctCloseDriver += "`n" + (Get-EarnFunctionBody $sourceText 'EarnMCTFindChairPrompt')
+    foreach ($fn in @('EarnMCTClosedKind','EarnMCTWaitClosed','EarnChairMCTClose','EarnTerrorbyteMCTClose')) {
+        $mctCloseDriver += "`n" + (Get-EarnFunctionBody $sourceText $fn).Replace('A_TickCount', 'CloseClock()')
+    }
     Invoke-EarnOfflineCheck 'MCTClose' 'EarnMCTClose' $mctCloseDriver 26
+    $terrorbyteDriver = @'
+global EARN_PROMPT_AREA := [], scene := "", now := 0, stopped := false, inputs := "", swallow := 0,
+    delayMs := 0, changedAt := 0, overlap := false, abortAt := -1
+cases := ["roundtrip", "already-open", "swallowed-space", "overlap", "delayed-close", "timeout", "abort-close", "missing-return", "unknown", "abort-settle"]
+for name in cases {
+    scene := name = "already-open" ? "mct_title" : name = "unknown" ? "unknown" : "mct_terrorbyte"
+    now := 0, stopped := false, inputs := "", swallow := name = "swallowed-space" ? 1 : 0,
+        delayMs := name = "delayed-close" ? 1200 : name = "timeout" ? 21000 : 0,
+        changedAt := 0, overlap := name = "overlap", abortAt := -1
+    fixtureHudHidden := false
+    observedKind := "chair"
+    if (name = "unknown") {
+        if (EarnMCTClose(false, &observedKind) || observedKind != "" || inputs != "")
+            throw Error("Unknown screen reused an old observedKind or sent input")
+        continue
+    }
+    if (name = "abort-settle")
+        abortAt := 400
+    observedOpen := EarnMCTOpen()
+    if (name = "abort-settle") {
+        if (observedOpen || inputs != "Space;")
+            throw Error("Open settle ignored interruption")
+        continue
+    }
+    if (!observedOpen || !fixtureHudHidden)
+        throw Error("Terrorbyte did not open the guarded terminal: " name)
+    if (name = "abort-close")
+        abortAt := now + 400, delayMs := 1200
+    closedAt := now
+    observedClose := EarnMCTClose(false, &observedKind)
+    if (name = "timeout" || name = "abort-close") {
+        if (observedClose || observedKind != "" || (name = "timeout" && now - closedAt != 20000))
+            throw Error("Unconfirmed close returned a observedKind or exceeded deadline: " name)
+        continue
+    }
+    if (!observedClose || observedKind != "terrorbyte" || fixtureHudHidden || now - closedAt != delayMs)
+        throw Error("Close did not recognize standing Terrorbyte immediately: " name)
+    missing := name = "missing-return", beforeReady := inputs
+    if (missing)
+        scene := "unknown"
+    if (EarnMCTReturnReady(observedKind) = missing || inputs != beforeReady)
+        throw Error("Return must verify Terrorbyte without movement: " name)
+    if (name = "roundtrip") {
+        if (!EarnMCTOpen() || !EarnMCTClose(true, &observedKind) || observedKind != "terrorbyte"
+            || inputs != "Space;Backspace;Space;Backspace;")
+            throw Error("Same-position reentry failed")
+    }
+}
+if (EarnMCTReturnReady(""))
+    throw Error("Unknown return observedKind accepted")
+scene := "mct_terrorbyte", now := 0, stopped := false, inputs := "", swallow := 0,
+    delayMs := 0, changedAt := 0, overlap := false, abortAt := -1
+if (!TerrorbytePlaceSmoke() || inputs != "Space;Backspace;Space;Backspace;"
+    || gEarnBusy || gEarnGuardArmed || fixtureHudHidden)
+    throw Error("Place-only smoke must run two independent cycles and release its guard")
+FileAppend("PASS TerrorbyteMCT cases=12`n", "*")
+ExitApp(0)
+EarnSeen(name,*) {
+    global scene
+    if (scene = "closing" && now - changedAt >= delayMs)
+        scene := "mct_terrorbyte"
+    return name = scene || (overlap && scene = "mct_terrorbyte" && name = "mct_seated")
+}
+EarnPress(key) {
+    global scene, inputs, swallow, changedAt
+    if (stopped)
+        return false
+    if (key = "Space" && scene = "mct_terrorbyte") {
+        if (!fixtureHudHidden)
+            throw Error("Space sent before HUD guard")
+        if (swallow)
+            swallow--
+        else
+            scene := "mct_title"
+    } else if (key = "Backspace" && scene = "mct_title")
+        scene := "closing", changedAt := now
+    else
+        throw Error("Unexpected Terrorbyte input: " key " from " scene)
+    inputs .= key ";"
+    return true
+}
+EarnAborted() => stopped
+TerrorbyteClock() => now
+Sleep(ms) {
+    global now, stopped
+    now += ms
+    if (abortAt >= 0 && now >= abortAt)
+        stopped := true
+}
+EarnChairMCTOpen() {
+    throw Error("Terrorbyte routed through chair open")
+}
+EarnChairMCTClose(*) {
+    throw Error("Terrorbyte routed through chair close")
+}
+EarnMCTFindChairPrompt() {
+    throw Error("Terrorbyte searched for a chair")
+}
+EarnFail(*) => false
+EarnLog(*) => true
+DiscordHUDMCTStop() {
+    global fixtureHudHidden := false
+}
+'@
+    foreach ($fn in @('EarnMCTOpen','EarnTerrorbyteMCTOpen','EarnMCTClosedKind','EarnMCTWaitClosed',
+        'EarnTerrorbyteMCTClose','EarnTerrorbyteMCTReady','EarnMCTReturnReady','EarnWaitSeen','EarnSleep')) {
+        $terrorbyteDriver += "`n" + (Get-EarnFunctionBody $sourceText $fn).Replace('A_TickCount', 'TerrorbyteClock()')
+    }
+    $harnessText = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'earntest.ahk'))
+    $terrorbyteDriver += "`n" + (Get-EarnFunctionBody $harnessText 'TerrorbytePlaceSmoke')
+    Invoke-EarnOfflineCheck 'TerrorbyteMCT' 'EarnMCTClose' $terrorbyteDriver 12
     $turnGuardDriver = @'
 global turnLogs := [], logThrows := false
 global turnCase := [], moves := 0, movedX := 0, movedY := 0, turnMs := 0, menuChecks := 0, menuAbort := false

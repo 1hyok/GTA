@@ -55,7 +55,7 @@ if (!A_Args.Length) {
 fn := A_Args[1], arg := A_Args.Length > 1 ? A_Args[2] : "", arg2 := A_Args.Length > 2 ? A_Args[3] : "", arg3 := A_Args.Length > 3 ? A_Args[4] : ""
 global gTestIdleMs := 8000
 t0 := A_TickCount
-if (fn != "PhoneStatus" && fn != "MCTStatus" && fn != "Idle" && fn != "Status" && fn != "SessionInfo" && fn != "BlipInfo" && fn != "NavInfo" && fn != "EarnSpawnRoute" && !EarnTestPrepare()) {
+if (fn != "TerrorbyteStatus" && fn != "PhoneStatus" && fn != "MCTStatus" && fn != "Idle" && fn != "Status" && fn != "SessionInfo" && fn != "BlipInfo" && fn != "NavInfo" && fn != "EarnSpawnRoute" && !EarnTestPrepare()) {
     FileAppend(fn " = not started fail=" gEarnFail "`n", "*", "UTF-8")
     ExitApp(3)
 }
@@ -93,6 +93,107 @@ MCTStatus() {
         . " bunkerCard=" EarnSeen("mct_bunker_card") " nightclubCard=" EarnSeen("mct_nightclub_card")
         . " popularity=" EarnPopularityMCTPct()
         . " stock=" EarnBarFill(766,1154,555,"green") " supply=" EarnBarFill(766,1154,577,"blue")
+}
+
+TerrorbyteStatus() {
+    global gImageRoot
+    area := [0,0,0.3,0.25]
+    hwnd := IsGTAActive()
+    detail := "active=" (!!hwnd) " root=" gImageRoot
+    if (!hwnd)
+        return detail
+    previous := DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
+    try {
+        WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
+        detail .= " client=" cx "," cy "," cw "," ch
+        CoordMode("Pixel", "Screen")
+        for name in ["mct_terrorbyte", "mct_terrorbyte_reg", "mct_terrorbyte_ceo", "mct_terrorbyte_access_native", "mct_terrorbyte_ceo_native"] {
+            path := gImageRoot "\Earn\" cw "x" ch "\" name ".png"
+            exists := !!FileExist(path), px := -1, py := -1
+            detail .= " " name "_exists=" exists
+            if (!exists)
+                continue
+            try {
+                tolerance := InStr(name, "_native") ? 40 : 60
+                raw := ImageSearch(&px, &py, cx, cy, cx+Round(cw*0.3)-1, cy+Round(ch*0.25)-1,
+                    "*" tolerance " *Trans0xFF00FF " path)
+                detail .= " raw=" raw " xy=" px "," py " variation=" tolerance
+                if (raw && InStr(name, "_native"))
+                    detail .= " background=" TemplateAt("Earn", name "_bg", px, py, 60)
+            } catch as err {
+                detail .= " error=" err.Message
+            }
+        }
+    } finally {
+        DllCall("SetThreadDpiAwarenessContext", "ptr", previous, "ptr")
+    }
+    return detail " terrorbyte=" EarnSeen("mct_terrorbyte", area)
+        . " access=" TemplateSeen("Earn", "mct_terrorbyte", area, , , 60)
+        . " register=" TemplateSeen("Earn", "mct_terrorbyte_reg", area, , , 60)
+        . " ceo=" TemplateSeen("Earn", "mct_terrorbyte_ceo", area, , , 60)
+        . " title=" EarnSeen("mct_title", [0.3,0,0.7,0.1])
+}
+
+; 장소 경로만 두 번 확인한다. 사업장·CEO·공통 정리는 이 시험에 포함하지 않는다.
+TerrorbytePlaceSmoke() {
+    global gEarnBusy, gEarnGuardArmed
+    gEarnBusy := true, gEarnGuardArmed := true
+    try {
+        if (!EarnSeen("mct_terrorbyte"))
+            return EarnFail("테러바이트 장소 시험: 전용 접근 안내에서 시작해야 함")
+        Loop 2 {
+            opened := false, closed := false
+            try {
+                opened := EarnTerrorbyteMCTOpen()
+            } finally {
+                closed := EarnTerrorbyteMCTClose()
+            }
+            if (!opened || !closed || !EarnTerrorbyteMCTReady())
+                return false
+            EarnLog("테러바이트 장소 시험: " A_Index "/2 열기·닫기·제자리 안내 확인")
+        }
+        return true
+    } finally {
+        gEarnBusy := false, gEarnGuardArmed := false
+        DiscordHUDMCTStop()
+    }
+}
+
+; 공통 CEO 경로를 포함하는 확장 시험. 장소 전용 작업의 완료 조건에서는 제외한다.
+TerrorbyteCycleSmoke() {
+    global gEarnBusy, gEarnGuardArmed
+    gEarnBusy := true, gEarnGuardArmed := true
+    try {
+        return TerrorbyteCycleRun()
+    } finally {
+        gEarnBusy := false, gEarnGuardArmed := false
+        DiscordHUDMCTStop()
+    }
+}
+
+TerrorbyteCycleRun() {
+    if (!EarnSeen("mct_terrorbyte"))
+        return EarnFail("테러바이트 시험: 전용 접근 안내에서 시작해야 함")
+    opened := false, ended := false
+    try {
+        opened := EarnMCTOpen() && EarnMCTRefresh()
+        if (opened)
+            EarnLog("테러바이트 시험: Nightclub Home 조회 왕복 완료")
+    } finally {
+        ended := EarnTaskMCTEnd()
+    }
+    if (!opened || !ended || !EarnTerrorbyteMCTReady())
+        return false
+    EarnLog("테러바이트 시험: 첫 종료·CEO 해제·제자리 안내 확인")
+    try {
+        opened := EarnMCTOpen()
+    } finally {
+        ended := EarnTaskMCTEnd()
+    }
+    if (!opened || !ended || !EarnTerrorbyteMCTReady())
+        return false
+    EarnLog("테러바이트 시험: 제자리 재진입·종료 완료")
+    return true
 }
 
 PhoneStatus() {
