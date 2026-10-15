@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 <#
 Read saved pixels only. The fixtures are the 876x264 goods grid cropped at
 (728,548), so account names, staff portraits and desktop notifications are absent.
