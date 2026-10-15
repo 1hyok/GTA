@@ -62,7 +62,7 @@ try {
     RunCargoTests()
     RunMenuTests()
     RunFixtureTests()
-    } catch as testError {
+} catch as testError {
     FileAppend(testError.Message " at line " testError.Line "`n" testError.Stack, "*")
     ExitApp(1)
 }
