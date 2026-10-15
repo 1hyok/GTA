@@ -125,4 +125,38 @@ foreach ($name in @('nc_dj_menu', 'nc_home')) {
     }
     finally { $template.Dispose() }
 }
+$liveCases = @(
+    @('live-dj-buttons-20261015.png','dj_rebook_10k',0,0,429,86,$true),
+    @('live-dj-buttons-20261015.png','dj_rebook_10k_right',443,0,432,86,$false),
+    @('live-staff-one-20261015.png','warehouse_staff_1',0,0,166,164,$true),
+    @('live-staff-one-20261015.png','warehouse_staff_2',0,0,166,164,$false),
+    @('live-staff-one-20261015.png','warehouse_staff_3',0,0,166,164,$false),
+    @('live-staff-one-20261015.png','warehouse_staff_4',0,0,166,164,$false),
+    @('live-staff-one-20261015.png','warehouse_staff_5',0,0,166,164,$false)
+)
+foreach ($c in $liveCases) {
+    $source = [Drawing.Bitmap]::FromFile((Join-Path $evidence $c[0]))
+    $template = [Drawing.Bitmap]::FromFile((Join-Path $root ('Images\Earn\1920x1080\'+$c[1]+'.png')))
+    try {
+        $x=0; $y=0
+        $area = New-Object Drawing.Rectangle $c[2],$c[3],$c[4],$c[5]
+        $variation = [EarnNightclubTemplateTest]::MinimumVariation($source,$template,$area,[ref]$x,[ref]$y)
+        for ($ty=0; $ty -lt $template.Height; $ty++) {
+            for ($tx=0; $tx -lt $template.Width; $tx++) {
+                $pixel=$template.GetPixel($tx,$ty)
+                if ($pixel.R -eq 255 -and $pixel.G -eq 0 -and $pixel.B -eq 255) { continue }
+                $template.SetPixel($tx,$ty,[Drawing.Color]::FromArgb(
+                    [Math]::Min(255,[Math]::Round($pixel.R*1.55)),
+                    [Math]::Min(255,[Math]::Round($pixel.G*1.55)),
+                    [Math]::Min(255,[Math]::Round($pixel.B*1.55))))
+            }
+        }
+        $gainVariation=[EarnNightclubTemplateTest]::MinimumVariation($source,$template,$area,[ref]$x,[ref]$y)
+        $variation=[Math]::Min($variation,$gainVariation)
+        if (($variation -le 55) -ne $c[6]) { throw "Live $($c[1]) expected=$($c[6]) variation=$variation" }
+        if ($c[6] -and $variation -le 40) { throw 'Live fixture no longer reproduces the old miss.' }
+        $cases++
+        Write-Output "PASS live $($c[1]) minVariation=$variation"
+    } finally { $source.Dispose(); $template.Dispose() }
+}
 Write-Output "PASS NightclubTemplates cases=$cases (no game input or windows)"
