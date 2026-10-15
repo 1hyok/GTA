@@ -6,7 +6,6 @@ $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $fixture = Join-Path ([IO.Path]::GetTempPath()) ('gta-mode-test-' + [guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $fixture
 $script:MacroConfig = Join-Path $fixture 'Config.ini'
-$script:StatePath = Join-Path $fixture 'state.json'
 $script:Config = Join-Path $fixture 'config.json'
 $script:Log = Join-Path $fixture 'watch.log'
 $script:AwaySignalPath = Join-Path $fixture 'away-want'
@@ -38,35 +37,14 @@ function Start-Sleep {
     if ($Milliseconds -eq 1200 -and $script:afterModeWait) { & $script:afterModeWait; $script:afterModeWait = $null }
 }
 try {
-    foreach ($mode in @(0,1,2)) {
-        $initial = New-ModeState
-        $on = Get-ModePlan $initial $true $true $mode
-        Check ($on.Target -eq 2 -and $on.Before.AwayActive -and $on.Before.RestoreMode -eq $mode) "capture $mode before Silent"
-        Check (-not $initial.AwayActive) 'plan does not mutate input state'
-        Save-ModeState $script:StatePath $on.Before
-        $restarted = Read-ModeState $script:StatePath
-        $again = Get-ModePlan $restarted $true $true 2
-        Check ($again.Before.RestoreMode -eq $mode) 'restart/repeated ON cannot overwrite restore mode'
-        $off = Get-ModePlan $again.Before $false $true 2
-        Check ($off.Before.AwayActive -and -not $off.After.AwayActive -and $off.Target -eq $mode) 'restore remains pending until applied'
-        $normal = Get-ModePlan $off.After $false $true $mode
-        Check ($normal.Target -eq $mode) 'normal watcher does not overwrite restored mode with Turbo'
-        $exit = Get-ModePlan $normal.After $false $false $mode
-        Check ($exit.Target -eq 2) 'game exit retains Silent policy'
-        Check ((Get-ModePlan $exit.After $false $true 2).Target -eq 1) 'next game start uses original Turbo default'
-    }
-    Check ($null -eq (Get-ModePlan (New-ModeState) $false $false 0).Target) 'no game and no transition means no mode request'
-    Check ((Get-ModePlan (New-ModeState) $true $false 1).Target -eq 2) 'away without game is Silent too'
-    Throws { Get-ModePlan (New-ModeState) $true $true 3 } 'unsupported custom mode is not overwritten'
+    Check ((Get-WantedGameMode $true) -eq 1) 'running GTA requires Turbo'
+    Check ((Get-WantedGameMode $false) -eq 2) 'absent GTA requires Silent even on watcher startup'
     Set-FixtureAway '1'; Check (Read-AwayMode $script:MacroConfig) 'ON parses'
     Set-FixtureAway '0'; Check (-not (Read-AwayMode $script:MacroConfig)) 'OFF parses'
     foreach ($text in @('[Settings]', "[Other]`nAwayMode=1", "[Settings]`nAwayMode=1`nAwayMode=0", "[Settings]`nAwayMode=garbage")) {
         [IO.File]::WriteAllText($script:MacroConfig, $text)
         Throws { Read-AwayMode $script:MacroConfig } 'ambiguous/truncated config fails closed'
     }
-    [IO.File]::WriteAllText($script:StatePath, '{}')
-    Throws { Read-ModeState $script:StatePath } 'bad restore state is preserved'
-    Check ([IO.File]::ReadAllText($script:StatePath) -eq '{}') 'corrupt state is not overwritten'
     Check (Test-ModeApplied 'new Mode = 2 : OK' 2) 'ACPI success accepted'
     Check (-not (Test-ModeApplied 'Mode = 2 : Failed' 2)) 'ACPI failure rejected'
     Check (-not (Test-ModeApplied "Mode = 2 : OK`nMode = 1 : OK" 2)) 'later conflicting mode rejected'
@@ -113,7 +91,7 @@ try {
     Check (Release-StaleAutomaticFps) 'FPS release retries successfully after access failure clears'
     Set-FixtureSignal 'stale'
 
-    # Replace only boundaries, exercising the real orchestration and durable store.
+    # Replace only boundaries, exercising the real process policy and orchestration.
     $script:setCalls = 0; $script:cpuCalls = 0; $script:failMode = $false; $script:failCpu = $false
     $realSet = ${function:Set-GHelperMode}
     $realCpu = ${function:Set-ModeCpuPolicy}
@@ -129,37 +107,33 @@ try {
         $script:lastCpu = $Enabled
         if ($script:failCpu) { throw 'fixture CPU failure' }
     }
-    Save-ModeState $script:StatePath (New-ModeState)
-    Set-FixtureMode 0; Set-FixtureAway '1'; $script:failMode = $true
-    Throws { Invoke-ModeTick $true } 'failed mode application is not successful'
-    Check ((Read-ModeState $script:StatePath).RestoreMode -eq 0) 'restore saved even when Silent apply fails'
+    Set-FixtureMode 2; Set-FixtureAway '1'; $script:failMode = $true
+    Throws { Invoke-ModeTick $true } 'failed Turbo application is not successful'
     $script:failMode = $false; $script:failCpu = $true
     Throws { Invoke-ModeTick $true } 'CPU reassert failure is reported'
     $script:failCpu = $false
     Invoke-ModeTick $true
-    Check ($script:cpuCalls -eq 2 -and (Get-Mode) -eq 2) 'CPU failure retried even when mode already Silent'
-    Set-FixtureAway '0'; $script:failMode = $true
-    Throws { Invoke-ModeTick $true } 'restore application failure propagates'
-    Check ((Read-ModeState $script:StatePath).AwayActive) 'restore state remains pending after failed OFF'
-    $script:failMode = $false
-    Invoke-ModeTick $true; Invoke-ModeTick $true
-    Check ((Get-Mode) -eq 0 -and -not (Read-ModeState $script:StatePath).AwayActive) 'successful OFF remains Balanced on subsequent tick'
-    Check $script:lastCpu 'normal restoration restores CPU maximum and boost too'
+    Check ($script:cpuCalls -eq 2 -and (Get-Mode) -eq 1) 'CPU retry cannot prevent Turbo with GTA present'
+    Check (-not $script:lastCpu) 'manual away CPU policy remains independent'
     Set-FixtureAway '0'; Set-FixtureSignal 'v1|42|100000|1|0'
     Invoke-ModeTick $true
-    Check ((Get-Mode) -eq 2 -and -not $script:lastCpu) 'automatic away applies Silent and off CPU'
-    Set-FixtureSignal 'v1|42|84999|1|0'
+    Check ((Get-Mode) -eq 1 -and -not $script:lastCpu) 'automatic away keeps Turbo but limits CPU'
+    Set-FixtureSignal 'stale'
     Invoke-ModeTick $true
-    Check ((Get-Mode) -eq 0 -and $script:lastCpu) 'expired automatic away restores captured mode and CPU'
-    Set-FixtureSignal 'v1|42|100000|1|0'
-    $script:afterModeWait = { Set-FixtureSignal 'v1|42|100000|0|1' }
+    Check ((Get-Mode) -eq 1 -and $script:lastCpu) 'normal return restores CPU without changing Turbo'
+    $script:failMode = $true
+    Throws { Invoke-ModeTick $false } 'failed game-exit Silent application is retried'
+    $script:failMode = $false
+    Invoke-ModeTick $false; Invoke-ModeTick $false
+    Check ((Get-Mode) -eq 2 -and -not $script:lastCpu) 'absent game converges to Silent with CPU boost off'
     Invoke-ModeTick $true
-    Check $script:lastCpu 'CPU reassert rereads latest user return after G-Helper application wait'
-    Invoke-ModeTick $true
-    Check ((Get-Mode) -eq 0) 'following mode tick restores after return during application'
-    Set-FixtureAway ''; $beforeCalls = $script:setCalls
-    Throws { Invoke-ModeTick $true } 'empty config does not invoke control'
-    Check ($script:setCalls -eq $beforeCalls) 'no control on bad config'
+    Check ((Get-Mode) -eq 1) 'next game start switches to Turbo without a restore state file'
+    Set-FixtureMode 0; Invoke-ModeTick $true
+    Check ((Get-Mode) -eq 1) 'manual profile drift converges to requested running-game policy'
+    Set-FixtureAway ''
+    Throws { Invoke-ModeTick $false } 'invalid CPU settings are reported separately'
+    Check ((Get-Mode) -eq 2) 'invalid macro config cannot prevent game-exit Silent profile'
+    Set-FixtureAway '0'
 
     # Native and UIA boundaries are replaced, so the real orchestration cannot
     # show a window, activate anything, touch power settings or synthesize input.
@@ -169,7 +143,7 @@ try {
     Check ($source -match 'SendMessageTimeout\(parent.Handle, 0x0111, wParam, button.Handle, 0x23, 1500, out result\)') 'documented WM_COMMAND notification goes to direct parent with button HWND and bounded 1500ms wait'
     Check ($source -notmatch '0x00F5|0x2111') 'no ineffective BM_CLICK or private reflected message is sent'
     Check ($source -match 'GetParent\(button.Handle\) != parent.Handle' -and $source -match 'GetDlgCtrlID\(button.Handle\)') 'notification parent and control ID come from observed native button'
-    Check ($source -match '0x215' -and $source -match '0x257' -and $source -match '0x297') 'every native move/show/hide includes no-activate and preserve-Z flags'
+    Check ($source -match 'ShowWindow\(saved.Handle, 4\)' -and $source -match 'ShowWindow\(saved.Handle, 0\)' -and $source -match '0x215') 'lazy WinForms controls use nonactivating show and hide with position preserved'
     Initialize-ModeWindow # Compile only. No native method is called by this test.
     Check ([GtaModeWindow]::ClickNotificationParameter(0x12345678).ToUInt64() -eq 0x5678) 'WM_COMMAND control ID truncates to unsigned low word and leaves BN_CLICKED high word zero'
     Check ([GtaModeWindow]::ClickNotificationParameter(-1).ToUInt64() -eq 65535) 'signed native control ID is packed without sign extension'
@@ -324,7 +298,7 @@ Write-Error 'fixture non-fatal elevation warning'
 '@)
     Check ((Get-Fps) -eq '50.0,50.0') 'non-fatal capture warning still returns average and low FPS'
     Check ($ErrorActionPreference -eq 'Stop') 'capture restores caller Stop error preference'
-    Write-Output "PASS G-Helper away policy cases=$checks"
+    Write-Output "PASS G-Helper process policy cases=$checks"
 } finally {
     # Fixture only, never the real game or user settings.
     Get-ChildItem -LiteralPath $fixture -File | Remove-Item
