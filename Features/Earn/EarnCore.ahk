@@ -1296,14 +1296,14 @@ EarnBarFill(x1, x2, y, kind) {
     hwnd := IsGTAActive()
     if (!hwnd)
         return -1
-    traceBlue := kind = "blue" && x1 = 766 && x2 = 1154 && y = 577
+    traceBar := x1 = 766 && x2 = 1154 && ((kind = "blue" && y = 577) || (kind = "green" && y = 555))
     tracePixels := "", traceRect := "unread", traceDpi := "unread", total := 0, full := 0
     traceStart := A_TickCount
     previous := DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
     try {
         WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
         CoordMode("Pixel", "Screen")
-        if (traceBlue) {
+        if (traceBar) {
             traceRect := cx "," cy "," cw "," ch
             traceDpi := DllCall("GetThreadDpiAwarenessContext", "ptr")
         }
@@ -1317,12 +1317,12 @@ EarnBarFill(x1, x2, y, kind) {
             if (kind = "green")
                 hit := g > 100 && g > r + 30
             else if (kind = "blue")
-                hit := b > 110 && b > r + 30
+                hit := b > 110 && b > r + 30 && b > g + 30
             else if (kind = "orange")
                 hit := r > 100 && r > g + 35 && g > b + 15
             else
                 hit := Max(r, g, b) > 110
-            if (traceBlue)
+            if (traceBar)
                 tracePixels .= (total ? " " : "") px "," py ":" Format("{:06X}", c) ":" (hit ? 1 : 0)
             full += hit ? 1 : 0
             total += 1
@@ -1331,8 +1331,8 @@ EarnBarFill(x1, x2, y, kind) {
         return total ? full / total : -1
     } finally {
         DllCall("SetThreadDpiAwarenessContext", "ptr", previous, "ptr")
-        if (traceBlue)
-            try EarnLog("[bunker-bar] rect=" traceRect " dpi_read=" traceDpi " dpi_previous=" previous
+        if (traceBar)
+            try EarnLog("[bunker-bar] kind=" kind " rect=" traceRect " dpi_read=" traceDpi " dpi_previous=" previous
                 " hits=" full "/" total " result=" (total ? full / total : -1)
                 " elapsed_ms=" (A_TickCount - traceStart) " pixels=" tracePixels)
     }
