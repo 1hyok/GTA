@@ -127,6 +127,24 @@ try {
                 }
             } finally { $source.Dispose() }
         }
+        # Same failure capture: only the 40x27 icon search regions are retained.
+        foreach ($tile in $tiles) {
+            $id = $tile.Groups['id'].Value
+            $source = [Drawing.Bitmap]::FromFile((Join-Path $fixtures ("native-1634-$id.png")))
+            try {
+                if ($source.Width -ne 40 -or $source.Height -ne 27) { throw 'Unexpected native icon crop.' }
+                $area = New-Object Drawing.Rectangle 0, 0, 40, 27
+                $originalDelta = [EarnWarehouseTemplatePixels]::MinimumVariation($source,$normal,$area)
+                $gainDelta = [EarnWarehouseTemplatePixels]::MinimumVariation($source,$gain,$area)
+                if (([Math]::Min($originalDelta,$gainDelta) -le $normalTolerance) -ne ($id -eq 'sporting')) {
+                    throw "Native 1634/$id original=$originalDelta gain=$gainDelta tolerance=$normalTolerance"
+                }
+                if ($id -eq 'sporting' -and ($originalDelta -ne 72 -or $gainDelta -ne 66)) {
+                    throw 'Native failure must retain the measured 72/66 boundary.'
+                }
+                $cases++
+            } finally { $source.Dispose() }
+        }
     } finally { $normal.Dispose(); $gain.Dispose() }
 } finally {
     $resolvedWork = [IO.Path]::GetFullPath($nativeWork)

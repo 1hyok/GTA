@@ -176,8 +176,8 @@ EarnWarehouseSelectedGood() {
         ; 만재 품목의 선택된 사람은 회색이고 느낌표가 겹친다. 관측한 하단 모양을 별도로 확인한다.
         area := [(tile[1]+230)/1920,(tile[2]+43)/1080,
             (tile[1]+270)/1920,(tile[2]+70)/1080]
-        ; 1015 GDI 화면의 Cash 발은 원본 차이72, 밝기 사본64였다. 같은 격자의 체크·빈칸은173 이상이었다.
-        normal := EarnSeen("warehouse_person_foot", area, , , 65)
+        ; 1015 실패 GDI의 Sporting 발은 밝기 사본 한 픽셀 차이66, 다른 타일은180 이상이었다.
+        normal := EarnSeen("warehouse_person_foot", area, , , 66)
         full := normal ? "skipped" : EarnSeen("warehouse_person_full_foot", area, , , 45)
         observed .= (observed = "" ? "" : ";") id ":normal=" normal ",full=" full
         if (normal || full) {
