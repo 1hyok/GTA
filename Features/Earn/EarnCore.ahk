@@ -726,69 +726,98 @@ EarnTurnLoop(units, pitchUnits, hdrMCTRecovery) {
     ; 제한 시간은 돌리는 시간에만 9초를 주고, 판독에 쓴 시간은 더한다. 전체는 90초를 넘기지 않는다.
     ; 판독 간격도 걸음 수로 잡는다. 시계로 잡으면 판독이 끝나자마자 다음 판독이 돌아 판독 사이에 한 걸음씩만 간다.
     turnStart := A_TickCount, readMs := 0, recoveryDeadline := A_TickCount + 9000, nextHealthCheck := 0
-    Loop n {
-        if (EarnAborted())
-            return false
-        if (hdrMCTRecovery) {
-            ; 목표 안내가 보이면 고정 각도를 채우려고 계속 돌지 않는다. 판독 지연도 간격에 포함한다.
-            if (Mod(A_Index - 1, 16) = 0 || A_TickCount >= recoveryDeadline) {
-                readStart := A_TickCount
-                arrived := EarnMCTRecoveryArrived()
-                readMs += A_TickCount - readStart
-                recoveryDeadline := turnStart + Min(90000, 9000 + readMs)
-                if (EarnAborted())
-                    return false
-                if (arrived)
-                    return true
-            }
-            if (A_TickCount >= recoveryDeadline)
-                return EarnFail("MCT 복귀 회전: 9초 제한 초과")
-            ; 16개 PixelGetColor 판독도 실측 109~125ms다. 최근 판독은 250ms 동안 재사용한다.
-            if (A_TickCount >= nextHealthCheck) {
-                readStart := A_TickCount
-                healthOK := HealthHudVisible()
-                readMs += A_TickCount - readStart
-                recoveryDeadline := turnStart + Min(90000, 9000 + readMs)
-                if (!healthOK)
-                    return EarnFail("카메라: 게임 HUD를 확인하지 못함")
-                nextHealthCheck := A_TickCount + 250
-            }
-            ; HDR 판독 실측은 전체 배치 약 1초다. 매 이동 조각마다 반복하지 않는다.
-            if (Mod(A_Index - 1, 90) = 0) {
-                readStart := A_TickCount
-                hudOK := EarnMCTRecoveryHud()
-                readMs += A_TickCount - readStart
-                recoveryDeadline := turnStart + Min(90000, 9000 + readMs)
-                if (!hudOK)
-                    return EarnFail("MCT 복귀 회전: 메뉴 없는 게임 HUD 미확인")
-            }
-            ; 메뉴 판독 중 오래된 HUD 판독은 움직이기 전에 갱신한다.
-            if (A_TickCount >= nextHealthCheck) {
-                readStart := A_TickCount
-                healthOK := HealthHudVisible()
-                readMs += A_TickCount - readStart
-                recoveryDeadline := turnStart + Min(90000, 9000 + readMs)
-                if (!healthOK)
-                    return EarnFail("카메라: 게임 HUD를 확인하지 못함")
-                nextHealthCheck := A_TickCount + 250
-            }
-            ; 느린 판독 중 들어온 사용자 입력·포커스 이탈과 시간 초과를 입력 전에 다시 확인한다.
+    emittedMoves := 0, goalMs := 0, healthMs := 0, menuMs := 0, terminalMs := 0
+    goalCalls := 0, healthCalls := 0, menuCalls := 0, stage := "abort-before-read"
+    try {
+        Loop n {
             if (EarnAborted())
                 return false
-            if (A_TickCount >= recoveryDeadline) {
-                ; 느린 메뉴 판독 중 제한에 닿아도 이미 도달한 목표를 실패로 덮지 않는다.
-                arrived := EarnMCTRecoveryArrived()
+            if (hdrMCTRecovery) {
+                ; 목표 안내가 보이면 고정 각도를 채우려고 계속 돌지 않는다. 판독 지연도 간격에 포함한다.
+                if (Mod(A_Index - 1, 16) = 0 || A_TickCount >= recoveryDeadline) {
+                    readStart := A_TickCount
+                    stage := "goal"
+                    arrived := EarnMCTRecoveryArrived()
+                    duration := A_TickCount - readStart
+                    goalCalls++, goalMs += duration, readMs += duration
+                    recoveryDeadline := turnStart + Min(90000, 9000 + readMs)
+                    if (EarnAborted())
+                        return false
+                    if (arrived)
+                        return true
+                }
+                if (A_TickCount >= recoveryDeadline)
+                    return EarnFail("MCT 복귀 회전: 9초 제한 초과")
+                ; 16개 PixelGetColor 판독도 실측 109~125ms다. 최근 판독은 250ms 동안 재사용한다.
+                if (A_TickCount >= nextHealthCheck) {
+                    readStart := A_TickCount
+                    stage := "health"
+                    healthOK := HealthHudVisible()
+                    duration := A_TickCount - readStart
+                    healthCalls++, healthMs += duration, readMs += duration
+                    recoveryDeadline := turnStart + Min(90000, 9000 + readMs)
+                    if (!healthOK)
+                        return EarnFail("카메라: 게임 HUD를 확인하지 못함")
+                    nextHealthCheck := A_TickCount + 250
+                }
+                ; HDR 판독 실측은 전체 배치 약 1초다. 매 이동 조각마다 반복하지 않는다.
+                if (Mod(A_Index - 1, 90) = 0) {
+                    readStart := A_TickCount
+                    stage := "menu"
+                    hudOK := EarnMCTRecoveryHud()
+                    duration := A_TickCount - readStart
+                    menuCalls++, menuMs += duration, readMs += duration
+                    recoveryDeadline := turnStart + Min(90000, 9000 + readMs)
+                    if (!hudOK)
+                        return EarnFail("MCT 복귀 회전: 메뉴 없는 게임 HUD 미확인")
+                }
+                ; 메뉴 판독 중 오래된 HUD 판독은 움직이기 전에 갱신한다.
+                if (A_TickCount >= nextHealthCheck) {
+                    readStart := A_TickCount
+                    stage := "health"
+                    healthOK := HealthHudVisible()
+                    duration := A_TickCount - readStart
+                    healthCalls++, healthMs += duration, readMs += duration
+                    recoveryDeadline := turnStart + Min(90000, 9000 + readMs)
+                    if (!healthOK)
+                        return EarnFail("카메라: 게임 HUD를 확인하지 못함")
+                    nextHealthCheck := A_TickCount + 250
+                }
+                ; 느린 판독 중 들어온 사용자 입력·포커스 이탈과 시간 초과를 입력 전에 다시 확인한다.
                 if (EarnAborted())
                     return false
-                return arrived ? true : EarnFail("MCT 복귀 회전: 9초 제한 초과")
+                if (A_TickCount >= recoveryDeadline) {
+                    ; 느린 메뉴 판독 중 제한에 닿아도 이미 도달한 목표를 실패로 덮지 않는다.
+                    stage := "terminal-goal"
+                    terminalStart := A_TickCount
+                    arrived := EarnMCTRecoveryArrived()
+                    terminalMs := A_TickCount - terminalStart
+                    if (EarnAborted())
+                        return false
+                    return arrived ? true : EarnFail("MCT 복귀 회전: 9초 제한 초과")
+                }
             }
+            else if (!EarnHudVisible())
+                return EarnFail("카메라: 게임 HUD를 확인하지 못함")
+            stage := "input"
+            DllCall("mouse_event", "uint", 1, "int", step, "int", pitchStep, "uint", 0, "uptr", 0)
+            emittedMoves++
+            Sleep(15)
+            stage := "abort-before-read"
         }
-        else if (!EarnHudVisible())
-            return EarnFail("카메라: 게임 HUD를 확인하지 못함")
-        DllCall("mouse_event", "uint", 1, "int", step, "int", pitchStep, "uint", 0, "uptr", 0)
-        Sleep(15)
+        stage := "completed"
+        return true
+    } finally {
+        if (hdrMCTRecovery) {
+            elapsed := A_TickCount - turnStart
+            try EarnLog("[mct-turn] stage=" stage " moves=" emittedMoves "/" n
+                " requested=" units "," pitchUnits " emitted=" (emittedMoves * step) "," (emittedMoves * pitchStep)
+                " elapsed_ms=" elapsed " read_ms=" readMs " goal=" goalCalls ":" goalMs
+                " health=" healthCalls ":" healthMs " menu=" menuCalls ":" menuMs
+                " terminal_ms=" terminalMs " budget_ms=" (recoveryDeadline - turnStart)
+                " budget_kind=" (9000 + readMs >= 90000 ? "total-cap" : "nonread"))
+        }
     }
-    return true
 }
 
 EarnMCTRecoveryArrived() {
