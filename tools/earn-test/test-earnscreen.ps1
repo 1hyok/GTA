@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 <#
 Runs EarnScreen's actual money/text/selection functions with screen and key APIs
 stubbed. No desktop capture, keyboard input, foreground changes or game process.
