@@ -120,11 +120,14 @@ DiscordHUDMCTSet(open) {
     global gDiscordHUDMCTOpen
     previous := gDiscordHUDMCTOpen
     gDiscordHUDMCTOpen := open && DiscordHUDMCTAllowed()
+    if (!open) {
+        ; HUD 복원 대기는 게임의 일어서기·CEO 해제를 막지 않는다. 실패 소유권과 오류는 재시도 타이머가 유지한다.
+        DiscordHUDVisibilityTick()
+        return true
+    }
     try DiscordHUDVisibilitySync(DiscordHUDVisibilityWanted())
     catch as err {
-        ; 복원 실패여도 확인된 닫힘은 보존해야 타이머가 복원을 재시도한다.
-        if (open)
-            gDiscordHUDMCTOpen := previous
+        gDiscordHUDMCTOpen := previous
         throw err
     }
     return true
