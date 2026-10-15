@@ -46,15 +46,23 @@ HealthHudColors(colors) {
 ; area 는 클라이언트 비율 [x1, y1, x2, y2] (0~1). 찾은 자리(화면 좌표)는 &fx, &fy.
 TemplateSeen(folder, name, area := "", &fx := 0, &fy := 0, variation := 40) {
     global gImageRoot
+    probe := folder = "Earn" && RegExMatch(name, "^(mct_seated_mansion(_bg)?|dj_resident(_right)?|warehouse_person_(full_)?foot)$")
     hwnd := IsGTAActive()
-    if (!hwnd)
+    if (!hwnd) {
+        if (probe)
+            try MacroLog("screen-probe", "method=seen target=" name " active=0")
         return false
+    }
+    rect := "unread", roi := "unread", img := "unread", exists := "unread", dpi := "unread", original := "unread", found := false
     ; 배율이나 모니터가 바뀌어도 창 크기 조회와 이미지 검색을 같은 물리 픽셀 좌표로 한다 (인형 뽑기와 같은 방식)
     prev := DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
     try {
         WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
+        if (probe)
+            rect := cx "," cy "," cw "," ch
         img := gImageRoot "\" folder "\" cw "x" ch "\" name ".png"
-        if (!FileExist(img)) {
+        exists := FileExist(img)
+        if (!exists) {
             ; 같은 템플릿은 한 번만 적는다 (선택/비선택 두 벌 중 하나만 있는 줄 템플릿처럼 없는 게 정상인 경우가 있다)
             static missing := Map()
             if (!missing.Has(img)) {
@@ -68,8 +76,13 @@ TemplateSeen(folder, name, area := "", &fx := 0, &fy := 0, variation := 40) {
         found := false
         x1 := cx + Round(cw * a[1]), y1 := cy + Round(ch * a[2])
         x2 := cx + Round(cw * a[3]) - 1, y2 := cy + Round(ch * a[4]) - 1
+        if (probe) {
+            roi := x1 "," y1 "," x2 "," y2
+            dpi := DllCall("GetThreadDpiAwarenessContext", "ptr")
+        }
         try {
             found := ImageSearch(&fx, &fy, x1, y1, x2, y2, "*" variation " *Trans0xFF00FF " img)
+            original := found
         } catch as e {
             MacroLog("screen", "ImageSearch 오류 " folder "\" name ": " e.Message)
         }
@@ -86,6 +99,10 @@ TemplateSeen(folder, name, area := "", &fx := 0, &fy := 0, variation := 40) {
     } finally {
         if (prev)
             DllCall("SetThreadDpiAwarenessContext", "ptr", prev, "ptr")
+        if (probe)
+            try MacroLog("screen-probe", "method=seen target=" name " hwnd=" hwnd " client=" rect " roi=" roi
+                " image=" img " exists=" (exists != "unread" ? !!exists : exists) " variation=" variation
+                " dpi_search=" dpi " dpi_previous=" prev " original=" original " final=" found " xy=" fx "," fy)
     }
 }
 
@@ -93,23 +110,37 @@ TemplateSeen(folder, name, area := "", &fx := 0, &fy := 0, variation := 40) {
 ; 글자만 남긴 템플릿 짝(<name>_bg: 글자에서 떨어진 바탕만 검정)으로 안내 상자의 어두운 바탕을 확인하는 데 쓴다.
 TemplateAt(folder, name, x, y, variation := 90) {
     global gImageRoot
+    probe := folder = "Earn" && RegExMatch(name, "^(mct_seated_mansion(_bg)?|dj_resident(_right)?|warehouse_person_(full_)?foot)$")
     hwnd := IsGTAActive()
-    if (!hwnd)
+    if (!hwnd) {
+        if (probe)
+            try MacroLog("screen-probe", "method=at target=" name " active=0")
         return false
+    }
+    rect := "unread", roi := "unread", img := "unread", exists := "unread", dpi := "unread", original := "unread", found := false
     prev := DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
     try {
         WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
+        if (probe)
+            rect := cx "," cy "," cw "," ch
         img := gImageRoot "\" folder "\" cw "x" ch "\" name ".png"
-        if (!FileExist(img))
+        exists := FileExist(img)
+        if (!exists)
             return false
         CoordMode("Pixel", "Screen")
+        if (probe) {
+            roi := x "," y "," Min(x + cw - 1, cx + cw - 1) "," Min(y + 60, cy + ch - 1)
+            dpi := DllCall("GetThreadDpiAwarenessContext", "ptr")
+        }
         ; 검색은 한 줄씩 왼쪽부터라, 같은 자리에서 맞으면 첫 결과가 바로 (x, y)다.
         try {
             ; HDR MCT title backgrounds are 536px wide. The old 401px search
             ; rectangle could never contain them. Keep the exact-origin check.
-            if (ImageSearch(&fx, &fy, x, y, Min(x + cw - 1, cx + cw - 1), Min(y + 60, cy + ch - 1),
-                "*" variation " *Trans0xFF00FF " img) && fx = x && fy = y)
+            if ((original := ImageSearch(&fx, &fy, x, y, Min(x + cw - 1, cx + cw - 1), Min(y + 60, cy + ch - 1),
+                "*" variation " *Trans0xFF00FF " img)) && fx = x && fy = y) {
+                found := true
                 return true
+            }
         } catch as e {
             MacroLog("screen", "ImageSearch 오류 " folder "\" name ": " e.Message)
         }
@@ -117,14 +148,21 @@ TemplateAt(folder, name, x, y, variation := 90) {
             try {
                 if (ImageSearch(&fx, &fy, x, y, Min(x + cw - 1, cx + cw - 1), Min(y + 60, cy + ch - 1),
                     "*" variation " *Trans0xFF00FF " gainImg) && fx = x && fy = y
-                    && TemplateGainBackgroundOK(gainImg, fx, fy))
+                    && TemplateGainBackgroundOK(gainImg, fx, fy)) {
+                    found := true
                     return true
+                }
             }
         }
         return false
     } finally {
         if (prev)
             DllCall("SetThreadDpiAwarenessContext", "ptr", prev, "ptr")
+        if (probe)
+            try MacroLog("screen-probe", "method=at target=" name " hwnd=" hwnd " client=" rect " roi=" roi
+                " image=" img " exists=" (exists != "unread" ? !!exists : exists) " variation=" variation
+                " dpi_search=" dpi " dpi_previous=" prev " original=" original " final=" found
+                " origin=" x "," y)
     }
 }
 
