@@ -166,21 +166,29 @@ EarnWarehouseSelect(technician) {
 }
 
 EarnWarehouseSelectedGood() {
-    if (!EarnUIReady("warehouse_title", [0.37,0.13,0.58,0.19]))
+    if (!EarnUIReady("warehouse_title", [0.37,0.13,0.58,0.19])) {
+        try EarnLog("[warehouse-read] stage=title hits=none templates=unread")
         return ""
-    selected := ""
+    }
+    selected := "", observed := ""
     for id, tile in EarnWarehouseTiles() {
         ; 사람 아이콘 하단은 체크/만재 느낌표의 원보다 아래에 있다.
         ; 만재 품목의 선택된 사람은 회색이고 느낌표가 겹친다. 관측한 하단 모양을 별도로 확인한다.
         area := [(tile[1]+230)/1920,(tile[2]+43)/1080,
             (tile[1]+270)/1920,(tile[2]+70)/1080]
-        if (EarnSeen("warehouse_person_foot", area, , , 45)
-            || EarnSeen("warehouse_person_full_foot", area, , , 45)) {
-            if (selected != "")
+        normal := EarnSeen("warehouse_person_foot", area, , , 45)
+        full := normal ? "skipped" : EarnSeen("warehouse_person_full_foot", area, , , 45)
+        observed .= (observed = "" ? "" : ";") id ":normal=" normal ",full=" full
+        if (normal || full) {
+            if (selected != "") {
+                try EarnLog("[warehouse-read] stage=multiple hits=" selected "," id " templates=" observed)
                 return ""
+            }
             selected := id
         }
     }
+    if (selected = "")
+        try EarnLog("[warehouse-read] stage=none hits=none templates=" observed)
     return selected
 }
 

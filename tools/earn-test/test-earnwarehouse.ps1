@@ -38,9 +38,11 @@ global whTests := 0, whMode, whState, whAssigned, whCounts, whActive, whSelected
     whSelections, whAttempts, whMoves, whBegins, whEnds, whError, whHistory,
     whPending := "", whCancels := 0, whTooltips := 0, whSellStops := [], whNoticeLogs := 0, whNoticeClears := 0
 global gEarnSellNotices := Map()
+global whReadLogs := [], whReadCalls := [], whLogThrows := false
 try {
     RunWarehouseTests()
     RunObservationTests()
+    RunReadDiagnosticTests()
     FileAppend("PASS EarnWarehouse cases=" whTests " (no game input)`n", "*")
     ExitApp(0)
 } catch as testFailure {
@@ -323,7 +325,7 @@ EarnWaitSeen(name, *) {
     return (name = "nc_dj_menu" && whState = "club") || (name = "warehouse_title" && whState = "warehouse")
 }
 EarnSeen(name, area, *) {
-    global whMode, whSelected, whAssigned, whSelections
+    global whMode, whSelected, whAssigned, whSelections, whReadCalls
     if (InStr(name, "warehouse_staff_") = 1)
         return whMode != "missing_staff" || name != "warehouse_staff_3"
     if (name != "warehouse_person_foot" && name != "warehouse_person_full_foot")
@@ -334,6 +336,7 @@ EarnSeen(name, area, *) {
             requestedId := id
     if (requestedId = "")
         throw Error("Unexpected identity scan area")
+    whReadCalls.Push(requestedId ":" name)
     if (whMode = "ambiguous_identity" && whSelected = 1)
         return requestedId = "cargo" || requestedId = "pharmaceutical"
     identity := whMode = "source_changed" && whSelections > 5 ? "cash" : whAssigned[whSelected]
@@ -457,11 +460,40 @@ RunObservationTests() {
     Check(goods[1].unlocked = 0, "unknown full row is not guessed unlocked")
 }
 EarnLog(reason) {
-    global whNoticeLogs, whNoticeClears
+    global whNoticeLogs, whNoticeClears, whReadLogs, whLogThrows
+    if (InStr(reason, "[warehouse-read]") = 1) {
+        if (whLogThrows)
+            throw Error("diagnostic write failed")
+        whReadLogs.Push(reason)
+    }
     if (InStr(reason, "재고 만재 알림: ") = 1)
         whNoticeLogs++
     else if (InStr(reason, "재고 만재 알림 해제: ") = 1)
         whNoticeClears++
+}
+RunReadDiagnosticTests() {
+    global whState, whSelected, whReadLogs, whReadCalls, whLogThrows
+    for scenario in [["normal","mct",1,"title",0], ["full_missing","warehouse",3,"none",14],
+        ["ambiguous_identity","warehouse",1,"multiple",0], ["normal","warehouse",1,"",13]] {
+        ResetWarehouse(scenario[1])
+        whState := scenario[2], whSelected := scenario[3], whReadLogs := [], whReadCalls := []
+        selected := EarnWarehouseSelectedGood()
+        if (scenario[4] = "") {
+            Check(selected = "cargo" && whReadLogs.Length = 0, "successful read remains silent")
+        } else {
+            Check(selected = "" && whReadLogs.Length = 1 && InStr(whReadLogs[1], "stage=" scenario[4]),
+                scenario[4] " failure emits one diagnostic without authorizing assignment")
+        }
+        if (scenario[4] != "multiple")
+            Check(whReadCalls.Length = scenario[5], scenario[4] " keeps existing read count and short circuit")
+        else
+            Check(InStr(whReadLogs[1], "hits=cargo,pharmaceutical") && InStr(whReadLogs[1], "full=skipped")
+                && whReadCalls[whReadCalls.Length] = "pharmaceutical:warehouse_person_foot",
+                "ambiguous read records the two hits and stops at the second normal hit")
+    }
+    whLogThrows := true, whState := "mct"
+    Check(EarnWarehouseSelectedGood() = "", "diagnostic write failure preserves failed read result")
+    whLogThrows := false
 }
 Check(condition, description) {
     global whTests, whError
@@ -490,7 +522,7 @@ try {
     }
     $stdout = $process.StandardOutput.ReadToEnd().Trim()
     $stderr = $process.StandardError.ReadToEnd().Trim()
-    if ($process.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnWarehouse cases=154 (no game input)') {
+    if ($process.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnWarehouse cases=163 (no game input)') {
         throw "Warehouse flow failed (exit=$($process.ExitCode))`nstdout: $stdout`nstderr: $stderr"
     }
     Write-Output $stdout
