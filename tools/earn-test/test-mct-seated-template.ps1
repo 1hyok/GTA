@@ -380,6 +380,35 @@ try {
 }
 finally { $template.Dispose() }
 
+# Native GDI: a ceiling light crosses the translucent seated prompt background.
+$boundMatch = [regex]::Match($core, 'TemplateAt\("Earn", part "_bg", fx, fy, part = "mct_seated_mansion" \? (\d+) : 90\)')
+if (-not $boundMatch.Success) { throw 'Mansion seated background must have a dedicated bound; legacy stays 90' }
+$bound = [int]$boundMatch.Groups[1].Value
+$textMask = [Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_seated_mansion.png'))
+$bgMask = [Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_seated_mansion_bg.png'))
+try {
+    foreach ($sample in @(
+        @((Join-Path $PSScriptRoot 'mct-template-fixtures\mct-seated-light-line.png'), $true),
+        @((Join-Path $PSScriptRoot 'mct-template-fixtures\mct-ceiling-light-no-prompt.png'), $false),
+        @((Join-Path $evidence 'mansion-dj-list.png'), $false),
+        @((Join-Path $evidence 'mansion-bunker-result.png'), $false),
+        @((Join-Path $evidence 'mct-final-restored.png'), $false)
+    )) {
+        $source = [Drawing.Bitmap]::FromFile($sample[0])
+        try {
+            $x=0; $y=0
+            $textDifference = [EarnNightclubTemplateTest]::MinimumVariation($source,$textMask,(New-Object Drawing.Rectangle 0,0,576,108),[ref]$x,[ref]$y)
+            $bx=0; $by=0
+            $bgDifference = [EarnNightclubTemplateTest]::MinimumVariation($source,$bgMask,(New-Object Drawing.Rectangle $x,$y,$bgMask.Width,$bgMask.Height),[ref]$bx,[ref]$by)
+            $found = $textDifference -le 60 -and $bgDifference -le $bound
+            if ($found -ne $sample[1]) { throw "Seated pair $($sample[0]) text=$textDifference background=$bgDifference" }
+            if ($sample[1] -and ($bgDifference -le 90 -or $x -ne 72 -or $y -ne 28)) { throw 'Native fixture must reproduce the old background failure at the observed origin' }
+            $cases++
+            Write-Output "PASS native seated pair $([IO.Path]::GetFileName($sample[0])) text=$textDifference background=$bgDifference found=$found"
+        } finally { $source.Dispose() }
+    }
+} finally { $textMask.Dispose(); $bgMask.Dispose() }
+
 $generatedDirectory = Join-Path ([IO.Path]::GetTempPath()) ('gta-mct-template-build-' + [Guid]::NewGuid().ToString('N'))
 $null = [IO.Directory]::CreateDirectory($generatedDirectory)
 $names = @('nc_dj_menu', 'nc_home', 'mct_seated_mansion', 'mct_sit_hdr', 'mct_sit_hdr_alt', 'mct_sit_hdr_bright','mct_sit_hdr_box', 'mct_seated_hdr', 'mct_title_hdr')
