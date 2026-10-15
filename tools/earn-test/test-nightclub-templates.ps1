@@ -159,4 +159,23 @@ foreach ($c in $liveCases) {
         Write-Output "PASS live $($c[1]) minVariation=$variation"
     } finally { $source.Dispose(); $template.Dispose() }
 }
+# Native GDI button crops: clearing the restored cursor removes hover and occlusion.
+# Keep the existing Resident threshold; Rebook must never confirm payment.
+foreach ($c in @(
+    @('dj-resident-native-clear.png', $true),
+    @('dj-resident-native-hover.png', $false),
+    @('dj-resident-native-obscured.png', $false),
+    @('dj-rebook-native-negative.png', $false)
+)) {
+    $source = [Drawing.Bitmap]::FromFile((Join-Path $PSScriptRoot ('mct-template-fixtures\' + $c[0])))
+    $template = [Drawing.Bitmap]::FromFile((Join-Path $root 'Images\Earn\1920x1080\dj_resident_right.png'))
+    try {
+        $area = New-Object Drawing.Rectangle 0,0,$source.Width,$source.Height
+        $x = 0; $y = 0
+        $difference = [EarnNightclubTemplateTest]::MinimumVariation($source,$template,$area,[ref]$x,[ref]$y)
+        if (($difference -le 40) -ne $c[1]) { throw "Native Resident $($c[0]) expected=$($c[1]) difference=$difference" }
+        $cases++
+        Write-Output "PASS native Resident $($c[0]) difference=$difference"
+    } finally { $source.Dispose(); $template.Dispose() }
+}
 Write-Output "PASS NightclubTemplates cases=$cases (no game input or windows)"
