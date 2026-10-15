@@ -730,10 +730,22 @@ EarnDJSwapLoop(previousMCTReading := "") {
             return EarnFail("DJ: 재고용 확인창 미확인")
         if (!EarnTransactionBegin("dj", "DJ $10,000 재고용 결과 확인 필요"))
             return false
-        if (!EarnUIClick(confirmation, 1160, 628)
-            || !EarnWaitGone(confirmation, "", 15000)
-            || !EarnWaitSeen(resident, area, 5000))
+        resultStarted := A_TickCount
+        if (!EarnUIClick(confirmation, 1160, 628)) {
+            try EarnLog("[dj-result] stage=confirm_click target=" confirmation " elapsed_ms=" (A_TickCount - resultStarted))
             return EarnFail("DJ: 교체 결과 미확인")
+        }
+        resultStarted := A_TickCount
+        if (!EarnWaitGone(confirmation, "", 15000)) {
+            try EarnLog("[dj-result] stage=confirm_gone target=" confirmation " elapsed_ms=" (A_TickCount - resultStarted))
+            return EarnFail("DJ: 교체 결과 미확인")
+        }
+        resultStarted := A_TickCount
+        if (!EarnWaitSeen(resident, area, 5000)) {
+            try EarnLog("[dj-result] stage=resident_seen target=" resident " confirmation=" confirmation
+                " elapsed_ms=" (A_TickCount - resultStarted))
+            return EarnFail("DJ: 교체 결과 미확인")
+        }
         if (!EarnTransactionCashConfirmed("dj", "expense", 10000, "Nightclub DJ 재고용", "10,000달러 재고용 항목과 교체 DJ 확인"))
             return EarnFail("DJ: 확인된 지출의 원장 저장 실패. pending 보류 유지, 재고용 금지")
         rebooks++

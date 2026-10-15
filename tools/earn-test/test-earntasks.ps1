@@ -803,7 +803,7 @@ Sleep(ms) {
 '@
     $promptCoreText = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnCore.ahk') -Raw -Encoding UTF8
     $cleanupPollingBody = (Get-EarnFunctionBody $promptCoreText 'EarnWaitSeen').Replace('EarnWaitSeen(', 'FixtureCleanupWaitSeen(').Replace('A_TickCount', 'CleanupClock()')
-    $cleanupPromptSupport = $mctCleanupSupport.Replace((Get-EarnFunctionBody $mctCleanupSupport 'EarnWaitSeen'), '')
+    $cleanupPromptSupport = $mctCleanupSupport.Replace((Get-EarnFunctionBody $mctCleanupSupport 'EarnWaitSeen'), '') + "`nEarnLog(*) => true`n"
     $mctEndPromptDriver += "`n" + $cleanupPromptSupport + "`n" + $cleanupPollingBody
     Invoke-EarnOfflineCheck 'MCTEndPrompt' 'EarnTaskMCTEnd' $mctEndPromptDriver 9
     $mctBeginCleanupDriver = @'
@@ -1062,7 +1062,7 @@ EarnFail(reason) {
     $djFlowDriver = @'
 global config := Map("Settings",Map("EarnDJPopularityPct",95)), popularity := 90, allowRebook := true,
     gain := 10, confirmations := 0, djScene := "mct", djMode := "", homeReads := 0, backs := 0,
-    gEarnDJCheckAbove := -1
+    gEarnDJCheckAbove := -1, resultCalls := "", resultLogs := []
 ; Real Home reader/opening and DJ flow. A stale MCT value (92) is never authoritative.
 ; After a rebook the run goes Home → MCT → Home and rebooks again only when the fresh Home shows a rise.
 ; "lag": Home has not caught up yet, so the run stops paying and the next run checks the rise.
@@ -1078,10 +1078,14 @@ cases := [[97,true,10,true,0,"mct","",-1],[90,true,10,true,1,"mct","",-1],
     [95,true,10,false,0,"mct","back_failed",-1],[90,true,10,false,0,"mct","abort",-1],
     ; 지난 재고용이 먹었는지는 다음 방문의 첫 Home 값으로 본다.
     [100,true,10,true,0,"mct","",91],[91,true,10,false,0,"mct","",91],
-    [80,true,10,false,0,"mct","",91],[91,true,10,true,1,"mct","",80]]
+    [80,true,10,false,0,"mct","",91],[91,true,10,true,1,"mct","",80],
+    [90,true,10,false,0,"mct","confirm_click_failed",-1],
+    [90,true,10,false,1,"mct","confirm_gone_failed",-1],
+    [90,true,10,false,1,"mct","resident_failed",-1],
+    [90,true,10,false,1,"mct","resident_log_failed",-1]]
 for c in cases {
     popularity := c[1], allowRebook := c[2], gain := c[3], confirmations := 0,
-        djScene := c[6], djMode := c[7], homeReads := 0, backs := 0, gEarnDJCheckAbove := c[8]
+        djScene := c[6], djMode := c[7], homeReads := 0, backs := 0, gEarnDJCheckAbove := c[8], resultCalls := "", resultLogs := []
     result := EarnDJSwapLoop(92)
     if (result != c[4] || confirmations != c[5] || (result && (djScene != "mct" || backs != confirmations + 1)))
         throw Error("DJ Home flow " A_Index ": result=" result " payments=" confirmations " scene=" djScene " backs=" backs)
@@ -1093,6 +1097,15 @@ for c in cases {
         throw Error("DJ stopped below target while Home kept showing each rise")
     if (gEarnDJCheckAbove != ((djMode = "lag" || djMode = "post_label_missing") && confirmations ? c[1] : -1))
         throw Error("DJ flow " A_Index ": next-visit check=" gEarnDJCheckAbove)
+    failureStages := Map("confirm_click_failed", ["C", "confirm_click"], "confirm_gone_failed", ["CG", "confirm_gone"],
+        "resident_failed", ["CGR", "resident_seen"], "resident_log_failed", ["CGR", "resident_seen"])
+    if (failureStages.Has(djMode)) {
+        expected := failureStages[djMode]
+        if (resultCalls != expected[1] || resultLogs.Length != 1 || !InStr(resultLogs[1], "stage=" expected[2]))
+            throw Error("DJ failure diagnostics changed short-circuit order or omitted the failed stage")
+        if (!transactionPending.Has("dj"))
+            throw Error("DJ diagnostics must preserve the unresolved transaction")
+    }
 }
 FileAppend("PASS DJFlow cases=" cases.Length "`n", "*")
 ExitApp(0)
@@ -1127,7 +1140,7 @@ EarnSeen(name,*) {
     return djScene = name
 }
 EarnUIClick(name,x,y,*) {
-    global popularity, gain, confirmations, djScene, djMode
+    global popularity, gain, confirmations, djScene, djMode, resultCalls
     if (!EarnUIReady(name))
         throw Error("DJ clicked an unconfirmed screen: " name " from " djScene)
     if (name = "mct_nightclub_card") {
@@ -1143,6 +1156,9 @@ EarnUIClick(name,x,y,*) {
     } else if (name = "dj_rebook_10k" || name = "dj_rebook_10k_right") {
         djScene := name = "dj_rebook_10k" ? "dj_confirm_solomun" : "dj_confirm_tale"
     } else if (name = "dj_confirm_solomun" || name = "dj_confirm_tale") {
+        resultCalls .= "C"
+        if (djMode = "confirm_click_failed")
+            return false
         confirmations += 1
         if (djMode != "lag")
             popularity := Min(100,popularity+gain)
@@ -1152,8 +1168,24 @@ EarnUIClick(name,x,y,*) {
     }
     return true
 }
-EarnWaitSeen(name,*) => EarnSeen(name)
-EarnWaitGone(name,*) => !EarnSeen(name)
+EarnWaitSeen(name,area := "", timeoutMs := 0) {
+    global resultCalls
+    if (name = "dj_resident" || name = "dj_resident_right") {
+        if (timeoutMs != 5000)
+            throw Error("Resident wait budget changed")
+        resultCalls .= "R"
+        if (djMode = "resident_failed" || djMode = "resident_log_failed")
+            return false
+    }
+    return EarnSeen(name)
+}
+EarnWaitGone(name,area,timeoutMs) {
+    global resultCalls
+    if (timeoutMs != 15000)
+        throw Error("Confirmation wait budget changed")
+    resultCalls .= "G"
+    return djMode != "confirm_gone_failed" && !EarnSeen(name)
+}
 EarnSleep(ms) => !EarnAborted()
 EarnUIBackToMCT(guard,presses) {
     global djScene, backs, djMode
@@ -1165,13 +1197,20 @@ EarnUIBackToMCT(guard,presses) {
     return true
 }
 EarnFail(*) => false
-EarnLog(*) => true
+EarnLog(message) {
+    if (InStr(message, "[dj-result]")) {
+        resultLogs.Push(message)
+        if (djMode = "resident_log_failed")
+            throw Error("Simulated diagnostic log failure")
+    }
+    return true
+}
 EarnDJSchedule(*) => true
 '@
     foreach ($fn in @('EarnDJNeedsRebook','EarnDJHomeOpen','EarnPopularityHomePct')) {
         $djFlowDriver += "`n" + (Get-EarnFunctionBody $sourceText $fn)
     }
-    Invoke-EarnOfflineCheck 'DJFlow' 'EarnDJSwapLoop' $djFlowDriver 21
+    Invoke-EarnOfflineCheck 'DJFlow' 'EarnDJSwapLoop' $djFlowDriver 25
     # Real saved pixels, real bar sampler and real Home reader. No desktop APIs.
     Add-Type -AssemblyName System.Drawing
     Add-Type -ReferencedAssemblies System.Drawing @'
@@ -1865,7 +1904,7 @@ EarnAborted() => backAborted || !backFocused
 BackClock() => backClockMs
 '@
     $backWaitBody = (Get-EarnFunctionBody $promptCoreText 'EarnWaitSeen').Replace('EarnWaitSeen(', 'FixtureBackWaitSeen(').Replace('A_TickCount', 'BackClock()')
-    $uiBackDriver += "`n" + $backWaitBody
+    $uiBackDriver += "`nEarnLog(*) => true`n" + $backWaitBody
     $savedBackSource = $sourceText
     try {
         $sourceText = $sourceText.Replace('A_TickCount', 'BackClock()')
@@ -1895,6 +1934,55 @@ EarnDispatchTask() => true
 '@
     Invoke-EarnOfflineCheck 'MCTTaskList' 'EarnTaskList' $listDriver 2
     $sourceText = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\EarnCore.ahk') -Raw -Encoding UTF8
+    $waitDiagnosticDriver = @'
+global waitClock := 0, waitReads := 0, waitLogs := [], waitCase := []
+; target, budget, read cost, successful read, abort time, result, reads, clock, logs, log throws
+waitCases := [["dj_resident",400,0,1,-1,true,1,0,0,false],
+    ["dj_resident",400,0,-1,-1,false,3,400,1,false],
+    ["dj_resident",400,600,1,-1,true,1,600,0,false],
+    ["dj_resident_right",400,600,-1,-1,false,1,600,1,false],
+    ["mct_seated",400,0,-1,0,false,0,0,1,false],
+    ["mct_seated",400,0,-1,200,false,1,200,1,false],
+    ["unrelated",400,0,-1,-1,false,3,400,0,false],
+    ["dj_resident",400,0,-1,-1,false,3,400,1,true]]
+for waitCase in waitCases {
+    waitClock := 0, waitReads := 0, waitLogs := []
+    result := EarnWaitSeen(waitCase[1], [0,0,0.3,0.1], waitCase[2])
+    if (result != waitCase[6] || waitReads != waitCase[7] || waitClock != waitCase[8] || waitLogs.Length != waitCase[9])
+        throw Error("Wait diagnostics changed read count, deadline, or return value: " A_Index)
+    if (waitLogs.Length) {
+        expectedReason := waitCase[5] >= 0 ? "aborted" : "timeout"
+        expectedLast := waitReads ? "0" : "unread"
+        for field in ["target=" waitCase[1], "area=0,0,0.3,0.1", "reason=" expectedReason,
+            "reads=" waitReads, "last_seen=" expectedLast, "elapsed_ms=" waitClock, "dpi_context=", "script="]
+            if (!InStr(waitLogs[1], field))
+                throw Error("Missing actual wait observation: " field)
+    }
+}
+FileAppend("PASS WaitDiagnostics cases=" waitCases.Length "`n", "*")
+ExitApp(0)
+WaitDiagnosticClock() => waitClock
+EarnAborted() => waitCase[5] >= 0 && waitClock >= waitCase[5]
+EarnSeen(*) {
+    global waitClock, waitReads
+    waitReads++, waitClock += waitCase[3]
+    return waitReads = waitCase[4]
+}
+Sleep(ms) {
+    global waitClock
+    waitClock += ms
+}
+EarnLog(message) {
+    waitLogs.Push(message)
+    if (waitCase[10])
+        throw Error("Simulated log write failure")
+}
+'@
+    $savedWaitSource = $sourceText
+    try {
+        $sourceText = $sourceText.Replace('A_TickCount', 'WaitDiagnosticClock()')
+        Invoke-EarnOfflineCheck 'WaitDiagnostics' 'EarnWaitSeen' $waitDiagnosticDriver 8
+    } finally { $sourceText = $savedWaitSource }
     $ceoMenuDriver = @'
 global EARN_MENU_AREA := [0,0,0.3,0.5], menuScene := "closed", menuBoss := true,
     menuCursor := 2, menuMode := "", menuOrder := "", menuAbort := false,
@@ -2104,7 +2192,7 @@ Sleep(ms) {
 EarnFail(*) => false
 '@
     $openWaitBody = (Get-EarnFunctionBody $sourceText 'EarnWaitSeen').Replace('EarnWaitSeen(', 'FixtureOpenWaitSeen(').Replace('A_TickCount', 'OpenClock()')
-    $mctOpenDriver += "`n" + $openWaitBody + "`n" + (Get-EarnFunctionBody $sourceText 'EarnSleep').Replace('A_TickCount', 'OpenClock()')
+    $mctOpenDriver += "`nEarnLog(*) => true`n" + $openWaitBody + "`n" + (Get-EarnFunctionBody $sourceText 'EarnSleep').Replace('A_TickCount', 'OpenClock()')
     Invoke-EarnOfflineCheck 'MCTOpen' 'EarnMCTOpen' $mctOpenDriver 11
     $mctCloseDriver = @'
 global EARN_PROMPT_AREA := [], config := Map("Settings",Map("EarnTurnUnitsPerDeg",29))
