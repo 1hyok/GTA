@@ -80,8 +80,8 @@ function Release-StaleAutomaticFps {
     return $true
 }
 
-function Get-WantedGameMode([bool]$Running) {
-    if ($Running) { return 1 }
+function Get-WantedGameMode([bool]$Running, [bool]$Away = $false) {
+    if ($Running -and -not $Away) { return 1 }
     return 2
 }
 
@@ -92,9 +92,8 @@ function Get-Mode {
 }
 
 function Invoke-ModeTick([bool]$Running) {
-    # Process presence is authoritative, including after a watcher restart.
-    # CPU/FPS away policy remains independent of the G-Helper profile.
-    $target = Get-WantedGameMode $Running
+    $away = if ($Running) { (Get-WantedModePolicy).Away } else { $false }
+    $target = Get-WantedGameMode $Running $away
     $changed = Set-GHelperMode $target
     if ($changed) {
         $script:CpuPolicyKey = ''

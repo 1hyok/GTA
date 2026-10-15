@@ -39,6 +39,8 @@ function Start-Sleep {
 try {
     Check ((Get-WantedGameMode $true) -eq 1) 'running GTA requires Turbo'
     Check ((Get-WantedGameMode $false) -eq 2) 'absent GTA requires Silent even on watcher startup'
+    Check ((Get-WantedGameMode $true $true) -eq 2) 'idle GTA requires Silent'
+    Check ((Get-WantedGameMode $false $true) -eq 2) 'game exit stays Silent while away'
     Set-FixtureAway '1'; Check (Read-AwayMode $script:MacroConfig) 'ON parses'
     Set-FixtureAway '0'; Check (-not (Read-AwayMode $script:MacroConfig)) 'OFF parses'
     foreach ($text in @('[Settings]', "[Other]`nAwayMode=1", "[Settings]`nAwayMode=1`nAwayMode=0", "[Settings]`nAwayMode=garbage")) {
@@ -107,20 +109,26 @@ try {
         $script:lastCpu = $Enabled
         if ($script:failCpu) { throw 'fixture CPU failure' }
     }
-    Set-FixtureMode 2; Set-FixtureAway '1'; $script:failMode = $true
-    Throws { Invoke-ModeTick $true } 'failed Turbo application is not successful'
+    Set-FixtureMode 1; Set-FixtureAway '1'; $script:failMode = $true
+    Throws { Invoke-ModeTick $true } 'failed Silent application is not successful'
     $script:failMode = $false; $script:failCpu = $true
     Throws { Invoke-ModeTick $true } 'CPU reassert failure is reported'
     $script:failCpu = $false
     Invoke-ModeTick $true
-    Check ($script:cpuCalls -eq 2 -and (Get-Mode) -eq 1) 'CPU retry cannot prevent Turbo with GTA present'
+    Check ($script:cpuCalls -eq 2 -and (Get-Mode) -eq 2) 'CPU retry preserves manual Silent with GTA present'
     Check (-not $script:lastCpu) 'manual away CPU policy remains independent'
     Set-FixtureAway '0'; Set-FixtureSignal 'v1|42|100000|1|0'
     Invoke-ModeTick $true
-    Check ((Get-Mode) -eq 1 -and -not $script:lastCpu) 'automatic away keeps Turbo but limits CPU'
+    Check ((Get-Mode) -eq 2 -and -not $script:lastCpu) 'automatic away applies Silent and limits CPU'
+    Set-FixtureSignal 'v1|42|100000|0|1'
+    Invoke-ModeTick $true
+    Check ((Get-Mode) -eq 1 -and $script:lastCpu) 'live user return restores Turbo and CPU boost'
+    Set-FixtureSignal 'v1|42|100000|1|0'
+    Invoke-ModeTick $true
+    Check ((Get-Mode) -eq 2 -and -not $script:lastCpu) 'next idle period returns to Silent'
     Set-FixtureSignal 'stale'
     Invoke-ModeTick $true
-    Check ((Get-Mode) -eq 1 -and $script:lastCpu) 'normal return restores CPU without changing Turbo'
+    Check ((Get-Mode) -eq 1 -and $script:lastCpu) 'expired heartbeat releases automatic Silent and restores Turbo'
     $script:failMode = $true
     Throws { Invoke-ModeTick $false } 'failed game-exit Silent application is retried'
     $script:failMode = $false
