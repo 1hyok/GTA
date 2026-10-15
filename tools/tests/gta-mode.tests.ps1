@@ -77,20 +77,42 @@ try {
     Set-FixtureAway '0'; Set-FixtureSignal 'v1|42|100000|0|0'
     Check (-not (Get-WantedModePolicy).Away -and -not (Get-WantedModePolicy).CpuWanted) 'normal idle CPU desired remains distinct from automatic away'
     [IO.File]::WriteAllText($script:FpsWantPath, '30')
-    Check (-not (Release-StaleAutomaticFps) -and [IO.File]::ReadAllText($script:FpsWantPath) -eq '30') 'fresh signal preserves Main exclusive FPS policy'
+    Check (-not (Sync-AwayFpsPolicy) -and [IO.File]::ReadAllText($script:FpsWantPath) -eq '30') 'normal idle CPU policy preserves Main FPS choice'
     Set-FixtureSignal 'stale'; Set-FixtureAway '1'
-    Check (-not (Release-StaleAutomaticFps) -and [IO.File]::ReadAllText($script:FpsWantPath) -eq '30') 'manual ON never releases FPS even with stale signal'
+    Check (-not (Sync-AwayFpsPolicy) -and [IO.File]::ReadAllText($script:FpsWantPath) -eq '30') 'manual ON never releases FPS even with stale signal'
     Set-FixtureAway '0' '0'
-    Check (-not (Release-StaleAutomaticFps)) 'disabled auto-away does not take FPS ownership'
+    Check (-not (Sync-AwayFpsPolicy)) 'disabled auto-away does not take FPS ownership'
     Set-FixtureAway '0'
-    Check ((Release-StaleAutomaticFps) -and [IO.File]::ReadAllText($script:FpsWantPath) -eq '0') 'dead automatic heartbeat atomically releases lingering 30 FPS'
-    Check (-not (Release-StaleAutomaticFps)) 'already released FPS is not rewritten'
+    Check ((Sync-AwayFpsPolicy) -and [IO.File]::ReadAllText($script:FpsWantPath) -eq '0') 'dead automatic heartbeat atomically releases lingering 30 FPS'
+    Check (-not (Sync-AwayFpsPolicy)) 'already released FPS is not rewritten'
     [IO.File]::WriteAllText($script:FpsWantPath, '60')
-    Check (-not (Release-StaleAutomaticFps) -and [IO.File]::ReadAllText($script:FpsWantPath) -eq '60') 'non-away FPS limits are preserved'
+    Check (-not (Sync-AwayFpsPolicy) -and [IO.File]::ReadAllText($script:FpsWantPath) -eq '60') 'non-away FPS limits are preserved'
     [IO.File]::WriteAllText($script:FpsWantPath, '30')
     $lock = [IO.File]::Open($script:FpsWantPath, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
-    try { Throws { Release-StaleAutomaticFps } 'FPS request access failure propagates for retry' } finally { $lock.Dispose() }
-    Check (Release-StaleAutomaticFps) 'FPS release retries successfully after access failure clears'
+    try { Throws { Sync-AwayFpsPolicy } 'FPS request access failure propagates for retry' } finally { $lock.Dispose() }
+    Check (Sync-AwayFpsPolicy) 'FPS release retries successfully after access failure clears'
+    Set-FixtureSignal 'v1|42|100000|1|0'
+    Check ((Sync-AwayFpsPolicy) -eq '30' -and [IO.File]::ReadAllText($script:FpsWantPath) -eq '30') 'fresh idle signal caps FPS without waiting for any Main power timer'
+    Check ($null -eq (Sync-AwayFpsPolicy)) 'unchanged idle request is not rewritten'
+    Set-FixtureSignal 'v1|42|100000|0|1'
+    Check ((Sync-AwayFpsPolicy) -eq '0' -and [IO.File]::ReadAllText($script:FpsWantPath) -eq '0') 'live user return releases FPS without waiting for Main'
+    Set-FixtureSignal 'v1|42|100000|0|0'; [IO.File]::WriteAllText($script:FpsWantPath, '60')
+    Check ($null -eq (Sync-AwayFpsPolicy) -and [IO.File]::ReadAllText($script:FpsWantPath) -eq '60') 'normal idle CPU state preserves configured non-away FPS'
+    Set-FixtureAway '0' '0'; Set-FixtureSignal 'v1|42|100000|1|0'
+    Check ($null -eq (Sync-AwayFpsPolicy) -and [IO.File]::ReadAllText($script:FpsWantPath) -eq '60') 'disabled automatic mode leaves normal FPS untouched'
+    Set-FixtureAway '1'; Set-FixtureSignal 'stale'
+    Check ((Sync-AwayFpsPolicy) -eq '30') 'manual away applies FPS without a heartbeat'
+    [IO.File]::Delete($script:FpsWantPath)
+    Check ((Sync-AwayFpsPolicy) -eq '30' -and [IO.File]::ReadAllText($script:FpsWantPath) -eq '30') 'missing request is created atomically for manual away'
+    Set-FixtureAway '0'; Set-FixtureSignal 'v1|42|100000|1|0'; [IO.File]::WriteAllText($script:FpsWantPath, '0')
+    $realPolicy = ${function:Get-WantedModePolicy}; $script:policyReads = 0
+    function Get-WantedModePolicy {
+        $script:policyReads++
+        if ($script:policyReads -eq 2) { Set-FixtureSignal 'v1|42|100000|0|1' }
+        & $realPolicy
+    }
+    Check ($null -eq (Sync-AwayFpsPolicy) -and [IO.File]::ReadAllText($script:FpsWantPath) -eq '0') 'user return before atomic commit cancels an obsolete idle cap'
+    ${function:Get-WantedModePolicy} = $realPolicy
     Set-FixtureSignal 'stale'
 
     # Replace only boundaries, exercising the real process policy and orchestration.
@@ -110,7 +132,9 @@ try {
         if ($script:failCpu) { throw 'fixture CPU failure' }
     }
     Set-FixtureMode 1; Set-FixtureAway '1'; $script:failMode = $true
+    [IO.File]::WriteAllText($script:FpsWantPath, '0')
     Throws { Invoke-ModeTick $true } 'failed Silent application is not successful'
+    Check ([IO.File]::ReadAllText($script:FpsWantPath) -eq '30') 'G-Helper failure cannot block independent FPS synchronization'
     $script:failMode = $false; $script:failCpu = $true
     Throws { Invoke-ModeTick $true } 'CPU reassert failure is reported'
     $script:failCpu = $false
