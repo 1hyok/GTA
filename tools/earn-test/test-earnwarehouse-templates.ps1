@@ -89,4 +89,49 @@ try {
     if ([IO.File]::Exists($generated)) { [IO.File]::Delete($generated) }
     if ([IO.Directory]::Exists($generatedDirectory)) { [IO.Directory]::Delete($generatedDirectory, $false) }
 }
+# The 2026-10-15 native GDI crop differs from the Steam recording: the selected
+# Cash foot needs variation 64 with the production 1.55 gain, or 72 unmodified.
+# Check the widened normal-foot match against every historical grid as well.
+$nativeWork = Join-Path ([IO.Path]::GetTempPath()) ('gta-warehouse-native-' + [Guid]::NewGuid().ToString('N'))
+$nativeSource = Join-Path $nativeWork 'source'
+$nativeGain = Join-Path $nativeWork 'gain'
+$normalSetting = [regex]::Match($production, 'normal := EarnSeen\("warehouse_person_foot", area, , , (?<variation>\d+)\)')
+if (-not $normalSetting.Success) { throw 'Expected the production normal-foot tolerance.' }
+$normalTolerance = [int]$normalSetting.Groups['variation'].Value
+$null = New-Item -ItemType Directory -Path $nativeSource
+Copy-Item -LiteralPath (Join-Path $assets 'warehouse_person_foot.png') -Destination $nativeSource
+try {
+    & (Join-Path $root 'Core\TemplateGain.ps1') -Source $nativeSource -Destination $nativeGain -Gain 1.55 | Out-Null
+    $normal = [Drawing.Bitmap]::FromFile((Join-Path $assets 'warehouse_person_foot.png'))
+    $gain = [Drawing.Bitmap]::FromFile((Join-Path $nativeGain 'warehouse_person_foot.png'))
+    try {
+        foreach ($sample in ($samples + ,@('native-cash','cash','normal'))) {
+            $source = [Drawing.Bitmap]::FromFile((Join-Path $fixtures ($sample[0] + '.png')))
+            try {
+                foreach ($tile in $tiles) {
+                    $id = $tile.Groups['id'].Value
+                    $x = [int]$tile.Groups['x'].Value - 728 + 230
+                    $y = [int]$tile.Groups['y'].Value - 548 + 43
+                    $area = New-Object Drawing.Rectangle $x, $y, 40, 27
+                    $originalDelta = [EarnWarehouseTemplatePixels]::MinimumVariation($source,$normal,$area)
+                    $gainDelta = [EarnWarehouseTemplatePixels]::MinimumVariation($source,$gain,$area)
+                    $expected = $sample[1] -eq $id -and $sample[2] -eq 'normal'
+                    if (([Math]::Min($originalDelta,$gainDelta) -le $normalTolerance) -ne $expected) {
+                        throw "Normal foot $($sample[0])/$id expected=$expected original=$originalDelta gain=$gainDelta"
+                    }
+                    if ($sample[0] -eq 'native-cash' -and $id -eq 'cash' -and
+                        ($originalDelta -le 65 -or $gainDelta -le 45)) {
+                        throw 'Native fixture no longer reproduces the original 45 failure and gain-only 65 recovery.'
+                    }
+                    $cases++
+                }
+            } finally { $source.Dispose() }
+        }
+    } finally { $normal.Dispose(); $gain.Dispose() }
+} finally {
+    $resolvedWork = [IO.Path]::GetFullPath($nativeWork)
+    $expectedParent = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')
+    if ([IO.Path]::GetDirectoryName($resolvedWork) -ne $expectedParent) { throw 'Unexpected native fixture work directory.' }
+    Remove-Item -LiteralPath $resolvedWork -Recurse -Force
+}
 Write-Output "PASS EarnWarehouseTemplates cases=$cases (saved pixels; no game input or windows)"
