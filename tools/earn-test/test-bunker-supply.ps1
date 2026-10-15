@@ -86,6 +86,9 @@ try {
     }
 } finally { $full.Dispose(); $partial.Dispose(); $label.Dispose() }
 
+$barColors = Get-Content (Join-Path $fixtureDirectory 'bunker-bar-colors.json') -Raw | ConvertFrom-Json
+if ($barColors.emptyBlue.Count -ne 130) { throw 'Expected all 130 observed empty-bar samples' }
+
 $driver = @'
 #Requires AutoHotkey v2.0
 #SingleInstance Off
@@ -129,10 +132,28 @@ for throwing in [false,true] {
         || !InStr(message,"1086,837:3D81C4:1") || !InStr(message,"1140,837:2B455E:0"))
         throw Error("Blue diagnostics did not preserve the actual coordinates, colors and classifications")
 }
+barCases := [
+    ["observed-bright-empty","blue",577,[__EMPTY_BLUE__],0],
+    ["observed-filled-blue","blue",577,0x3D81C4,1],
+    ["observed-filled-blue-second","blue",577,0x4088C4,1],
+    ["observed-dark-empty","blue",577,0x2B455E,0],
+    ["mixed-bright-empty","blue",577,[],18/130],
+    ["observed-green-fill","green",555,0x3BC07B,1],
+    ["observed-green-empty","green",555,0x29514D,0]]
+for scenario in barCases {
+    barScenario := scenario, diagnosticLogs := [], pixelReads := 0, fixtureFocused := true
+    diagnosticThrow := false
+    result := EarnBarFill(766,1154,scenario[3],scenario[2])
+    if (Abs(result-scenario[5]) > 0.000001 || pixelReads != 130 || diagnosticLogs.Length != 1)
+        throw Error("Observed bar case " scenario[1] " result=" result " reads=" pixelReads)
+    if (!InStr(diagnosticLogs[1],"kind=" scenario[2]) || !InStr(diagnosticLogs[1],"rect=320,260,1920,1080"))
+        throw Error("Missing bar kind or actual rectangle")
+}
+barScenario := false
 fixtureFocused := false, diagnosticLogs := [], pixelReads := 0
 if (EarnBarFill(766,1154,577,"blue") != -1 || pixelReads || diagnosticLogs.Length)
     throw Error("Inactive blue diagnostics must not read pixels")
-FileAppend("PASS BunkerSupplyReader cases=" (cases.Length+3) "`n", "*")
+FileAppend("PASS BunkerSupplyReader cases=" (cases.Length+3+barCases.Length) "`n", "*")
 ExitApp(0)
 EarnUIReady(name, area := "") {
     global contextReads, fixtureFocused
@@ -166,9 +187,15 @@ CoordMode(target, relative) {
 PixelGetColor(x, y) {
     global pixelReads, fixtureAborted, fixtureFocused
     if (IsSet(diagnosticMode) && diagnosticMode) {
-        if (y != 837 || x != 1086 + pixelReads*3 || pixelReads >= 130)
+        expectedY := IsSet(barScenario) && IsObject(barScenario) ? barScenario[3]+260 : 837
+        if (y != expectedY || x != 1086 + pixelReads*3 || pixelReads >= 130)
             throw Error("Unexpected blue sample coordinate")
         pixelReads++
+        if (IsSet(barScenario) && IsObject(barScenario)) {
+            if (barScenario[1] = "mixed-bright-empty")
+                return pixelReads <= 18 ? 0x4088C4 : barCases[1][4][pixelReads]
+            return IsObject(barScenario[4]) ? barScenario[4][pixelReads] : barScenario[4]
+        }
         return pixelReads <= 18 ? 0x3D81C4 : 0x2B455E
     }
     if (y != 379 || x != 994 + pixelReads * 3 || pixelReads >= 200)
@@ -193,6 +220,7 @@ FixtureFailure(failure, *) {
     ExitApp(1)
 }
 '@
+$driver = $driver.Replace('__EMPTY_BLUE__', (($barColors.emptyBlue | ForEach-Object { '0x' + $_ }) -join ','))
 $driver = $driver.Replace('__FULL_PIXELS__', ($fullPixels -join ',')).Replace('__PARTIAL_PIXELS__', ($partialPixels -join ','))
 $driver += "`n" + (Get-BunkerSourceFunction $tasks 'EarnBunkerPageSupply')
 $driver += "`n" + (Get-BunkerSourceFunction $core 'EarnBarFill')
@@ -220,12 +248,12 @@ try {
     }
     $stdout = $testProcess.StandardOutput.ReadToEnd().Trim()
     $stderr = $testProcess.StandardError.ReadToEnd().Trim()
-    if ($testProcess.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS BunkerSupplyReader cases=18') {
+    if ($testProcess.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS BunkerSupplyReader cases=25') {
         throw "Bunker supply reader failed (exit=$($testProcess.ExitCode))`nstdout: $stdout`nstderr: $stderr"
     }
     Write-Output "PASS BunkerSupplyTemplate cases=$templateCases"
     Write-Output $stdout
-    Write-Output "PASS BunkerSupply cases=$($templateCases+18)"
+    Write-Output "PASS BunkerSupply cases=$($templateCases+25)"
 } finally {
     if ($null -ne $testProcess) {
         if (-not $testProcess.HasExited) { $testProcess.Kill(); $testProcess.WaitForExit() }
