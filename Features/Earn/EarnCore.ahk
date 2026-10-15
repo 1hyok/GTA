@@ -124,6 +124,10 @@ EarnAborted() {
 
 ; name 템플릿(Images\Earn\<해상도>\<name>.png)이 area(클라이언트 비율 [x1, y1, x2, y2]) 안에 보이면 true. 찾은 자리(화면 좌표)는 &fx, &fy.
 EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
+    ; 1015 데스크톱 실측: 재고용 버튼과 보유 직원 얼굴이 40에서 실패하고 55에서 일치했다.
+    if (name = "dj_rebook_10k" || name = "dj_rebook_10k_right"
+        || RegExMatch(name, "^warehouse_staff_[1-5]$"))
+        variation := Max(variation, 55)
     ; 실제 밝은 전화 홈의 제목 변형. 다른 메뉴의 허용 오차를 넓히지 않는다.
     if (name = "ph_joblist_sel" || name = "ph_vinewood_sel")
         return TemplateSeen("Earn", name, area, &fx, &fy, Max(variation, 70))
@@ -1268,27 +1272,32 @@ EarnBarFill(x1, x2, y, kind) {
     hwnd := IsGTAActive()
     if (!hwnd)
         return -1
-    WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
-    CoordMode("Pixel", "Screen")
-    sx := cw / 1920, sy := ch / 1080
-    total := 0, full := 0
-    x := x1
-    while (x <= x2) {
-        c := PixelGetColor(cx + Round(x * sx), cy + Round(y * sy))
-        r := (c >> 16) & 0xFF, g := (c >> 8) & 0xFF, b := c & 0xFF
-        if (kind = "green")
-            hit := g > 100 && g > r + 30
-        else if (kind = "blue")
-            hit := b > 110 && b > r + 30
-        else if (kind = "orange")
-            hit := r > 100 && r > g + 35 && g > b + 15
-        else
-            hit := Max(r, g, b) > 110
-        full += hit ? 1 : 0
-        total += 1
-        x += 3
+    previous := DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
+    try {
+        WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
+        CoordMode("Pixel", "Screen")
+        sx := cw / 1920, sy := ch / 1080
+        total := 0, full := 0
+        x := x1
+        while (x <= x2) {
+            c := PixelGetColor(cx + Round(x * sx), cy + Round(y * sy))
+            r := (c >> 16) & 0xFF, g := (c >> 8) & 0xFF, b := c & 0xFF
+            if (kind = "green")
+                hit := g > 100 && g > r + 30
+            else if (kind = "blue")
+                hit := b > 110 && b > r + 30
+            else if (kind = "orange")
+                hit := r > 100 && r > g + 35 && g > b + 15
+            else
+                hit := Max(r, g, b) > 110
+            full += hit ? 1 : 0
+            total += 1
+            x += 3
+        }
+        return total ? full / total : -1
+    } finally {
+        DllCall("SetThreadDpiAwarenessContext", "ptr", previous, "ptr")
     }
-    return total ? full / total : -1
 }
 
 ; 진단용: 미니맵 영역을 %TEMP%\gta-earn-<tag>.png 로 저장한다 (스폰 자리 조사). 실패해도 흐름을 막지 않는다

@@ -436,9 +436,12 @@ EarnBunkerBuy() {
         quote := EarnReadScreen([600, 420, 720, 210])
         price := EarnReadDollars(EarnScreenText(quote))
         ; 느린 OCR 도중 가격 구간이 바뀌어도 이전 견적으로 결제하지 않는다.
-        if (EarnBunkerPriceAllowed(price, plan.bars))
-            price := EarnReadDollars(EarnScreenText(EarnReadScreen([600, 420, 720, 210])))
+        if (EarnBunkerPriceAllowed(price, plan.bars)) {
+            quote := EarnReadScreen([600, 420, 720, 210])
+            price := EarnReadDollars(EarnScreenText(quote))
+        }
         if (!EarnBunkerPriceAllowed(price, plan.bars)) {
+            EarnLog("벙커 견적 OCR: " StrReplace(EarnScreenText(quote), "`n", " | "))
             EarnLog("벙커: 가격 " price ", 예상 " plan.bars * 15000 " 불일치. 결제 취소")
             if (!EarnUIClick("bunker_confirm", 850, 619)
                 || !EarnWaitGone("bunker_confirm", "", 3000)
