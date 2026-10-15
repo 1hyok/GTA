@@ -1082,7 +1082,10 @@ cases := [[97,true,10,true,0,"mct","",-1],[90,true,10,true,1,"mct","",-1],
     [90,true,10,false,0,"mct","confirm_click_failed",-1],
     [90,true,10,false,1,"mct","confirm_gone_failed",-1],
     [90,true,10,false,1,"mct","resident_failed",-1],
-    [90,true,10,false,1,"mct","resident_log_failed",-1]]
+    [90,true,10,false,1,"mct","resident_log_failed",-1],
+    [90,true,10,false,1,"mct","cursor_aborted",-1],
+    [90,true,10,false,1,"mct","cursor_focus_lost",-1],
+    [90,true,10,true,1,"mct","cursor_restored",-1]]
 for c in cases {
     popularity := c[1], allowRebook := c[2], gain := c[3], confirmations := 0,
         djScene := c[6], djMode := c[7], homeReads := 0, backs := 0, gEarnDJCheckAbove := c[8], resultCalls := "", resultLogs := []
@@ -1098,7 +1101,11 @@ for c in cases {
     if (gEarnDJCheckAbove != ((djMode = "lag" || djMode = "post_label_missing") && confirmations ? c[1] : -1))
         throw Error("DJ flow " A_Index ": next-visit check=" gEarnDJCheckAbove)
     failureStages := Map("confirm_click_failed", ["C", "confirm_click"], "confirm_gone_failed", ["CG", "confirm_gone"],
-        "resident_failed", ["CGR", "resident_seen"], "resident_log_failed", ["CGR", "resident_seen"])
+        "resident_failed", ["CGXR", "resident_seen"], "resident_log_failed", ["CGXR", "resident_seen"])
+    if (djMode = "cursor_aborted" || djMode = "cursor_focus_lost") {
+        if (resultCalls != "CGX" || !transactionPending.Has("dj"))
+            throw Error("Cursor cleanup cancellation must retain pending and skip Resident/payment confirmation")
+    }
     if (failureStages.Has(djMode)) {
         expected := failureStages[djMode]
         if (resultCalls != expected[1] || resultLogs.Length != 1 || !InStr(resultLogs[1], "stage=" expected[2]))
@@ -1168,11 +1175,20 @@ EarnUIClick(name,x,y,*) {
     }
     return true
 }
+EarnUIClearCursor() {
+    global resultCalls
+    if (SubStr(resultCalls, -1) != "G")
+        throw Error("Cursor must be cleared after confirmation disappears")
+    resultCalls .= "X"
+    return djMode != "cursor_aborted" && djMode != "cursor_focus_lost"
+}
 EarnWaitSeen(name,area := "", timeoutMs := 0) {
     global resultCalls
     if (name = "dj_resident" || name = "dj_resident_right") {
         if (timeoutMs != 5000)
             throw Error("Resident wait budget changed")
+        if (SubStr(resultCalls, -1) != "X")
+            throw Error("Restored game cursor still obscures Resident")
         resultCalls .= "R"
         if (djMode = "resident_failed" || djMode = "resident_log_failed")
             return false
@@ -1210,7 +1226,7 @@ EarnDJSchedule(*) => true
     foreach ($fn in @('EarnDJNeedsRebook','EarnDJHomeOpen','EarnPopularityHomePct')) {
         $djFlowDriver += "`n" + (Get-EarnFunctionBody $sourceText $fn)
     }
-    Invoke-EarnOfflineCheck 'DJFlow' 'EarnDJSwapLoop' $djFlowDriver 25
+    Invoke-EarnOfflineCheck 'DJFlow' 'EarnDJSwapLoop' $djFlowDriver 28
     # Real saved pixels, real bar sampler and real Home reader. No desktop APIs.
     Add-Type -AssemblyName System.Drawing
     Add-Type -ReferencedAssemblies System.Drawing @'

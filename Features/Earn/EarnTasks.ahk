@@ -740,6 +740,9 @@ EarnDJSwapLoop(previousMCTReading := "") {
             try EarnLog("[dj-result] stage=confirm_gone target=" confirmation " elapsed_ms=" (A_TickCount - resultStarted))
             return EarnFail("DJ: 교체 결과 미확인")
         }
+        ; Closing the confirmation can restore the game cursor over Resident.
+        if (!EarnUIClearCursor())
+            return false
         resultStarted := A_TickCount
         if (!EarnWaitSeen(resident, area, 5000)) {
             try EarnLog("[dj-result] stage=resident_seen target=" resident " confirmation=" confirmation
