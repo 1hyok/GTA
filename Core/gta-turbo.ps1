@@ -63,21 +63,28 @@ function Get-WantedModePolicy {
         Manual = $settings.Manual; Automatic = $settings.Automatic; SignalValid = ($null -ne $signal) }
 }
 
-function Release-StaleAutomaticFps {
-    $policy = Get-WantedModePolicy
-    if ($policy.Manual -or -not $policy.Automatic -or $policy.SignalValid) { return $false }
-    if (-not [IO.File]::Exists($script:FpsWantPath)) { return $false }
-    if ([IO.File]::ReadAllText($script:FpsWantPath).Trim() -ne '30') { return $false }
-    # Prepare a separate file; never truncate Main's live request. Recheck both
-    # the heartbeat and manual override just before replacing a stale limit.
+function Get-AwayFpsTarget($Policy, [string]$Current) {
+    if ($Policy.Manual -or ($Policy.Automatic -and $Policy.SignalValid -and $Policy.Away)) { return '30' }
+    if ($Policy.Automatic -and (($Policy.SignalValid -and $Policy.CpuWanted) -or
+        (-not $Policy.SignalValid -and $Current -eq '30'))) { return '0' }
+    return $null
+}
+
+function Sync-AwayFpsPolicy {
+    $current = if ([IO.File]::Exists($script:FpsWantPath)) { [IO.File]::ReadAllText($script:FpsWantPath).Trim() } else { '' }
+    $target = Get-AwayFpsTarget (Get-WantedModePolicy) $current
+    if ($null -eq $target -or $current -eq $target) { return $null }
+    # Main may finish a task or publish user return during this write. Recheck
+    # policy before the atomic replacement; the next tick repairs later races.
     $pending = $script:FpsWantPath + '.watcher.pending'
-    [IO.File]::WriteAllText($pending, '0', [Text.UTF8Encoding]::new($false))
-    $latest = Get-WantedModePolicy
-    if ($latest.Manual -or -not $latest.Automatic -or $latest.SignalValid -or
-        [IO.File]::ReadAllText($script:FpsWantPath).Trim() -ne '30') { return $false }
-    [IO.File]::Replace($pending, $script:FpsWantPath, [NullString]::Value)
-    if ([IO.File]::ReadAllText($script:FpsWantPath) -ne '0') { throw 'Stale automatic FPS release was not confirmed.' }
-    return $true
+    [IO.File]::WriteAllText($pending, $target, [Text.UTF8Encoding]::new($false))
+    $current = if ([IO.File]::Exists($script:FpsWantPath)) { [IO.File]::ReadAllText($script:FpsWantPath).Trim() } else { '' }
+    $latest = Get-AwayFpsTarget (Get-WantedModePolicy) $current
+    if ($null -eq $latest -or $latest -ne $target -or $current -eq $target) { return $null }
+    if ([IO.File]::Exists($script:FpsWantPath)) { [IO.File]::Replace($pending, $script:FpsWantPath, [NullString]::Value) }
+    else { [IO.File]::Move($pending, $script:FpsWantPath) }
+    if ([IO.File]::ReadAllText($script:FpsWantPath) -ne $target) { throw 'Away FPS request was not confirmed; retrying on next tick.' }
+    return $target
 }
 
 function Get-WantedGameMode([bool]$Running, [bool]$Away = $false) {
@@ -92,6 +99,14 @@ function Get-Mode {
 }
 
 function Invoke-ModeTick([bool]$Running) {
+    try {
+        $fps = Sync-AwayFpsPolicy
+        if ($null -ne $fps) { Add-Content -LiteralPath $script:Log "$(Get-Date -Format s) away FPS request=$fps synchronized" }
+        $script:LastFpsReleaseError = ''
+    } catch {
+        if ($script:LastFpsReleaseError -ne $_.Exception.Message) { Add-Content -LiteralPath $script:Log "$(Get-Date -Format s) FPS synchronization pending: $($_.Exception.Message)" }
+        $script:LastFpsReleaseError = $_.Exception.Message
+    }
     $away = if ($Running) { (Get-WantedModePolicy).Away } else { $false }
     $target = Get-WantedGameMode $Running $away
     $changed = Set-GHelperMode $target
@@ -99,13 +114,6 @@ function Invoke-ModeTick([bool]$Running) {
         $script:CpuPolicyKey = ''
         Add-Content -LiteralPath $script:Log "$(Get-Date -Format s) mode=$target running=$Running applied"
         Start-Sleep -Milliseconds 1200
-    }
-    try {
-        if (Release-StaleAutomaticFps) { Add-Content -LiteralPath $script:Log "$(Get-Date -Format s) stale automatic heartbeat: FPS limit release requested" }
-        $script:LastFpsReleaseError = ''
-    } catch {
-        if ($script:LastFpsReleaseError -ne $_.Exception.Message) { Add-Content -LiteralPath $script:Log "$(Get-Date -Format s) FPS release pending: $($_.Exception.Message)" }
-        $script:LastFpsReleaseError = $_.Exception.Message
     }
     $latest = Get-WantedModePolicy
     $cpuWanted = $Running -and $latest.CpuWanted
