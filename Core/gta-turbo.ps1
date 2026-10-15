@@ -80,54 +80,9 @@ function Release-StaleAutomaticFps {
     return $true
 }
 
-function New-ModeState {
-    return @{ Version = 1; AwayActive = $false; RestoreMode = 1; NormalMode = 1; WasRunning = $false }
-}
-
-function Read-ModeState([string]$Path) {
-    if (-not [IO.File]::Exists($Path)) { return New-ModeState }
-    $raw = [IO.File]::ReadAllText($Path) | ConvertFrom-Json
-    if ($raw.Version -ne 1 -or $raw.AwayActive -isnot [bool] -or $raw.WasRunning -isnot [bool] -or
-        $null -eq $raw.RestoreMode -or "$($raw.RestoreMode)" -notmatch '^[0-2]$' -or
-        $null -eq $raw.NormalMode -or "$($raw.NormalMode)" -notmatch '^[0-2]$') { throw 'Invalid mode restore state; preserving it for recovery.' }
-    $state = New-ModeState
-    foreach ($key in @($state.Keys)) { $state[$key] = $raw.$key }
-    return $state
-}
-
-function Save-ModeState([string]$Path, [hashtable]$State) {
-    $temporary = $Path + '.pending'
-    [IO.File]::WriteAllText($temporary, ($State | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
-    if ([IO.File]::Exists($Path)) { [IO.File]::Replace($temporary, $Path, [NullString]::Value) }
-    else { [IO.File]::Move($temporary, $Path) }
-}
-
-function Get-ModePlan([hashtable]$State, [bool]$Away, [bool]$Running, [int]$Current) {
-    if ($Current -lt 0 -or $Current -gt 2) { throw 'Automatic switching supports built-in G-Helper modes only.' }
-    $before = $State.Clone(); $after = $State.Clone(); $target = $null
-    if ($Away) {
-        if (-not $before.AwayActive) {
-            $before.AwayActive = $true
-            $before.RestoreMode = $Current
-        }
-        $before.WasRunning = $Running
-        $after = $before.Clone()
-        $target = 2
-    } elseif ($before.AwayActive) {
-        $target = [int]$before.RestoreMode
-        $after.AwayActive = $false
-        $after.NormalMode = $target
-        $after.WasRunning = $Running
-    } elseif ($Running) {
-        if (-not $before.WasRunning) { $after.NormalMode = 1 }
-        $target = [int]$after.NormalMode
-        $after.WasRunning = $true
-    } elseif ($before.WasRunning) {
-        $target = 2
-        $after.WasRunning = $false
-    }
-    # Capture restoration BEFORE touching hardware; clear it only AFTER confirmed success.
-    return @{ Before = $before; After = $after; Target = $target }
+function Get-WantedGameMode([bool]$Running) {
+    if ($Running) { return 1 }
+    return 2
 }
 
 function Get-Mode {
@@ -137,7 +92,15 @@ function Get-Mode {
 }
 
 function Invoke-ModeTick([bool]$Running) {
-    $policy = Get-WantedModePolicy
+    # Process presence is authoritative, including after a watcher restart.
+    # CPU/FPS away policy remains independent of the G-Helper profile.
+    $target = Get-WantedGameMode $Running
+    $changed = Set-GHelperMode $target
+    if ($changed) {
+        $script:CpuPolicyKey = ''
+        Add-Content -LiteralPath $script:Log "$(Get-Date -Format s) mode=$target running=$Running applied"
+        Start-Sleep -Milliseconds 1200
+    }
     try {
         if (Release-StaleAutomaticFps) { Add-Content -LiteralPath $script:Log "$(Get-Date -Format s) stale automatic heartbeat: FPS limit release requested" }
         $script:LastFpsReleaseError = ''
@@ -145,27 +108,12 @@ function Invoke-ModeTick([bool]$Running) {
         if ($script:LastFpsReleaseError -ne $_.Exception.Message) { Add-Content -LiteralPath $script:Log "$(Get-Date -Format s) FPS release pending: $($_.Exception.Message)" }
         $script:LastFpsReleaseError = $_.Exception.Message
     }
-    $away = $policy.Away
-    $state = Read-ModeState $script:StatePath
-    $plan = Get-ModePlan $state $away $Running (Get-Mode)
-    if (($state | ConvertTo-Json -Compress) -ne ($plan.Before | ConvertTo-Json -Compress)) {
-        Save-ModeState $script:StatePath $plan.Before
-    }
-    if ($null -ne $plan.Target) {
-        $changed = Set-GHelperMode $plan.Target
-        if ($changed) { $script:CpuPolicyKey = ''; Start-Sleep -Milliseconds 1200 }
-        # G-Helper applies its mode settings asynchronously. Never reassert an old
-        # away decision after a user returned while that application was pending.
-        $latest = Get-WantedModePolicy
-        $cpuKey = [string][int]$latest.CpuWanted
-        if ($script:CpuPolicyKey -ne $cpuKey) {
-            Set-ModeCpuPolicy $latest.CpuWanted
-            $script:CpuPolicyKey = $cpuKey
-        }
-        if ($changed) { Add-Content -LiteralPath $script:Log "$(Get-Date -Format s) mode=$($plan.Target) away=$away applied; previous=$($plan.Before.RestoreMode)" }
-    }
-    if (($plan.Before | ConvertTo-Json -Compress) -ne ($plan.After | ConvertTo-Json -Compress)) {
-        Save-ModeState $script:StatePath $plan.After
+    $latest = Get-WantedModePolicy
+    $cpuWanted = $Running -and $latest.CpuWanted
+    $cpuKey = [string][int]$cpuWanted
+    if ($script:CpuPolicyKey -ne $cpuKey) {
+        Set-ModeCpuPolicy $cpuWanted
+        $script:CpuPolicyKey = $cpuKey
     }
 }
 
@@ -201,6 +149,7 @@ public static class GtaModeWindow {
     [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr window, out RECT rect);
     [DllImport("user32.dll", SetLastError=true)] static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll")] static extern int GetSystemMetrics(int index);
+    [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr window, int command);
     [DllImport("user32.dll")] static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern bool GetUserObjectInformation(IntPtr handle, int index, StringBuilder value, uint length, out uint needed);
     [DllImport("user32.dll")] static extern bool CloseDesktop(IntPtr desktop);
@@ -281,14 +230,16 @@ public static class GtaModeWindow {
         // Move while hidden, then expose without activation. Never use negative Y:
         // G-Helper's GPU refresh snaps negative Top back onto the screen.
         if (!SetWindowPos(saved.Handle, IntPtr.Zero, x,y,0,0, 0x215)) throw new InvalidOperationException("Could not prepare G-Helper window position.");
-        if (!SetWindowPos(saved.Handle, IntPtr.Zero, 0,0,0,0, 0x257)) throw new InvalidOperationException("Could not expose G-Helper controls without activation.");
+        // SW_SHOWNOACTIVATE delivers WM_SHOWWINDOW, which creates lazy WinForms
+        // child controls. SetWindowPos(SWP_SHOWWINDOW) alone leaves them absent.
+        ShowWindow(saved.Handle, 4);
         var ready = Read(saved.Handle);
         if (!ready.Visible || (ready.Rect.Left < x && ready.Rect.Top < y)) throw new InvalidOperationException("G-Helper did not stay outside the visible desktop.");
     }
     public static void Restore(Snapshot saved) {
         Identity(saved);
         // Hide before moving back, preserving activation and Z order throughout.
-        if (!SetWindowPos(saved.Handle, IntPtr.Zero,0,0,0,0,0x297)) throw new InvalidOperationException("Could not hide prepared G-Helper window.");
+        ShowWindow(saved.Handle, 0);
         if (!SetWindowPos(saved.Handle, IntPtr.Zero,saved.Rect.Left,saved.Rect.Top,0,0,0x215)) throw new InvalidOperationException("Could not restore G-Helper window position.");
         var restored = Read(saved.Handle);
         if (restored.Visible || restored.Rect.Left != saved.Rect.Left || restored.Rect.Top != saved.Rect.Top) throw new InvalidOperationException("G-Helper window restoration was not confirmed.");
@@ -354,7 +305,7 @@ function Invoke-GHelperModeButton([int]$Target, $Helper) {
     $before = Get-ModeDesktopState
     if (-not $before.Available -or $before.ProcessId -eq $Helper.Id) { throw 'Desktop unavailable or G-Helper is being used; deferring mode change.' }
     $window = Get-ModeSettingsWindow $Helper
-    $prepared = $false; $trace = @("before=$($before.Foreground)")
+    $prepared = $false; $invoked = $false; $trace = @("before=$($before.Foreground)")
     try {
         if (-not $window.Visible) { $prepared = $true; Prepare-ModeSettingsWindow $window }
         $button = Get-ModeButton $window $Target
@@ -365,13 +316,14 @@ function Invoke-GHelperModeButton([int]$Target, $Helper) {
         $script:LastModeAttemptKey = "$($Helper.Id):$($Helper.StartTime.Ticks):$Target"
         $script:NextModeAttempt = (Get-Date).AddMinutes(5)
         Invoke-ModeButton $button
+        $invoked = $true
         $after = Get-ModeDesktopState; $trace += "invoked=$($after.Foreground)"
         if ($after.Foreground -ne $before.Foreground) { throw 'Foreground changed during G-Helper invocation; no focus restoration attempted.' }
     } finally {
         try { if ($prepared) { Restore-ModeSettingsWindow $window } }
         finally {
             $final = Get-ModeDesktopState; $trace += "final=$($final.Foreground)"
-            Add-Content -LiteralPath $script:Log "$(Get-Date -Format s) mode BN_CLICKED target=$Target foreground $($trace -join ' ')"
+            Add-Content -LiteralPath $script:Log "$(Get-Date -Format s) mode request target=$Target invoked=$invoked foreground $($trace -join ' ')"
         }
     }
 }
@@ -465,7 +417,6 @@ if ($LibraryOnly) { return }
 $ErrorActionPreference = 'Stop'
 $script:Game = 'GTA5_Enhanced'
 $script:Config = Join-Path $env:APPDATA 'GHelper\config.json'
-$script:StatePath = Join-Path $env:LOCALAPPDATA 'gta-power-mode-state.json'
 $script:AwaySignalPath = Join-Path $env:USERPROFILE '.gta-away-want'
 $script:FpsWantPath = Join-Path $env:USERPROFILE '.gta-fps-want'
 $script:CpuPolicyKey = ''
