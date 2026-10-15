@@ -188,10 +188,37 @@ TemplateOriginProbe(img, x, y, variation, searchedAt) {
     started := A_TickCount
     pixels := TemplateOriginPixels(img, x, y)
     stats := TemplateMaskStats(pixels.template, pixels.screen, pixels.w, pixels.h, variation)
+    bitmap := A_Temp "\gta-mct-origin-followup.bmp"
+    try TemplateOriginSave(pixels.screen, pixels.w, pixels.h, bitmap)
+    catch as e
+        bitmap := "error=" e.Message
     return ("followup sample_delta_ms=" (pixels.sampleAt - searchedAt) " elapsed_ms=" (A_TickCount - started)
         " mask=" stats.count " exceeded=" stats.exceeded " max_rgb=" stats.r "," stats.g "," stats.b
         " max_diff=" stats.diff " worst_xy=" (x + stats.x) "," (y + stats.y)
-        " worst_rgb=" Format("{:06X}", stats.rgb) " size=" pixels.w "," pixels.h)
+        " worst_rgb=" Format("{:06X}", stats.rgb) " size=" pixels.w "," pixels.h " bmp=" bitmap)
+}
+
+TemplateOriginSave(screen, w, h, path) {
+    header := TemplateBitmapHeader(w, h, screen.Size)
+    bitmapFile := FileOpen(path, "w", "UTF-8-RAW")
+    try {
+        if (bitmapFile.RawWrite(header) != header.Size || bitmapFile.RawWrite(screen) != screen.Size)
+            throw Error("incomplete bitmap write")
+    } finally {
+        bitmapFile.Close()
+    }
+}
+
+TemplateBitmapHeader(w, h, bytes) {
+    if (w < 1 || h < 1 || bytes != w * h * 4 || bytes > 0xFFFFFFFF - 54)
+        throw Error("invalid bitmap dimensions")
+    header := Buffer(54, 0)
+    NumPut("ushort", 0x4D42, header, 0)
+    NumPut("uint", 54 + bytes, header, 2)
+    NumPut("uint", 54, header, 10)
+    NumPut("uint", 40, "int", w, "int", -h, "ushort", 1, "ushort", 32, header, 14)
+    NumPut("uint", bytes, header, 34)
+    return header
 }
 
 TemplateOriginPixels(img, x, y) {
