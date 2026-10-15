@@ -652,7 +652,11 @@ EarnTaskMCTEnd() {
                 || !EarnUIBackToMCT("nc_dj_menu", 1))
                 return EarnFail("MCT 정리: 나이트클럽 Home 복귀 미확인")
         }
-        if (EarnUIReady("mct_sit", [0,0,0.3,0.1]) || EarnUIReady("mct_terrorbyte"))
+        if (EarnUIReady("mct_terrorbyte")) {
+            DiscordHUDMCTSet(false)
+            return EarnCEO(false) && EarnTerrorbyteMCTReady()
+        }
+        if (EarnUIReady("mct_sit", [0,0,0.3,0.1]))
             return EarnCEO(false)
         if (!EarnUIReady("mct_title", [0.3,0,0.7,0.1])
             && !EarnUIReady("mct_seated", [0,0,0.3,0.1]) && !EarnUIReady("mct_need_ceo")) {
@@ -661,8 +665,8 @@ EarnTaskMCTEnd() {
                 return DiscordHUDMCTSet(false) && EarnCEO(false)
             return EarnFail("MCT 정리: 확인된 복귀 경로 없음. 화면 확인 후 보스 해제 필요")
         }
-        ; CEO를 먼저 해제하고, 다음 회차가 오래 시점을 훑지 않도록 의자 안내를 다시 맞춘다.
-        return EarnMCTClose(false) && EarnCEO(false) && EarnMCTFindChairPrompt()
+        ; 닫힌 화면에서 확인한 종류를 이 정리 호출 안에서만 사용한다.
+        return EarnMCTClose(false, &terminalKind) && EarnCEO(false) && EarnMCTReturnReady(terminalKind)
     } catch as e {
         return EarnFail("MCT 정리 오류: " e.Message)
     } finally {

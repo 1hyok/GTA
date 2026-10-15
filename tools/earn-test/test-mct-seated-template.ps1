@@ -409,13 +409,99 @@ try {
     }
 } finally { $textMask.Dispose(); $bgMask.Dispose() }
 
+$terrorText = [Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_terrorbyte_access_native.png'))
+$terrorBg = [Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_terrorbyte_access_native_bg.png'))
+$terrorLegacy = [Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_terrorbyte.png'))
+try {
+    foreach ($sampleName in @('terrorbyte-native-20261016.png','terrorbyte-native-ceiling-20261016.png')) {
+        $sample = [Drawing.Bitmap]::FromFile((Join-Path $evidence $sampleName))
+        try {
+            $x=0; $y=0
+            $old = [EarnNightclubTemplateTest]::MinimumVariation($sample,$terrorLegacy,(New-Object Drawing.Rectangle 0,0,576,270),[ref]$x,[ref]$y)
+            if ($old -le 60) { throw "Terrorbyte fixture must reproduce the Access prompt miss: $sampleName" }
+            $text = [EarnNightclubTemplateTest]::MinimumVariation($sample,$terrorText,(New-Object Drawing.Rectangle 0,0,576,270),[ref]$x,[ref]$y)
+            if ($text -gt 40 -or $x -ne 40 -or $y -ne 172) { throw "Terrorbyte glyph miss: $sampleName $text at $x,$y" }
+            $bx=0; $by=0
+            $bg = [EarnNightclubTemplateTest]::MinimumVariation($sample,$terrorBg,(New-Object Drawing.Rectangle $x,$y,392,28),[ref]$bx,[ref]$by)
+            if ($bg -gt 60) { throw "Terrorbyte background miss: $sampleName $bg" }
+            $cases += 2
+            Write-Output "PASS Terrorbyte $sampleName legacy=$old glyph=$text background=$bg"
+        } finally { $sample.Dispose() }
+    }
+    foreach ($sampleName in @('mct-final-restored.png','mansion-dj-after.png','mansion-bunker-result.png')) {
+        $sample=[Drawing.Bitmap]::FromFile((Join-Path $evidence $sampleName))
+        try {
+            $x=0; $y=0
+            $text=[EarnNightclubTemplateTest]::MinimumVariation($sample,$terrorText,(New-Object Drawing.Rectangle 0,0,576,270),[ref]$x,[ref]$y)
+            if ($text -le 40) { throw "Other MCT scene matched Terrorbyte Access: $sampleName" }
+            $cases++
+        } finally { $sample.Dispose() }
+    }
+    foreach ($color in @([Drawing.Color]::White,[Drawing.Color]::FromArgb(140,140,140),[Drawing.Color]::Black)) {
+        $blank=New-Object Drawing.Bitmap 392,28
+        $graphics=[Drawing.Graphics]::FromImage($blank)
+        try {
+            $graphics.Clear($color)
+            $x=0; $y=0
+            $text=[EarnNightclubTemplateTest]::MinimumVariation($blank,$terrorText,(New-Object Drawing.Rectangle 0,0,392,28),[ref]$x,[ref]$y)
+            $bg=[EarnNightclubTemplateTest]::MinimumVariation($blank,$terrorBg,(New-Object Drawing.Rectangle 0,0,392,28),[ref]$x,[ref]$y)
+            if ($text -le 40 -and $bg -le 60) { throw "Blank screen matched Terrorbyte pair: $color" }
+            $cases++
+        } finally { $graphics.Dispose(); $blank.Dispose() }
+    }
+    foreach ($consumer in @($core,[IO.File]::ReadAllText((Join-Path $root 'Features\AntiAFK.ahk')))) {
+        if ($consumer -notmatch 'TemplateSeen\("Earn", "mct_terrorbyte_access_native",[^\r\n]+40\)\s*&& TemplateAt\("Earn", "mct_terrorbyte_access_native_bg", fx, fy, 60\)') {
+            throw 'Earn and AFK must use the same bounded Terrorbyte glyph/background pair'
+        }
+        $cases++
+    }
+} finally { $terrorText.Dispose(); $terrorBg.Dispose(); $terrorLegacy.Dispose() }
+$ceoText=[Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_terrorbyte_ceo_native.png'))
+$ceoBg=[Drawing.Bitmap]::FromFile((Join-Path $assetDirectory 'mct_terrorbyte_ceo_native_bg.png'))
+try {
+    foreach ($sampleName in @('terrorbyte-ceo-native-20261016.png','mct-final-restored.png','mansion-dj-after.png','mansion-bunker-result.png')) {
+        $sample=[Drawing.Bitmap]::FromFile((Join-Path $evidence $sampleName))
+        try {
+            $positive=$sampleName -eq 'terrorbyte-ceo-native-20261016.png'
+            $x=0; $y=0
+            $text=[EarnNightclubTemplateTest]::MinimumVariation($sample,$ceoText,(New-Object Drawing.Rectangle 0,0,576,270),[ref]$x,[ref]$y)
+            if (($text -le 40) -ne $positive) { throw "Terrorbyte CEO glyph result wrong: $sampleName $text" }
+            if ($positive) {
+                if ($x -ne 40 -or $y -ne 25) { throw 'Terrorbyte CEO origin changed' }
+                $bx=0; $by=0
+                $bg=[EarnNightclubTemplateTest]::MinimumVariation($sample,$ceoBg,(New-Object Drawing.Rectangle $x,$y,275,58),[ref]$bx,[ref]$by)
+                if ($bg -gt 60) { throw "Terrorbyte CEO background miss: $bg" }
+                Write-Output "PASS Terrorbyte CEO glyph=$text background=$bg"
+            }
+            $cases++
+        } finally { $sample.Dispose() }
+    }
+    foreach ($color in @([Drawing.Color]::White,[Drawing.Color]::FromArgb(140,140,140),[Drawing.Color]::Black)) {
+        $blank=New-Object Drawing.Bitmap 275,58
+        $graphics=[Drawing.Graphics]::FromImage($blank)
+        try {
+            $graphics.Clear($color)
+            $x=0; $y=0
+            $text=[EarnNightclubTemplateTest]::MinimumVariation($blank,$ceoText,(New-Object Drawing.Rectangle 0,0,275,58),[ref]$x,[ref]$y)
+            $bg=[EarnNightclubTemplateTest]::MinimumVariation($blank,$ceoBg,(New-Object Drawing.Rectangle 0,0,275,58),[ref]$x,[ref]$y)
+            if ($text -le 40 -and $bg -le 60) { throw 'Blank screen matched Terrorbyte CEO pair' }
+            $cases++
+        } finally { $graphics.Dispose(); $blank.Dispose() }
+    }
+    foreach ($consumer in @($core,[IO.File]::ReadAllText((Join-Path $root 'Features\AntiAFK.ahk')))) {
+        if ($consumer -notmatch 'TemplateSeen\("Earn", "mct_terrorbyte_ceo_native",[^\r\n]+40\)\s*&& TemplateAt\("Earn", "mct_terrorbyte_ceo_native_bg", fx, fy, 60\)') {
+            throw 'Earn and AFK must consume the bounded CEO pair'
+        }
+        $cases++
+    }
+} finally { $ceoText.Dispose(); $ceoBg.Dispose() }
 $generatedDirectory = Join-Path ([IO.Path]::GetTempPath()) ('gta-mct-template-build-' + [Guid]::NewGuid().ToString('N'))
 $null = [IO.Directory]::CreateDirectory($generatedDirectory)
-$names = @('nc_dj_menu', 'nc_home', 'mct_seated_mansion', 'mct_sit_hdr', 'mct_sit_hdr_alt', 'mct_sit_hdr_bright','mct_sit_hdr_box', 'mct_seated_hdr', 'mct_title_hdr')
+$names = @('nc_dj_menu', 'nc_home', 'mct_seated_mansion', 'mct_sit_hdr', 'mct_sit_hdr_alt', 'mct_sit_hdr_bright','mct_sit_hdr_box', 'mct_seated_hdr', 'mct_title_hdr','mct_terrorbyte_access_native','mct_terrorbyte_ceo_native')
 try {
     & (Join-Path $PSScriptRoot 'build-mct-templates.ps1') -OutputDir $generatedDirectory -Name $names
     foreach ($name in $names) {
-        $outputs = if ($name -in @('mct_sit_hdr','mct_sit_hdr_alt','mct_sit_hdr_bright','mct_sit_hdr_box','mct_seated_hdr','mct_title_hdr')) { @($name,($name+'_bg')) } else { @($name) }
+        $outputs = if ($name -in @('mct_sit_hdr','mct_sit_hdr_alt','mct_sit_hdr_bright','mct_sit_hdr_box','mct_seated_hdr','mct_title_hdr','mct_terrorbyte_access_native','mct_terrorbyte_ceo_native')) { @($name,($name+'_bg')) } else { @($name) }
         foreach ($outputName in $outputs) {
             $diff = Compare-PngPixels (Join-Path $assetDirectory ($outputName + '.png')) (Join-Path $generatedDirectory ($outputName + '.png'))
             if ($diff) { throw "Builder changes the checked-in stable mask: $outputName ($diff)" }
@@ -426,7 +512,7 @@ try {
 }
 finally {
     foreach ($name in $names) {
-        $outputs = if ($name -in @('mct_sit_hdr','mct_sit_hdr_alt','mct_sit_hdr_bright','mct_sit_hdr_box','mct_seated_hdr','mct_title_hdr')) { @($name,($name+'_bg')) } else { @($name) }
+        $outputs = if ($name -in @('mct_sit_hdr','mct_sit_hdr_alt','mct_sit_hdr_bright','mct_sit_hdr_box','mct_seated_hdr','mct_title_hdr','mct_terrorbyte_access_native','mct_terrorbyte_ceo_native')) { @($name,($name+'_bg')) } else { @($name) }
         foreach ($outputName in $outputs) {
             $generated = Join-Path $generatedDirectory ($outputName + '.png')
             if ([IO.File]::Exists($generated)) { [IO.File]::Delete($generated) }

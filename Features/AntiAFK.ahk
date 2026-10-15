@@ -463,7 +463,11 @@ AFKMenuSeen(name) {
         for part in ["mct_terrorbyte", "mct_terrorbyte_reg", "mct_terrorbyte_ceo"]
             if (TemplateSeen("Earn", part, area, , , 60))
                 return true
-        return false
+        fx := 0, fy := 0
+        return (TemplateSeen("Earn", "mct_terrorbyte_access_native", area, &fx, &fy, 40)
+            && TemplateAt("Earn", "mct_terrorbyte_access_native_bg", fx, fy, 60))
+            || (TemplateSeen("Earn", "mct_terrorbyte_ceo_native", area, &fx, &fy, 40)
+            && TemplateAt("Earn", "mct_terrorbyte_ceo_native_bg", fx, fy, 60))
     }
     return TemplateSeen("Earn", name, area)
 }

@@ -175,7 +175,11 @@ EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
         for part in ["mct_terrorbyte", "mct_terrorbyte_reg", "mct_terrorbyte_ceo"]
             if (TemplateSeen("Earn", part, IsObject(area) ? area : [0,0,0.3,0.25], &fx, &fy, Max(variation, 60)))
                 return true
-        return false
+        ; 1016 GDI 두 시점에서 원본 Access 줄은 배경 차이 63/67로 실패했다.
+        return (TemplateSeen("Earn", "mct_terrorbyte_access_native", IsObject(area) ? area : [0,0,0.3,0.25], &fx, &fy, 40)
+            && TemplateAt("Earn", "mct_terrorbyte_access_native_bg", fx, fy, 60))
+            || (TemplateSeen("Earn", "mct_terrorbyte_ceo_native", IsObject(area) ? area : [0,0,0.3,0.25], &fx, &fy, 40)
+            && TemplateAt("Earn", "mct_terrorbyte_ceo_native_bg", fx, fy, 60))
     }
     ; 보스 메뉴는 작텔과 같은 검증된 템플릿을 공유한다.
     static bossNames := Map("m_boss",1,"m_boss_sel",1,"m_ceo_sel",1,"m_start_org_sel",1,
@@ -1161,22 +1165,26 @@ EarnNavTo(name, prompt := "", stopPx := 12, maxSteps := 40) {
 ; 앞에 서면 "Press E to sit down" → E 로 앉으면 "Press Enter to access the Master Control Terminal" → Enter 로 화면이 열린다.
 ; 화면 안은 마우스 커서로 고른다: 커서를 버튼 위에 두고 Enter(0926 실측: 클릭은 안 먹고 Enter 가 먹는다). 뒤로는 Backspace, 일어서기는 마우스 오른쪽.
 EarnMCTOpen() {
-    global EARN_PROMPT_AREA
     if (EarnSeen("mct_title", [0.3, 0, 0.7, 0.1]))
         return DiscordHUDMCTSet(true)
-    ; 테러바이트 MCT는 터치스크린 앞에 선 채 Space 로 연다. 앉고 일어서는 단계가 없다(1003 실측).
-    if (EarnSeen("mct_terrorbyte")) {
-        DiscordHUDMCTSet(true)
-        if (!EarnPress("Space"))
-            return false
-        if (!EarnWaitSeen("mct_title", [0.3, 0, 0.7, 0.1], 8000)) {
-            if (!EarnSeen("mct_terrorbyte") || !EarnPress("Space")
-                || !EarnWaitSeen("mct_title", [0.3, 0, 0.7, 0.1], 8000))
-                return EarnFail("MCT: 테러바이트 화면이 안 열림")
-        }
-        Sleep(800)
-        return true
+    if (EarnSeen("mct_terrorbyte"))
+        return EarnTerrorbyteMCTOpen()
+    return EarnChairMCTOpen()
+}
+
+EarnTerrorbyteMCTOpen() {
+    if (!EarnSeen("mct_terrorbyte") || !DiscordHUDMCTSet(true) || !EarnPress("Space"))
+        return false
+    if (!EarnWaitSeen("mct_title", [0.3,0,0.7,0.1], 8000)) {
+        if (!EarnSeen("mct_terrorbyte") || !EarnPress("Space")
+            || !EarnWaitSeen("mct_title", [0.3,0,0.7,0.1], 8000))
+            return EarnFail("MCT: 테러바이트 화면이 안 열림")
     }
+    return EarnSleep(800)
+}
+
+EarnChairMCTOpen() {
+    global EARN_PROMPT_AREA
     if (!EarnSeen("mct_seated", EARN_PROMPT_AREA)) {
         ; CEO 메뉴가 닫힌 직후 접근 안내가 늦게 돌아올 수 있다.
         if (!EarnWaitSeen("mct_sit", EARN_PROMPT_AREA, 8000))
@@ -1205,25 +1213,78 @@ EarnMCTOpen() {
     return true
 }
 
-; MCT를 닫고 일어선다. 다음 작업에 의자 안내가 필요한 호출만 위치를 다시 맞춘다.
-EarnMCTClose(requireChairPrompt := true) {
-    global EARN_PROMPT_AREA, config
-    if (!EarnSeen("mct_seated", EARN_PROMPT_AREA)) {
-        if (!EarnSeen("mct_title", [0.3, 0, 0.7, 0.1]) && !EarnSeen("mct_need_ceo"))
+; 열린 웹 화면만으로 종류를 추측하지 않는다. 닫힌 뒤 실제 안내로 매번 구분한다.
+EarnMCTClose(requireChairPrompt := true, &terminalKind := "") {
+    terminalKind := ""
+    if (EarnAborted())
+        return false
+    kind := EarnMCTClosedKind()
+    if (kind = "") {
+        if (!EarnSeen("mct_title", [0.3,0,0.7,0.1]) && !EarnSeen("mct_need_ceo"))
             return EarnFail("MCT: 닫기 전 터미널 화면을 확인하지 못함")
         if (!EarnPress("Backspace"))
             return false
-        ; 게임 알림이 안내 칸을 가리면 늦게 보인다(1004 04:59 실측: Record A Studios 알림 11초). 여는 쪽과 같이 20초 기다린다.
-        if (!EarnWaitSeen("mct_seated", EARN_PROMPT_AREA, 20000)) {
-            ; 테러바이트는 닫으면 바로 선 채 접속 안내로 돌아온다. 일어설 필요가 없다.
-            if (EarnSeen("mct_terrorbyte"))
-                return DiscordHUDMCTSet(false)
-            return EarnFail("MCT: 닫은 뒤 앉은 상태 안내 대기 시간 초과")
-        }
+        kind := EarnMCTWaitClosed()
+        if (kind = "")
+            return EarnFail("MCT: 닫은 뒤 접근 안내 대기 시간 초과")
     }
-    ; 테러바이트 CEO 안내는 저택의 앉은 상태 메뉴형 안내와 비슷하게 잡힌다(1003 17:12 실측). 일어서지 않는다.
+    terminalKind := kind
+    return kind = "terrorbyte" ? EarnTerrorbyteMCTClose() : EarnChairMCTClose(requireChairPrompt)
+}
+
+EarnMCTClosedKind() {
+    global EARN_PROMPT_AREA
+    ; 테러바이트 안내가 착석 템플릿에도 맞을 수 있어 전용 안내를 먼저 확인한다.
     if (EarnSeen("mct_terrorbyte"))
-        return DiscordHUDMCTSet(false)
+        return "terrorbyte"
+    return EarnSeen("mct_seated", EARN_PROMPT_AREA) ? "chair" : ""
+}
+
+EarnMCTWaitClosed() {
+    deadline := A_TickCount + 20000
+    Loop {
+        if (EarnAborted() || A_TickCount >= deadline)
+            return ""
+        kind := EarnMCTClosedKind()
+        if (EarnAborted() || A_TickCount >= deadline)
+            return ""
+        if (kind != "")
+            return kind
+        if (!EarnSleep(Min(200, deadline - A_TickCount)))
+            return ""
+    }
+}
+
+EarnTerrorbyteMCTClose() {
+    if (EarnAborted())
+        return false
+    if (EarnSeen("mct_title", [0.3,0,0.7,0.1])) {
+        if (!EarnPress("Backspace") || !EarnWaitSeen("mct_terrorbyte", [0,0,0.3,0.25], 20000)
+            || EarnAborted())
+            return EarnFail("MCT: 테러바이트 닫기 안내 미확인")
+    } else if (!EarnSeen("mct_terrorbyte"))
+        return EarnFail("MCT: 테러바이트 닫기 전 화면 미확인")
+    DiscordHUDMCTSet(false)
+    return true
+}
+
+EarnTerrorbyteMCTReady() {
+    return (EarnWaitSeen("mct_terrorbyte", [0,0,0.3,0.25], 8000) && !EarnAborted())
+        || EarnFail("MCT: 테러바이트 접근 안내 미확인")
+}
+
+EarnMCTReturnReady(terminalKind) {
+    if (EarnAborted())
+        return false
+    if (terminalKind = "terrorbyte")
+        return EarnTerrorbyteMCTReady()
+    if (terminalKind = "chair")
+        return EarnMCTFindChairPrompt()
+    return EarnFail("MCT: 종료 위치 종류 미확인")
+}
+
+EarnChairMCTClose(requireChairPrompt := true) {
+    global EARN_PROMPT_AREA, config
     if (!EarnSeen("mct_seated", EARN_PROMPT_AREA))
         return EarnFail("MCT: 화면이 닫히지 않음")
     ; 웹 화면은 이미 닫혔다. 일어서기·의자 복귀·CEO 해제 동안은 디코를 다시 표시한다.
