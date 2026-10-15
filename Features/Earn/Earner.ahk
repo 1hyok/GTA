@@ -1,10 +1,13 @@
 ; === 수익 자동화 스케줄러 (Vinewood 금고·직원 파견 · 벙커 보급 · DJ 교체 · 창고 직원) ===
-; 단축키(기본 F9) 두 번으로 켜고 끈다. End(전체 멈춤)도 끈다. 켜 두면 1초마다 할 일을 본다.
+; Main 시작 시 유휴 앱 모드. F9 두 번은 전체 수익과 유휴 앱을 전환하고 End는 모두 멈춘다.
 ; 때가 된 벙커·DJ·창고는 MCT를 한 번 열어 묶어 처리하고 한 번 닫는다. 금고·앱 파견은 그다음 별도로 한다.
 ; 사용자 물리 입력이 EarnUserIdleSec 동안 없고 GTA가 앞일 때만 시작한다. 진행 중 사용자 입력·포커스 이탈 시 중단한다.
 ; 개별 실패는 기록하고 정리된 화면에서 다른 작업을 계속한다. 결과 불명확 작업은 보류한다.
 ; 게임 종료·재시작 시 끄고, 사용자가 다시 켜야 새 게임 상태에서 예약을 시작한다.
 global gEarnOn := false
+global gEarnMode := "full"
+global gEarnModeRequest := ""
+global gEarnIdleEnabled := false
 global gEarnDue := Map()        ; 작업 id → 다음 실행 시각(A_TickCount)
 global gEarnDone := Map()       ; 작업 id → 켠 뒤 성공 횟수
 global gEarnCurrent := ""       ; 지금 하는 작업 이름
@@ -30,7 +33,9 @@ global gEarnAFKCleanup := false
 ; AFK 방지가 오래 방치된 MCT 화면을 만나면 수익 작업과 같은 확인된 정리 경로(확인창 취소 → MCT 닫기 → 일어서기 → 사장 해제)로 닫는다.
 ; 수익 작업이 도는 중에는 건드리지 않는다. 열린 MCT 화면이 안 보이면 아무 입력도 하지 않고 빈 문자열을 돌려준다.
 EarnAFKCloseMCT(idleSec) {
-    global gEarnBusy, gAbort
+    global gEarnBusy, gAbort, gEarnMode
+    if (gEarnMode = "apps")
+        return ""
     if ((IsSet(gEarnBusy) && gEarnBusy) || gAbort)
         return ""
     started := A_TickCount
@@ -99,20 +104,72 @@ EarnTaskList() {
     ]
 }
 
-ToggleEarner(*) {
-    global gEarnOn, gEarnBusy, gEarnManualStop
-    if (!gEarnOn && (gEarnBusy || gEarnManualStop)) {
-        ShowTooltip("💰 수익 자동화 끄기 정리 중: 다시 켤 수 없음", 2000)
-        EarnLog("켜기 무시: F9 종료 정리가 끝날 때까지 대기")
+EarnIdleInit() {
+    global config, gEarnIdleEnabled, gEarnModeRequest, gEarnMode
+    if (!config["Features"]["Earner"])
         return
-    }
-    if (gEarnOn)
-        SetEarner(false, "", "manual")
-    else
-        SetEarner(true)
+    gEarnIdleEnabled := true
+    gEarnMode := "apps"
+    gEarnModeRequest := "apps"
+    SetTimer(EarnModeTick, 1000)
 }
 
-SetEarner(on, reason := "", stopMode := "hard") {
+; 모드 전환은 진행 중 거래와 정리가 끝난 경계에서만 적용한다.
+EarnModeTick() {
+    global gEarnModeRequest, gEarnMode, gEarnOn, gEarnBusy, gEarnManualStop, gEarnRecovery, gEarnIdleEnabled
+    ; 요청 소비와 활성화를 한 경계로 묶는다. End는 해제 직후 새 상태를 중단한다.
+    Critical "On"
+    try {
+        if (!gEarnIdleEnabled || gEarnModeRequest = "" || gEarnBusy || gEarnManualStop
+            || IsObject(gEarnRecovery) || EarnOtherMacroBusy() || !EarnGamePID())
+            return
+        requested := gEarnModeRequest
+        gEarnModeRequest := ""
+        if (gEarnOn) {
+            gEarnMode := requested
+            EarnLog("모드 전환: " (requested = "apps" ? "유휴 앱 자동" : "F9 전체 수익"))
+        } else
+            SetEarner(true, "", "hard", requested, true)
+    } finally {
+        Critical "Off"
+    }
+}
+
+EarnTaskAllowed(id) {
+    global gEarnMode
+    return gEarnMode != "apps" || id = "safe" || id = "staff"
+}
+
+ToggleEarner(*) {
+    global gEarnOn, gEarnBusy, gEarnManualStop, gEarnMode, gEarnModeRequest, gEarnIdleEnabled, gEarnRecovery
+    if (gEarnManualStop) {
+        ShowTooltip("💰 수익 자동화 끄기 정리 중: 다시 켤 수 없음", 2000)
+        return
+    }
+    if (gEarnOn && gEarnMode = "full" && !gEarnBusy && IsObject(gEarnRecovery)) {
+        SetEarner(false, "정리 복구 대기 중 수동 중단. 화면 확인 후 다시 켜기")
+        return
+    }
+    if (gEarnOn && gEarnMode = "full") {
+        gEarnModeRequest := gEarnIdleEnabled ? "apps" : ""
+        SetEarner(false, "", "manual")
+    } else if (gEarnOn) {
+        gEarnModeRequest := "full"
+        EarnModeTick()
+    } else {
+        gEarnModeRequest := ""
+        gEarnIdleEnabled := true
+        SetTimer(EarnModeTick, 1000)
+        SetEarner(true)
+    }
+}
+
+SetEarner(on, reason := "", stopMode := "hard", mode := "full", preserveSchedule := false) {
+    global gEarnMode, gEarnModeRequest, gEarnIdleEnabled
+    if (!on && stopMode != "manual") {
+        gEarnIdleEnabled := false, gEarnModeRequest := ""
+        SetTimer(EarnModeTick, 0)
+    }
     global gEarnOn, gEarnDue, gEarnDone, gEarnFail, gEarnTasks, gEarnNextDue, gEarnSoftFails, gEarnHeld, gEarnFailures, gEarnRecovery, gEarnRetryIn, gEarnBusy, gAbort, gEarnGamePID, gEarnBunkerFull, gEarnManualStop, gEarnManualCleanupActive, gEarnManualCleanupAttempted, gEarnTaskActive, gEarnAFKCleanup, gEarnUserAbort, gEarnInputAbortReason, config, afkOn
     if (on && (gEarnBusy || gEarnManualStop)) {
         ShowTooltip("💰 수익 자동화 끄기 정리 중: 다시 켤 수 없음", 2000)
@@ -129,9 +186,12 @@ SetEarner(on, reason := "", stopMode := "hard") {
         InstallKeybdHook()
         InstallMouseHook()
         gEarnFail := ""
+        gEarnMode := mode
         gEarnTasks := EarnTaskList()
-        gEarnDue := Map(), gEarnDone := Map(), gEarnNextDue := Map(), gEarnSoftFails := Map()
-        gEarnHeld := Map(), gEarnFailures := Map()
+        if (!preserveSchedule)
+            gEarnDue := Map(), gEarnDone := Map(), gEarnNextDue := Map(), gEarnSoftFails := Map()
+        if (!preserveSchedule)
+            gEarnHeld := Map(), gEarnFailures := Map()
         gEarnRecovery := ""
         gEarnRetryIn := 0
         gEarnManualStop := false
@@ -151,17 +211,19 @@ SetEarner(on, reason := "", stopMode := "hard") {
                 gEarnFailures[t.id] := {reason: pending, nextTick: 0}
                 EarnLog("보류: " t.id " 이전 요청 결과 확인 필요 (" pending "), 나머지 작업 계속")
             }
-            gEarnDone[t.id] := 0
+            if (!gEarnDone.Has(t.id))
+                gEarnDone[t.id] := 0
             ; 창고·벙커·DJ는 즉시 확인. 금고와 파견은 설정한 첫 대기를 따른다.
             first := t.id = "safe" ? s["EarnSafeFirstMin"] * 60000 : t.id = "dispatch" ? s["EarnDispatchFirstMin"] * 60000 : 0
-            gEarnDue[t.id] := now + first
+            if (!gEarnDue.Has(t.id))
+                gEarnDue[t.id] := now + first
         }
         if (config["Features"]["AntiAFK"] && !afkOn)
             SetAntiAFK(true)
         SetTimer(EarnTick, 1000)
         if (s["EarnSafe"])
             SetTimer(EarnSafeFeedWatch, 4000)
-        ShowTooltip("💰 수익 자동화 켜짐 (" KeyLabelFor("Earner") " 두 번: 끄기, End: 멈춤)", 2500)
+        ShowTooltip(mode = "apps" ? "💰 유휴 앱 자동 (" KeyLabelFor("Earner") " 두 번: 전체 수익, End: 멈춤)" : "💰 전체 수익 켜짐 (" KeyLabelFor("Earner") " 두 번: 유휴 앱, End: 멈춤)", 2500)
         EarnLog("켜짐: " EarnEnabledText())
     } else {
         SetTimer(EarnTick, 0)
@@ -201,7 +263,7 @@ EarnEnabledText() {
     global gEarnTasks
     list := ""
     for t in gEarnTasks
-        if (t.on)
+        if (t.on && EarnTaskAllowed(t.id))
             list .= (list = "" ? "" : ", ") t.label
     return list = "" ? "켜진 작업 없음" : list
 }
@@ -229,7 +291,7 @@ EarnTick() {
         ; 짧은 재관측 주기의 앞 작업이 이미 만료돼도 더 오래 기다린 뒤쪽 작업을 계속 굶기지 않는다.
         ; 예약 시각이 같으면 기존 목록 순서를 유지한다.
         for t in gEarnTasks {
-            if (t.on && !gEarnHeld.Has(t.id) && gEarnDue[t.id] <= now
+            if (t.on && EarnTaskAllowed(t.id) && !gEarnHeld.Has(t.id) && gEarnDue[t.id] <= now
                 && (!IsObject(task) || gEarnDue[t.id] < gEarnDue[task.id]))
                 task := t
         }
@@ -388,7 +450,7 @@ EarnIsMCTTask(id) {
 
 ; 각 본문은 자기 예약을 유지한다. 완료 횟수·최종 로그는 공동 MCT 정리가 끝난 뒤 확정한다.
 EarnRunScheduledTask(task, mctSession := false) {
-    global gEarnCurrent, gEarnFail, gEarnRetryIn
+    global gEarnCurrent, gEarnFail, gEarnRetryIn, gEarnMode
     result := {task: task, startTick: A_TickCount, ok: false, retryIn: 0, reason: "", cleanupOK: true}
     gEarnCurrent := task.label
     gEarnRetryIn := 0
@@ -396,7 +458,7 @@ EarnRunScheduledTask(task, mctSession := false) {
     try {
         EarnLog("시작: " task.label)
         if (EarnInputAllowed())
-            result.ok := mctSession ? task.fn.Call(false) : task.fn.Call()
+            result.ok := mctSession ? task.fn.Call(false) : task.id = "safe" && gEarnMode = "apps" ? task.fn.Call(false) : task.fn.Call()
     } catch as e {
         EarnFail(task.label " 오류: " e.Message " (" e.File ":" e.Line ")")
     }
@@ -532,7 +594,7 @@ EarnManualStopCleanup() {
 
 ; 예약 작업과 AFK MCT 정리가 공유하는 F9 종료 finalizer다. hard stop은 gEarnManualStop을 먼저 내리므로 여기에 오지 않는다.
 EarnFinishManualStop(cleanupOK, cleanupAttempted, mctSession := true) {
-    global gEarnManualStop, gEarnManualCleanupAttempted, gAbort, gEarnUserAbort, gEarnFail, gEarnInputAbortReason
+    global gEarnManualStop, gEarnManualCleanupAttempted, gAbort, gEarnUserAbort, gEarnFail, gEarnInputAbortReason, gEarnIdleEnabled, gEarnModeRequest, gEarnRecovery
     ; AHK hotkey thread가 finalizer 사이에 끼어들면 새 run을 켠 뒤 이전 상태로 덮어쓸 수 있다.
     ; 모든 상태 정리가 끝날 때까지 latch를 유지하고, 그 순간의 F9·End는 critical 해제 뒤 새 상태에 적용되게 한다.
     Critical "On"
@@ -561,6 +623,11 @@ EarnFinishManualStop(cleanupOK, cleanupAttempted, mctSession := true) {
     gEarnInputAbortReason := ""
     gEarnManualCleanupAttempted := false
     gEarnManualStop := false
+    gEarnModeRequest := ""
+    if (gEarnIdleEnabled && cleanupOK && !interrupted) {
+        gEarnRecovery := ""
+        gEarnModeRequest := "apps"
+    }
     } finally {
         Critical "Off"
     }
@@ -663,7 +730,7 @@ EarnInputWatch() {
 }
 
 EarnInputAllowed() {
-    global gEarnGuardArmed, gEarnGuardStartedTick, gAbort, gEarnRetryIn, gEarnGamePID, gEarnUserAbort, gEarnInputAbortReason
+    global gEarnGuardArmed, gEarnGuardStartedTick, gAbort, gEarnRetryIn, gEarnGamePID, gEarnUserAbort, gEarnInputAbortReason, gEarnMode
     if (!gEarnGuardArmed)
         return !gAbort
     if (!gAbort && (!gEarnGamePID || EarnGamePID() != gEarnGamePID)) {
@@ -672,6 +739,14 @@ EarnInputAllowed() {
         ReleaseHeldKeys()
         DiscordHUDMCTStop()
         EarnFail("GTA 종료 또는 재시작으로 중단. 현재 화면을 확인하고 다시 켜기")
+    } else if (!gAbort && gEarnMode = "apps" && EarnOtherMacroBusy()) {
+        gAbort := true
+        gEarnUserAbort := true
+        gEarnRetryIn := 0
+        gEarnInputAbortReason := "다른 매크로 시작으로 유휴 앱 중단"
+        ReleaseHeldKeys()
+        DiscordHUDMCTStop()
+        EarnFail(gEarnInputAbortReason)
     } else if (!gAbort) {
         elapsedMs := A_TickCount - gEarnGuardStartedTick
         physicalIdleMs := A_TimeIdlePhysical
@@ -776,14 +851,21 @@ EarnInputLockRelease(inputLock) {
 
 ; 다른 매크로가 게임에 키를 보내는 중이면 true. 작텔(Alt+F4·MC·스팀 봇)은 IsTeleportRunning 이 묶어서 본다
 EarnOtherMacroBusy() {
-    global clawLoopRunning, gMenuBusy, gAFKBusy
+    global clawLoopRunning, gMenuBusy, gAFKBusy, gEarnMode, cayoTimerRunning
     return (IsSet(clawLoopRunning) && clawLoopRunning) || (IsSet(gMenuBusy) && gMenuBusy)
         || (IsSet(gAFKBusy) && gAFKBusy)
         || IsTeleportRunning() || AnyInputToggleOn()
+        || (gEarnMode = "apps" && IsSet(cayoTimerRunning) && cayoTimerRunning)
 }
 
 ; 오버레이·설정 창 한 줄 상태
 EarnStatusText() {
+    global gEarnOn, gEarnMode
+    text := EarnStatusDetail()
+    return gEarnOn && gEarnMode = "apps" ? "유휴 앱 자동 · " text : text
+}
+
+EarnStatusDetail() {
     global gEarnOn, gEarnDue, gEarnTasks, gEarnCurrent, gEarnFail, gEarnHeld, gEarnRecovery, gEarnManualStop, config
     if (gEarnManualStop)
         return "수익: 끄는 중 · MCT 정리와 CEO 해제"
@@ -795,7 +877,7 @@ EarnStatusText() {
         return "수익: " gEarnRecovery.task.label " 정리 복구 대기 " Max(0, Ceil((gEarnRecovery.nextTick - A_TickCount) / 1000)) "초"
     nextLabel := "", nextIn := 0
     for t in gEarnTasks {
-        if (!t.on || gEarnHeld.Has(t.id))
+        if (!t.on || !EarnTaskAllowed(t.id) || gEarnHeld.Has(t.id))
             continue
         left := gEarnDue[t.id] - A_TickCount
         if (nextLabel = "" || left < nextIn)

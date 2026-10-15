@@ -5,6 +5,9 @@ global gAbort := false
 
 StopAll(reason := "hotkey") {
     global gAbort, clawLoopRunning, clickRunning, wRunning, shiftWRunning, vellumDrivingRunning, cayoTimerRunning, gEarnOn, gEarnBusy
+    global gEarnIdleEnabled, gEarnModeRequest
+    gEarnIdleEnabled := false, gEarnModeRequest := ""
+    SetTimer(EarnModeTick, 0)
     gAbort := true
     stopped := []
 

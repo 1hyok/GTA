@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 $source = Get-Content (Join-Path $PSScriptRoot '..\..\Features\Earn\Earner.ahk') -Raw -Encoding UTF8
 $tick = [regex]::Match($source, '(?ms)^EarnTick\(\) \{.*?^\}').Value
 if (-not $tick) { throw 'EarnTick missing' }
-$guards = @('EarnAFKCloseMCT', 'EarnInputGuardStart', 'EarnInputGuardStop', 'EarnInputWatch', 'EarnInputAllowed', 'EarnInputAbortEvidence', 'EarnInputWindowEvidence', 'EarnInputEvidenceText', 'EarnGamePID', 'EarnTaskList', 'EarnEnabledText', 'ToggleEarner', 'SetEarner', 'EarnStatusText', 'EarnIsMCTTask', 'EarnRunScheduledTask', 'EarnRunMCTBatch', 'EarnTaskMCTEndWithManualRetry', 'EarnManualStopCleanup', 'EarnBossOffWithManualRetry', 'EarnConfirmNoScreenCleanup', 'EarnManualBossOffCleanup', 'EarnFinishManualStop', 'EarnNotifyStockFull', 'EarnClearStockNotice', 'EarnFinishScheduledTask', 'EarnStopAfterFailure') | ForEach-Object {
+$guards = @('EarnIdleInit', 'EarnModeTick', 'EarnTaskAllowed', 'EarnStatusDetail', 'EarnAFKCloseMCT', 'EarnInputGuardStart', 'EarnInputGuardStop', 'EarnInputWatch', 'EarnInputAllowed', 'EarnInputAbortEvidence', 'EarnInputWindowEvidence', 'EarnInputEvidenceText', 'EarnGamePID', 'EarnTaskList', 'EarnEnabledText', 'ToggleEarner', 'SetEarner', 'EarnStatusText', 'EarnIsMCTTask', 'EarnRunScheduledTask', 'EarnRunMCTBatch', 'EarnTaskMCTEndWithManualRetry', 'EarnManualStopCleanup', 'EarnBossOffWithManualRetry', 'EarnConfirmNoScreenCleanup', 'EarnManualBossOffCleanup', 'EarnFinishManualStop', 'EarnNotifyStockFull', 'EarnClearStockNotice', 'EarnFinishScheduledTask', 'EarnStopAfterFailure') | ForEach-Object {
     $functionName = $_
     $body = [regex]::Match($source, ('(?ms)^' + $functionName + '\([^\r\n]*\) \{.*?^\}')).Value
     if (-not $body) { throw "Production function missing: $functionName" }
@@ -71,9 +71,10 @@ EarnerOfflineFailure(failure, *) {
     FileAppend("FAIL scheduler runtime: " failure.Message "`n", "**")
     ExitApp(1)
 }
+global gEarnMode, gEarnModeRequest, gEarnIdleEnabled
 global gEarnOn, gEarnBusy, gEarnDue, gEarnDone, gEarnTasks, gEarnCurrent, gEarnFail, gEarnNextDue, gEarnSoftFails, gEarnRetryIn, gAbort, config, GTA_WIN, afkOn
 global calls, releaseCount, stopped, mode, windowExists, focused, otherBusy, activationCount, idleMs, gEarnGuardArmed, timers
-global feedTimer := 0
+global feedTimer := 0, modeTimer := 0
 global gEarnGamePID, fakePID, fakeTick, gEarnGuardStartedTick, gEarnUserAbort, lockAvailable, lockCalls, lockReleases, lockHeld, hooks, checkCount := 0
 global beginCount, endCount, beginCleanupCount, beginOK, endOK, endNoScreen, beginThrows, endThrows, mctOpen, events, logs, taskModes, taskDurations, beginDelay, endDelay, endInput
 global endStopMode, bossOffCount, bossProbeOK, bossProbeCount, bossProbeStrictCount, bossProbeGuardedCount, bossProbeMode, bossStopInjected, bossInitialGuardTick, bossRetryBaselineOK, bossRetryCleanupStateOK, staleFailInjected, blockedRestartObserved
@@ -863,6 +864,75 @@ mctOpen := true
 EarnAFKCloseMCT(300)
 Check(endCount = 1 && hudDepth = 0 && hudTakes = 0,
     "AFK relies on MCT screen boundaries rather than whole cleanup lease")
+Reset()
+gEarnOn := false
+gEarnDue := Map(), gEarnDone := Map()
+config["Features"]["Earner"] := 1
+EarnIdleInit()
+EarnModeTick()
+Check(gEarnOn && gEarnMode = "apps" && gEarnIdleEnabled, "Main startup arms app scheduler")
+Check(!EarnTaskAllowed("bunker") && !EarnTaskAllowed("dj") && !EarnTaskAllowed("warehouse") && !EarnTaskAllowed("dispatch") && EarnTaskAllowed("safe") && EarnTaskAllowed("staff"), "apps mode selects only safe and staff")
+gEarnDue["safe"] := fakeTick - 1
+gEarnDue["staff"] := fakeTick + 99999
+EarnTick()
+Check(calls.Length = 1 && calls[1] = "safe" && beginCount = 0 && endCount = 0, "idle safe executes without MCT session")
+safeDue := gEarnDue["safe"]
+gEarnHeld["staff"] := "pending"
+ToggleEarner()
+Check(gEarnMode = "full" && gEarnDue["safe"] = safeDue && gEarnHeld.Has("staff"), "F9 full preserves due and holds")
+ToggleEarner()
+EarnModeTick()
+Check(gEarnOn && gEarnMode = "apps" && gEarnDue["safe"] = safeDue && gEarnHeld.Has("staff"), "F9 off returns to apps preserving schedules")
+Check(InStr(EarnStatusText(), "유휴 앱 자동"), "idle status is explicit")
+mctOpen := true
+Check(EarnAFKCloseMCT(300) = "" && endCount = 0, "idle apps never invoke AFK MCT cleanup")
+SetEarner(false, "전체 멈춤")
+EarnModeTick()
+Check(!gEarnOn && !gEarnIdleEnabled && gEarnModeRequest = "", "hard stop cancels automatic restart")
+Reset()
+gEarnMode := "apps", gEarnIdleEnabled := true, gEarnBusy := true
+ToggleEarner()
+Check(gEarnMode = "apps" && gEarnModeRequest = "full", "F9 mode change waits for active app")
+gEarnBusy := false
+EarnModeTick()
+Check(gEarnMode = "full", "deferred full applies at transaction boundary")
+Reset()
+gEarnIdleEnabled := true, gEarnManualStop := true, gEarnModeRequest := "apps", gEarnOn := false
+EarnFinishManualStop(false, true, true)
+EarnModeTick()
+Check(!gEarnOn && gEarnModeRequest = "", "failed cleanup cannot restart idle apps")
+for appCase in ["ok", "fail", "physical-ocr", "focus-ocr"] {
+    Reset()
+    gEarnMode := "apps"
+    gEarnTasks := [{id:"safe", label:"safe", on:true, every:300000, fn:EarnVinewoodSafeTask}, {id:"staff", label:"staff", on:true, every:300000, fn:EarnVinewoodStaffTask}]
+    gEarnDue := Map("safe",fakeTick-1,"staff",fakeTick), gEarnDone := Map("safe",0,"staff",0)
+    mode := appCase
+    EarnTick()
+    Check(beginCount = 0 && endCount = 0 && bossOffCount = 0, "idle safe " appCase " never manages MCT or boss")
+}
+Reset()
+gEarnMode := "apps", gEarnGuardArmed := true, gEarnGuardStartedTick := fakeTick, otherBusy := true
+Check(!EarnInputAllowed() && gEarnUserAbort && releaseCount = 1, "another feature preempts active idle app")
+Reset()
+gEarnMode := "apps", otherBusy := true
+EarnTick()
+Check(calls.Length = 0 && lockCalls = 0, "busy feature prevents idle input")
+Reset()
+gEarnMode := "apps"
+gEarnRecovery := {task:{id:"safe",label:"safe"},tasks:[],mct:false,outcome:{results:[],cleanupOK:false},attempts:1,nextTick:0}
+EarnTick()
+Check(appCloseCount = 1 && beginCount = 0 && endCount = 0 && bossOffCount = 0, "idle app recovery only closes app")
+Reset()
+gEarnOn := false, gEarnIdleEnabled := true, gEarnModeRequest := "apps"
+SetEarner(false, "전체 멈춤")
+EarnModeTick()
+Check(modeTimer = 0 && !gEarnOn, "End before startup removes pending initialization")
+Reset()
+gEarnIdleEnabled := true
+gEarnRecovery := {task:{id:"bunker",label:"bunker"},mct:true,nextTick:fakeTick+30000}
+ToggleEarner()
+EarnModeTick()
+Check(!gEarnOn && !gEarnIdleEnabled && modeTimer = 0 && IsObject(gEarnRecovery) && InStr(gEarnFail,"정리 복구"), "F9 during delayed MCT recovery stops explicitly and retains evidence")
 FileAppend("PASS Earner: " checkCount " cases; no game input`n", "*")
 if (hudDepth != 0 || hudTakes != 0 || hudReturns != 0)
     throw Error("Scheduler must not acquire task-wide HUD hiding")
@@ -899,6 +969,7 @@ AFKSelfInput(start) {
 }
 Reset() {
     global
+    gEarnMode := "full", gEarnModeRequest := "", gEarnIdleEnabled := false
     hudInject := ""
     selfMarks := ""
     fakeTick := 100000, idleMs := 60000, gEarnGuardArmed := false, gEarnGuardStartedTick := 0, gEarnUserAbort := false
@@ -935,6 +1006,8 @@ RunTask(id, manageSession := true) {
         throw Error("Every body must share the live input lock and guard")
     if (EarnIsMCTTask(id) ? manageSession || !mctOpen : mctOpen)
         throw Error("MCT bodies require the shared session; apps require it closed")
+    if (gEarnMode = "apps" && id = "safe" && manageSession)
+        throw Error("Idle safe must disable MCT management")
     calls.Push(id)
     events.Push(id)
     taskMode := taskModes.Get(id,mode)
@@ -1074,7 +1147,11 @@ SetAntiAFK(*) {
     throw Error("unexpected AFK call")
 }
 SetTimer(fn, period) {
-    global timers, stopped, feedTimer, lifecycleTrace, lifecycleEvents
+    global timers, stopped, feedTimer, lifecycleTrace, lifecycleEvents, modeTimer
+    if (fn.Name = "EarnModeTick") {
+        modeTimer := period
+        return
+    }
     if (fn.Name = "EarnSafeFeedWatch") {
         feedTimer := period
         return
@@ -1117,7 +1194,7 @@ InstallMouseHook(*) {
     hooks++
 }
 KeyLabelFor(*) => "F9"
-EarnVinewoodSafeTask() => RunTask("safe")
+EarnVinewoodSafeTask(manageMCT := true) => RunTask("safe", manageMCT)
 EarnBunkerTask(manageSession := true) => RunTask("bunker",manageSession)
 EarnDJTask(manageSession := true) => RunTask("dj",manageSession)
 EarnWarehouseTask(manageSession := true) => RunTask("warehouse",manageSession)
@@ -1338,7 +1415,7 @@ try {
         if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'Scheduler test timed out' }
         $stdout = $p.StandardOutput.ReadToEnd().Trim()
         $stderr = $p.StandardError.ReadToEnd().Trim()
-        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 187 cases; no game input') {
+        if ($p.ExitCode -ne 0 -or $stderr -or $stdout -ne 'PASS Earner: 207 cases; no game input') {
             throw "exit=$($p.ExitCode) stdout=$stdout stderr=$stderr"
         }
         $stdout
@@ -1577,6 +1654,8 @@ foreach ($name in @('DiscordHUDWindowList','DiscordHUDWindowRead','DiscordHUDWin
 if ($timingHUD -match 'DllCall\(|WinGet|ShowWindow|WinActivate|\bRun\(') { throw 'Native side effect remains in HUD timing fixture' }
 $hudTimingDriver = @'
 OnError((failure, *) => (FileAppend("FAIL HUD guard timing: " failure.Message "`n", "**"), ExitApp(1)))
+global gEarnMode := "full"
+EarnOtherMacroBusy() => false
 global gEarnBusy := true, gEarnGuardArmed := false, gEarnGuardStartedTick := 0, gAbort := false
 global gEarnRetryIn := 0, gEarnGamePID := 101, gEarnUserAbort := false, gEarnInputAbortReason := ""
 global testIdleMs := 60000, focused := true, visible := true, released := false, inputInjected := false
@@ -1644,3 +1723,36 @@ MacroLog(*) => 0
 '@
 Invoke-EarnerMutexCheck ($timingHUD + "`n" + $hudTimingDriver + "`n" + ($timingGuards -join "`n")) `
     'PASS HUD guard timing: 3 cases; no window or game input'
+
+# Real timer preemption at the startup activation boundary, without input.
+$modeTick = [regex]::Match($source, '(?ms)^EarnModeTick\(\) \{.*?^\}').Value
+$modeRaceDriver = @'
+OnError((failure, *) => (FileAppend("FAIL idle mode race: " failure.Message "`n", "**"), ExitApp(1)))
+global gEarnModeRequest := "apps", gEarnMode := "apps", gEarnOn := false, gEarnBusy := false
+global gEarnManualStop := false, gEarnRecovery := "", gEarnIdleEnabled := true, starts := 0, endRan := false
+SetTimer(EndProbe, -10)
+EarnModeTick()
+Sleep(100)
+if (!endRan || gEarnOn || gEarnIdleEnabled || gEarnModeRequest != "" || starts != 1)
+    throw Error("End must run after critical activation and leave scheduler off")
+gEarnModeRequest := "apps"
+EarnModeTick()
+if (starts != 1 || gEarnOn)
+    throw Error("stale request after End must not activate")
+FileAppend("PASS idle mode race: 2 cases; no game input`n", "*")
+ExitApp(0)
+EndProbe() {
+    global gEarnOn, gEarnIdleEnabled, gEarnModeRequest, endRan
+    gEarnOn := false, gEarnIdleEnabled := false, gEarnModeRequest := "", endRan := true
+}
+SetEarner(*) {
+    global starts, gEarnOn
+    starts++
+    Sleep(60)
+    gEarnOn := true
+}
+EarnGamePID() => 101
+EarnOtherMacroBusy() => false
+EarnLog(*) => 0
+'@
+Invoke-EarnerMutexCheck ($modeRaceDriver + "`n" + $modeTick) 'PASS idle mode race: 2 cases; no game input'

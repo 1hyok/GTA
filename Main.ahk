@@ -96,6 +96,7 @@ if (config["Settings"]["OverlayEnabled"])
 ; 디코 오버레이(DiscordChatHUD)를 같이 띄운다. 경로는 Config [Settings] DiscordHUDPath, 비우면 끈다.
 StartDiscordHUD()
 DiscordHUDVisibilityInit()
+EarnIdleInit()
 
 ; === 시작 메시지 ===
 ShowTooltip("✅ GTA 매크로 시작됨 (게임 창에서만 동작)`n" KeyLabelFor("Help") ": 단축키 보기 (두 번: 설정 창) | " KeyLabelFor("StopAll") ": 전체 멈춤 | " KeyLabelFor("Exit") ": 종료", 3000)

@@ -19,9 +19,9 @@ EarnSafeIgnored() {
     return ignored
 }
 
-EarnVinewoodSafeTask() {
+EarnVinewoodSafeTask(manageMCT := true) {
     safes := EarnSafeLimits()
-    if (!EarnVinewoodOpen())
+    if (!EarnVinewoodOpen(manageMCT))
         return false
     lines := EarnReadScreen([25,15,450,850])
     if (!IsObject(lines) || !EarnFindText(lines, "i)^THE VINEWOOD CLUB APP$"))

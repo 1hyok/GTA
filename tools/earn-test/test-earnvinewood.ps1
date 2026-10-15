@@ -299,6 +299,11 @@ RunTests() {
                 label " visits every row once and stops on wrap (downs=" downs ")")
         }
     }
+    for idleStart in ["hud", "standing", "mct_transition"] {
+        Reset(idleStart = "mct_transition" ? "mct_ready_delay" : "normal", idleStart, Map("Nightclub",250000))
+        Check(EarnVinewoodSafeTask(false), "idle safe completes at " idleStart)
+        Check(gMctCloses = 0 && gCEOCalls = 0, "idle safe preserves MCT and boss at " idleStart)
+    }
     Reset("close_stuck", "main")
     Check(!EarnVinewoodClose() && gKeys.Length = 4, "stuck app closing is bounded at four Backspaces")
     Reset("normal", "phone_vinewood")
