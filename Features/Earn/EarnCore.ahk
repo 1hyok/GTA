@@ -298,16 +298,35 @@ EarnMCTSitOcrMatches(lines) {
 }
 ; timeoutMs 안에 name 이 보이면 true. 전체 멈춤·포커스 이탈이면 바로 false.
 EarnWaitSeen(name, area, timeoutMs) {
-    deadline := A_TickCount + timeoutMs
+    started := A_TickCount, deadline := started + timeoutMs, reads := 0, lastSeen := "unread"
     Loop {
-        if (EarnAborted())
-            return false
-        if (EarnSeen(name, area))
+        if (EarnAborted()) {
+            reason := "aborted"
+            break
+        }
+        reads++
+        lastSeen := EarnSeen(name, area)
+        if (lastSeen)
             return true
-        if (A_TickCount >= deadline)
-            return false
+        if (A_TickCount >= deadline) {
+            reason := "timeout"
+            break
+        }
         Sleep(200)
     }
+    if (name = "dj_resident" || name = "dj_resident_right" || name = "mct_seated") {
+        ; 마지막 판독값을 기록한다. 실패 뒤 새 화면을 읽으면 당시 결과와 섞인다.
+        areaText := "default"
+        if (IsObject(area)) {
+            areaText := ""
+            for index, value in area
+                areaText .= (index = 1 ? "" : ",") Format("{:g}", value)
+        }
+        try EarnLog("[wait-seen] target=" name " area=" areaText " reason=" reason
+            " elapsed_ms=" (A_TickCount - started) " limit_ms=" timeoutMs " reads=" reads " last_seen=" lastSeen
+            " dpi_context=" DllCall("GetThreadDpiAwarenessContext", "ptr") " script=" A_ScriptFullPath)
+    }
+    return false
 }
 
 ; timeoutMs 안에 name 이 사라지면 true.
