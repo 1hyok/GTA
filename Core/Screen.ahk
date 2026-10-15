@@ -118,6 +118,7 @@ TemplateAt(folder, name, x, y, variation := 90) {
         return false
     }
     rect := "unread", roi := "unread", img := "unread", exists := "unread", dpi := "unread", original := "unread", found := false
+    originalX := "", originalY := "", originalAt := 0, gainX := "", gainY := "", originProbe := "not-needed"
     prev := DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
     try {
         WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hwnd)
@@ -136,8 +137,12 @@ TemplateAt(folder, name, x, y, variation := 90) {
         try {
             ; HDR MCT title backgrounds are 536px wide. The old 401px search
             ; rectangle could never contain them. Keep the exact-origin check.
-            if ((original := ImageSearch(&fx, &fy, x, y, Min(x + cw - 1, cx + cw - 1), Min(y + 60, cy + ch - 1),
-                "*" variation " *Trans0xFF00FF " img)) && fx = x && fy = y) {
+            original := ImageSearch(&fx, &fy, x, y, Min(x + cw - 1, cx + cw - 1), Min(y + 60, cy + ch - 1),
+                "*" variation " *Trans0xFF00FF " img)
+            originalAt := A_TickCount
+            if (original)
+                originalX := fx, originalY := fy
+            if (original && fx = x && fy = y) {
                 found := true
                 return true
             }
@@ -146,13 +151,21 @@ TemplateAt(folder, name, x, y, variation := 90) {
         }
         for gainImg in TemplateGainImages(folder, cw "x" ch, name) {
             try {
-                if (ImageSearch(&fx, &fy, x, y, Min(x + cw - 1, cx + cw - 1), Min(y + 60, cy + ch - 1),
-                    "*" variation " *Trans0xFF00FF " gainImg) && fx = x && fy = y
+                gainFound := ImageSearch(&fx, &fy, x, y, Min(x + cw - 1, cx + cw - 1), Min(y + 60, cy + ch - 1),
+                    "*" variation " *Trans0xFF00FF " gainImg)
+                if (gainFound)
+                    gainX := fx, gainY := fy
+                if (gainFound && fx = x && fy = y
                     && TemplateGainBackgroundOK(gainImg, fx, fy)) {
                     found := true
                     return true
                 }
             }
+        }
+        if (folder = "Earn" && name = "mct_seated_mansion_bg" && original = 1 && (originalX != x || originalY != y)) {
+            try originProbe := TemplateOriginProbe(img, x, y, variation, originalAt)
+            catch as e
+                originProbe := "error=" e.Message
         }
         return false
     } finally {
@@ -162,8 +175,90 @@ TemplateAt(folder, name, x, y, variation := 90) {
             try MacroLog("screen-probe", "method=at target=" name " hwnd=" hwnd " client=" rect " roi=" roi
                 " image=" img " exists=" (exists != "unread" ? !!exists : exists) " variation=" variation
                 " dpi_search=" dpi " dpi_previous=" prev " original=" original " final=" found
-                " origin=" x "," y)
+                " origin=" x "," y " original_xy=" originalX "," originalY " gain_xy=" gainX "," gainY " origin_probe=" originProbe)
     }
+}
+
+; This is a later sample in the same process, not ImageSearch's internal frame.
+TemplateOriginProbe(img, x, y, variation, searchedAt) {
+    static nextSample := 0
+    if (A_TickCount < nextSample)
+        return "cooldown"
+    nextSample := A_TickCount + 30000
+    started := A_TickCount
+    pixels := TemplateOriginPixels(img, x, y)
+    stats := TemplateMaskStats(pixels.template, pixels.screen, pixels.w, pixels.h, variation)
+    return ("followup sample_delta_ms=" (pixels.sampleAt - searchedAt) " elapsed_ms=" (A_TickCount - started)
+        " mask=" stats.count " exceeded=" stats.exceeded " max_rgb=" stats.r "," stats.g "," stats.b
+        " max_diff=" stats.diff " worst_xy=" (x + stats.x) "," (y + stats.y)
+        " worst_rgb=" Format("{:06X}", stats.rgb) " size=" pixels.w "," pixels.h)
+}
+
+TemplateOriginPixels(img, x, y) {
+    hbm := 0, hdc := 0, mdc := 0, capture := 0, old := 0
+    try {
+        hbm := LoadPicture(img)
+        bm := Buffer(A_PtrSize = 8 ? 32 : 24, 0)
+        if (!hbm || !DllCall("GetObject", "ptr", hbm, "int", bm.Size, "ptr", bm))
+            throw Error("template bitmap unavailable")
+        w := NumGet(bm, 4, "int"), h := NumGet(bm, 8, "int")
+        if (w != 240 || h != 24)
+            throw Error("unexpected mansion background size")
+        bi := Buffer(40, 0)
+        NumPut("uint", 40, "int", w, "int", -h, "ushort", 1, "ushort", 32, bi)
+        template := Buffer(w * h * 4)
+        hdc := DllCall("GetDC", "ptr", 0, "ptr")
+        if (!hdc || DllCall("GetDIBits", "ptr", hdc, "ptr", hbm, "uint", 0, "uint", h, "ptr", template, "ptr", bi, "uint", 0) != h)
+            throw Error("template pixels unavailable")
+        mdc := DllCall("CreateCompatibleDC", "ptr", hdc, "ptr")
+        bits := 0
+        capture := DllCall("CreateDIBSection", "ptr", hdc, "ptr", bi, "uint", 0, "ptr*", &bits, "ptr", 0, "uint", 0, "ptr")
+        if (!mdc || !capture || !bits)
+            throw Error("capture buffer unavailable")
+        old := DllCall("SelectObject", "ptr", mdc, "ptr", capture, "ptr")
+        if (!old || old = -1)
+            throw Error("capture selection failed")
+        sampleAt := A_TickCount
+        if (!DllCall("BitBlt", "ptr", mdc, "int", 0, "int", 0, "int", w, "int", h, "ptr", hdc, "int", x, "int", y, "uint", 0x00CC0020))
+            throw Error("capture failed")
+        DllCall("GdiFlush")
+        screen := Buffer(w * h * 4)
+        DllCall("RtlMoveMemory", "ptr", screen, "ptr", bits, "uptr", screen.Size)
+        return {template: template, screen: screen, w: w, h: h, sampleAt: sampleAt}
+    } finally {
+        if (old && old != -1)
+            DllCall("SelectObject", "ptr", mdc, "ptr", old)
+        if (capture)
+            DllCall("DeleteObject", "ptr", capture)
+        if (mdc)
+            DllCall("DeleteDC", "ptr", mdc)
+        if (hdc)
+            DllCall("ReleaseDC", "ptr", 0, "ptr", hdc)
+        if (hbm)
+            DllCall("DeleteObject", "ptr", hbm)
+    }
+}
+
+TemplateMaskStats(template, screen, w, h, variation) {
+    if (w < 1 || h < 1 || template.Size != w * h * 4 || screen.Size != template.Size)
+        throw Error("invalid mask buffers")
+    stats := {count: 0, exceeded: 0, r: 0, g: 0, b: 0, diff: -1, x: 0, y: 0, rgb: 0}
+    Loop w * h {
+        off := (A_Index - 1) * 4
+        expected := NumGet(template, off, "uint") & 0xFFFFFF
+        if (expected = 0xFF00FF)
+            continue
+        actual := NumGet(screen, off, "uint") & 0xFFFFFF
+        r := (actual >> 16) & 255, g := (actual >> 8) & 255, b := actual & 255
+        diff := Max(Abs(r - ((expected >> 16) & 255)), Abs(g - ((expected >> 8) & 255)), Abs(b - (expected & 255)))
+        stats.count++, stats.exceeded += diff > variation
+        stats.r := Max(stats.r, r), stats.g := Max(stats.g, g), stats.b := Max(stats.b, b)
+        if (diff > stats.diff)
+            stats.diff := diff, stats.x := Mod(A_Index - 1, w), stats.y := (A_Index - 1) // w, stats.rgb := actual
+    }
+    if (!stats.count)
+        throw Error("empty template mask")
+    return stats
 }
 
 ; 원본 템플릿 대신 찾아볼 밝기 사본들의 경로. 사본은 %TEMP%\gta-template-gain\<배율>\<folder>\<해상도> 에

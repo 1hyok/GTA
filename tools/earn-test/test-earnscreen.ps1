@@ -34,11 +34,22 @@ foreach ($functionName in @('TemplateSeen', 'TemplateAt')) {
     $definitions += $body + "`n"
 }
 
+foreach ($functionName in @('TemplateOriginProbe', 'TemplateMaskStats')) {
+    $body = [regex]::Match($screenSource, ('(?ms)^' + $functionName + '\([^\r\n]*\) \{.*?^\}')).Value
+    if (-not $body) { throw "Missing $functionName" }
+    $definitions += $body.Replace('A_TickCount', 'ProbeClock()').Replace('TemplateOriginPixels(', 'ProbeOriginPixels(') + "`n"
+}
+
+$nativeBody = [regex]::Match($screenSource, '(?ms)^TemplateOriginPixels\([^\r\n]*\) \{.*?^\}').Value
+$definitions += $nativeBody.Replace('TemplateOriginPixels(', 'FixtureOriginPixels(').Replace('DllCall(', 'OriginDllCall(').Replace('LoadPicture(', 'OriginLoadPicture(') + "`n"
+
 $driver = @'
 #Requires AutoHotkey v2.0
 #SingleInstance Off
 #NoTrayIcon
 #Warn All, StdOut
+global nativeStage := "", nativeCalls := [], nativeBits := 0
+global originClock := 100000, originReads := 0, originThrows := false
 global checks := 0, frames := [], reads := 0, presses := 0, allowPress := true
 try {
     cases := [
@@ -99,6 +110,8 @@ try {
     Setup([[heading, selected]])
     Check(SelectClaim(0) = selected && presses = 0, "zero budget still recognizes selection")
     ProbeRunTests()
+    OriginRunTests()
+    OriginNativeTests()
     FileAppend("PASS EarnScreen cases=" checks " (no game input)`n", "*")
     ExitApp(0)
 } catch as testFailure {
@@ -176,8 +189,94 @@ ProbeRunTests() {
                 valid := valid && InStr(probeLogs[1], "dpi_search=-4") && InStr(probeLogs[1], "original=" (probeCase[2] ? 1 : 0))
                     && InStr(probeLogs[1], probeCase[1] = "seen" ? "roi=320,260,895,367" : "roi=392,288,2239,348")
         }
+        if (probeCase[1] = "at" && probeCase[2] && probeCase[4])
+            valid := valid && InStr(probeLogs[1], "original_xy=393,288")
+        if (probeCase[1] = "at" && probeCase[3])
+            valid := valid && InStr(probeLogs[1], "gain_xy=392,288")
         Check(valid, "Template probe changed search count/origin/return/DPI restoration or reported wrong observations: " A_Index)
     }
+}
+OriginRunTests() {
+    global originClock, originReads, originThrows, probeCase, probeReads, probeLogs, probeDpiContext, probeClients
+    a := Buffer(24, 0), b := Buffer(24, 0)
+    NumPut("uint", 0xFF00FF, a, 0)
+    for i, color in [0xFFFFFF,0x6E6E6E,0x6F0000,0x007800,0x000032,0x0000FA]
+        NumPut("uint", color, b, (i-1)*4)
+    st := TemplateMaskStats(a,b,3,2,110)
+    Check(st.count = 5 && st.exceeded = 3, "mask transparency and strict channel threshold")
+    Check(st.r = 111 && st.g = 120 && st.b = 250 && st.diff = 250 && st.x = 2 && st.y = 1, "raw channel maxima and worst pixel coordinates")
+    originClock += 30000, originReads := 0
+    result := TemplateOriginProbe("fixture",392,288,110,originClock-25)
+    Check(originReads = 1 && InStr(result,"sample_delta_ms=25") && InStr(result,"worst_xy=394,289"), "same-process later sample reports delta and absolute coordinates")
+    Check(TemplateOriginProbe("fixture",392,288,110,0) = "cooldown" && originReads = 1, "cooldown performs no capture")
+    originClock += 30000
+    TemplateOriginProbe("fixture",392,288,110,originClock)
+    Check(originReads = 2, "sample resumes at 30-second boundary")
+    originClock += 30000, originThrows := true
+    probeCase := ["at",true,false,true,true,true,false,false,2,1,"mct_seated_mansion_bg"]
+    probeReads := 0, probeLogs := [], probeDpiContext := 43025, probeClients := 0
+    result := TemplateAt("Earn","mct_seated_mansion_bg",392,288)
+    Check(!result && probeReads = 2 && probeDpiContext = 43025 && InStr(probeLogs[1],"origin_probe=error="), "diagnostic failure preserves searches, result and DPI")
+    before := originReads
+    probeCase[11] := "dj_resident", probeReads := 0
+    TemplateAt("Earn","dj_resident",392,288)
+    Check(originReads = before, "other shifted templates never capture")
+}
+OriginNativeTests() {
+    global nativeStage, nativeCalls, nativeBits
+    nativeBits := Buffer(240*24*4, 0)
+    for failure in ["", "GetDIBits", "BitBlt"] {
+        nativeStage := failure, nativeCalls := [], failed := false
+        try pixels := FixtureOriginPixels("fixture",392,288)
+        catch
+            failed := true
+        blits := 0, deletes := 0, released := 0, dcDeleted := 0
+        for call in nativeCalls {
+            blits += call = "BitBlt", deletes += call = "DeleteObject"
+            released += call = "ReleaseDC", dcDeleted += call = "DeleteDC"
+        }
+        Check(failed = (failure != "") && blits = (failure = "GetDIBits" ? 0 : 1)
+            && deletes = (failure = "GetDIBits" ? 1 : 2) && released = 1
+            && dcDeleted = (failure = "GetDIBits" ? 0 : 1), "single capture and native cleanup: " failure)
+    }
+}
+OriginLoadPicture(*) => 101
+OriginDllCall(name, args*) {
+    nativeCalls.Push(name)
+    if (name = "GetObject") {
+        NumPut("int",240,args[6],4), NumPut("int",24,args[6],8)
+        return 32
+    }
+    if (name = "GetDC")
+        return 102
+    if (name = "GetDIBits")
+        return nativeStage = name ? 0 : 24
+    if (name = "CreateCompatibleDC")
+        return 103
+    if (name = "CreateDIBSection") {
+        reference := args[8]
+        %reference% := nativeBits.Ptr
+        return 104
+    }
+    if (name = "SelectObject")
+        return 105
+    if (name = "BitBlt")
+        return nativeStage = name ? 0 : 1
+    if (name = "RtlMoveMemory")
+        return 0
+    if (name = "DeleteObject" || name = "DeleteDC" || name = "ReleaseDC" || name = "GdiFlush")
+        return 1
+    throw Error("Unexpected native capture API: " name)
+}
+ProbeClock() => originClock
+ProbeOriginPixels(*) {
+    global originReads
+    originReads++
+    if (originThrows)
+        throw Error("synthetic capture failure")
+    a := Buffer(24, 0), b := Buffer(24, 0)
+    NumPut("uint", 0x0000FA, b, 20)
+    return {template:a,screen:b,w:3,h:2,sampleAt:originClock}
 }
 ProbeIsGTAActive() => probeCase[5] ? 264902 : 0
 ProbeWinGetClientPos(&x,&y,&w,&h,*) {
@@ -229,7 +328,7 @@ try {
     }
     $stdout = $testProcess.StandardOutput.ReadToEnd().Trim()
     $stderr = $testProcess.StandardError.ReadToEnd().Trim()
-    if ($testProcess.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnScreen cases=58 (no game input)') {
+    if ($testProcess.ExitCode -ne 0 -or $stderr -ne '' -or $stdout -ne 'PASS EarnScreen cases=68 (no game input)') {
         throw "EarnScreen test failed (exit=$($testProcess.ExitCode))`nstdout: $stdout`nstderr: $stderr"
     }
     Write-Output $stdout
