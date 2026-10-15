@@ -140,9 +140,9 @@ EarnSeen(name, area := "", &fx := 0, &fy := 0, variation := 40) {
     ; Enter 만 보내다 멈춤, 녹화 프레임에서 1,500자리 넘게 일치). 맞은 자리의 글자 밖 바탕이 안내 상자처럼 어두워야 인정한다.
     if (name = "mct_seated") {
         ; 저택 안내 글자는 같은 자리에서도 차이 55 까지 벌어진다(1010 00:44 실측: 앉아서 안내가 떠 있는데 40 으로 못 찾아 정리 실패가 반복됨).
-        ; 바탕 검사가 그대로 있으므로 글자 허용치만 60 으로 넓힌다.
+        ; 같은 원점의 바탕을 함께 확인한다. 저택 반투명 바탕은 천장 조명선이 겹친 실제 GDI에서 차이 107이었다(1015 13:38).
         for part in ["mct_seated_mansion", "mct_seated"]
-            if (TemplateSeen("Earn", part, area, &fx, &fy, part = "mct_seated_mansion" ? Max(variation, 60) : variation) && TemplateAt("Earn", part "_bg", fx, fy))
+            if (TemplateSeen("Earn", part, area, &fx, &fy, part = "mct_seated_mansion" ? Max(variation, 60) : variation) && TemplateAt("Earn", part "_bg", fx, fy, part = "mct_seated_mansion" ? 110 : 90))
                 return true
         return (TemplateSeen("Earn", "mct_seated_hdr", area, &fx, &fy, variation)
             && TemplateAt("Earn", "mct_seated_hdr_bg", fx, fy))
