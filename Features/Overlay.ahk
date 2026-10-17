@@ -173,7 +173,7 @@ MacroStatusText(compact) {
     inside := config["Settings"]["MenuTopOffset"]
     ; 오버레이는 수익 상태 한 줄만 띄운다(1017 사용자 지시: 화면을 가리지 않게, AFK 는 늘 켜져 있어 표시하지 않는다)
     if (compact)
-        return IsSet(gEarnOn) && gEarnOn ? "수익 중" : "수익 중단"
+        return EarnOverlayText()
     list := ""
     for item in running
         list .= (list = "" ? "" : ", ") item
@@ -183,6 +183,19 @@ MacroStatusText(compact) {
         . "`n메뉴 위치: 부동산 " (inside ? "안" : "밖") " (MenuTopOffset=" inside ")"
         . "`n오버레이: " (OverlayIsOn() ? "켜짐" : "꺼짐")
         . "`nGTA: " gta
+}
+
+; 수익 중 / 수익 대기 N초(사용자 입력 뒤 안정 대기) / 수익 오류: 까닭 / 수익 중단
+EarnOverlayText() {
+    global gEarnOn, gEarnFail, gEarnCurrent, config
+    if (!IsSet(gEarnOn) || !gEarnOn)
+        return IsSet(gEarnFail) && gEarnFail != "" ? "수익 오류: " gEarnFail : "수익 중단"
+    if (gEarnCurrent = "") {
+        idleLeft := config["Settings"]["EarnUserIdleSec"] * 1000 - A_TimeIdlePhysical
+        if (idleLeft > 0)
+            return "수익 대기 " Ceil(idleLeft / 1000) "초"
+    }
+    return "수익 중"
 }
 
 AFKStatusText() {
