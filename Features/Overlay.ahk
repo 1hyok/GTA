@@ -171,12 +171,9 @@ MacroStatusText(compact) {
     running := RunningItems()
     afk := AFKStatusText()
     inside := config["Settings"]["MenuTopOffset"]
-    if (compact) {
-        text := ""
-        for item in running
-            text .= "▶ " item "`n"
-        return text "AFK " afk " · 부동산 " (inside ? "안" : "밖")
-    }
+    ; 오버레이는 수익 상태 한 줄만 띄운다(1017 사용자 지시: 화면을 가리지 않게, AFK 는 늘 켜져 있어 표시하지 않는다)
+    if (compact)
+        return IsSet(gEarnOn) && gEarnOn ? "수익 중" : "수익 중단"
     list := ""
     for item in running
         list .= (list = "" ? "" : ", ") item
