@@ -11,6 +11,8 @@ global gMemGuardPID := 0
 global gMemGuardWarning := "ok"
 global gMemGuardCreated := 0, gMemGuardPolicy := ""
 global gMemGuardStatePath := A_Temp "\gta-mem-state.txt"
+global gMemGuardPrevGB := -1, gMemGuardPrevTick := 0
+global gMemGuardNotePath := A_Temp "\gta-mem-note.txt"
 
 MemGuardLevel(commitPct, gtaGB, warnPct, closePct, minGB) {
     if (closePct > 0 && commitPct >= closePct && gtaGB >= minGB)
@@ -168,13 +170,60 @@ MemGuardDisplayNote() {
     return note
 }
 
+; 10분 기록에 붙는 맥락: 직전 기록 대비 GTA 증가 속도(MB/분), 수익 자동화 상태, 사용자 메모.
+; 1016 실측: GTA 커밋은 캐릭터가 밖에 있을 때만 분당 110~160MB 늘고 실내(테러바이트·사업장)에 있으면 멈춘다.
+; 세션 종류(초대 전용·공개)처럼 매크로가 모르는 조건은 사용자가 %TEMP%\gta-mem-note.txt 첫 줄에 적어 두면 그대로 붙는다.
+MemGuardRateNote(gtaGB) {
+    global gMemGuardPrevGB, gMemGuardPrevTick
+    note := ""
+    if (gMemGuardPrevGB >= 0 && gtaGB >= 0 && gMemGuardPrevTick) {
+        elapsedMin := (A_TickCount - gMemGuardPrevTick) / 60000
+        if (elapsedMin >= 0.5)
+            note := "증가 " Round((gtaGB - gMemGuardPrevGB) * 1024 / elapsedMin) "MB/분"
+    }
+    gMemGuardPrevGB := gtaGB
+    gMemGuardPrevTick := A_TickCount
+    return note
+}
+
+MemGuardEarnNote() {
+    global gEarnOn, gEarnBusy, gEarnCurrent
+    if (!IsSet(gEarnOn) || !gEarnOn)
+        return "수익 꺼짐"
+    task := IsSet(gEarnCurrent) && gEarnCurrent != "" ? gEarnCurrent : (IsSet(gEarnBusy) && gEarnBusy ? "작업 중" : "대기")
+    return "수익 켜짐(" task ")"
+}
+
+MemGuardUserNote() {
+    global gMemGuardNotePath
+    try {
+        if (!FileExist(gMemGuardNotePath) || FileGetSize(gMemGuardNotePath) > 4096)
+            return ""
+        text := Trim(StrSplit(FileRead(gMemGuardNotePath, "UTF-8"), "`n")[1], " `t`r")
+        return text = "" ? "" : "메모 " SubStr(text, 1, 60)
+    } catch {
+        return ""
+    }
+}
+
+MemGuardContextNote(gtaGB) {
+    parts := []
+    for part in [MemGuardRateNote(gtaGB), MemGuardEarnNote(), MemGuardUserNote()]
+        if (part != "")
+            parts.Push(part)
+    note := ""
+    for part in parts
+        note .= (note = "" ? "" : ", ") part
+    return note
+}
+
 MemGuardLog(msg) {
     try FileAppend(FormatTime(, "yyyy-MM-dd HH:mm:ss") " " msg "`n", A_Temp "\gta-mem.log", "UTF-8")
 }
 
 MemGuardTick() {
     global config, gMemGuardLevel, gMemGuardLastLog, gMemGuardPID, gMemGuardWarning
-    global gMemGuardCreated, gMemGuardPolicy, gMemGuardStatePath
+    global gMemGuardCreated, gMemGuardPolicy, gMemGuardStatePath, gMemGuardPrevGB, gMemGuardPrevTick
     s := config["Settings"]
     pid := ProcessExist("GTA5_Enhanced.exe")
     created := pid ? MemGuardProcessCreated(pid) : 0
@@ -187,6 +236,7 @@ MemGuardTick() {
         gMemGuardLevel := "ok"
         gMemGuardWarning := created > 0 ? MemGuardLoadState(gMemGuardStatePath, pid, created, policy, now) : "ok"
         gMemGuardLastLog := 0
+        gMemGuardPrevGB := -1, gMemGuardPrevTick := 0
     }
     if (!pid) {
         MemGuardForgetState(gMemGuardStatePath)
@@ -201,7 +251,7 @@ MemGuardTick() {
     alertChanged := warning != gMemGuardWarning
     line := "커밋 " Round(used, 1) "/" Round(limit, 1) "GB(" pct "%), GTA " (gta < 0 ? "?" : Round(gta, 1)) "GB"
     if (level != gMemGuardLevel || alertChanged || !gMemGuardLastLog || A_TickCount - gMemGuardLastLog >= 600000) {
-        MemGuardLog(line " " level " alert=" warning " " MemGuardDisplayNote())
+        MemGuardLog(line " " level " alert=" warning " " MemGuardDisplayNote() " " MemGuardContextNote(gta))
         gMemGuardLastLog := A_TickCount
     }
     gMemGuardLevel := level

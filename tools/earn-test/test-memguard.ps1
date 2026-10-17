@@ -239,9 +239,12 @@ FixtureReset()
 FixtureSamples([80])
 FixtureSamples([80])
 Check(fixtureLogs.Length = 1 && fixtureMessages.Length = 1, "unchanged sample produces no extra periodic log or alert")
+Check(InStr(fixtureLogs[1], "수익 꺼짐") && !InStr(fixtureLogs[1], "증가 "), "first log carries earner state and no rate before a previous sample")
 gMemGuardLastLog := A_TickCount - 600001
+gMemGuardPrevTick := A_TickCount - 600000, gMemGuardPrevGB := 16.5
 FixtureSamples([80])
 Check(fixtureLogs.Length = 2 && fixtureMessages.Length = 1, "ten-minute diagnostic logging does not reissue user warning")
+Check(InStr(fixtureLogs[2], "증가 102MB/분"), "periodic log carries growth rate since the previous log")
 CheckPersistence()
 FileAppend("PASS MemGuard cases=" n, "*")
 ExitApp(0)
@@ -363,7 +366,7 @@ $statePath = $path + '.state'
 [IO.File]::WriteAllText($path, $driver, (New-Object Text.UTF8Encoding($true)))
 try {
     $out = (& $AhkPath /ErrorStdOut $path $statePath 2>&1 | Out-String).Trim()
-    if ($LASTEXITCODE -ne 0 -or $out -ne 'PASS MemGuard cases=95') { throw "MemGuard failed (exit=$LASTEXITCODE): $out" }
+    if ($LASTEXITCODE -ne 0 -or $out -ne 'PASS MemGuard cases=97') { throw "MemGuard failed (exit=$LASTEXITCODE): $out" }
     Write-Output $out
     [IO.File]::Delete($statePath)
     foreach ($phase in @('warn', 'reload', 'escalate', 'high', 'recover', 'warn')) {
